@@ -1,0 +1,864 @@
+@import "tailwindcss";
+
+/* =========================================================
+   TAILWIND V4 - DARK MODE
+   ========================================================= */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* =========================================================
+   VARIABLES GLOBALES - MODE CLAIR
+   ========================================================= */
+
+:root {
+  --background: 248, 250, 252;
+  --foreground: 15, 23, 42;
+
+  --card: 255, 255, 255;
+  --card-foreground: 15, 23, 42;
+
+  --primary: 124, 58, 237;
+  --primary-foreground: 255, 255, 255;
+
+  --primary-light: 139, 92, 246;
+  --primary-dark: 91, 33, 182;
+
+  --secondary: 241, 245, 249;
+  --secondary-foreground: 15, 23, 42;
+
+  --muted: 241, 245, 249;
+  --muted-foreground: 100, 116, 139;
+
+  --accent: 241, 245, 249;
+  --accent-foreground: 15, 23, 42;
+
+  --destructive: 239, 68, 68;
+  --destructive-foreground: 255, 255, 255;
+
+  --success: 34, 197, 94;
+  --success-foreground: 255, 255, 255;
+
+  --warning: 234, 179, 8;
+  --warning-foreground: 15, 23, 42;
+
+  --info: 59, 130, 246;
+  --info-foreground: 255, 255, 255;
+
+  --border: 226, 232, 240;
+  --input: 226, 232, 240;
+  --ring: 124, 58, 237;
+
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --text-scale: 100%;
+}
+
+/* =========================================================
+   MODE SOMBRE
+   ========================================================= */
+
+.dark {
+  --background: 15, 23, 42;
+  --foreground: 248, 250, 252;
+
+  --card: 30, 41, 59;
+  --card-foreground: 248, 250, 252;
+
+  --primary: 167, 139, 250;
+  --primary-foreground: 255, 255, 255;
+
+  --secondary: 51, 65, 85;
+  --secondary-foreground: 248, 250, 252;
+
+  --muted: 51, 65, 85;
+  --muted-foreground: 203, 213, 225;
+
+  --accent: 51, 65, 85;
+  --accent-foreground: 248, 250, 252;
+
+  --destructive: 248, 113, 113;
+  --destructive-foreground: 255, 255, 255;
+
+  --success: 74, 222, 128;
+  --success-foreground: 5, 46, 22;
+
+  --warning: 250, 204, 21;
+  --warning-foreground: 66, 32, 6;
+
+  --info: 96, 165, 250;
+  --info-foreground: 15, 23, 42;
+
+  --border: 71, 85, 105;
+  --input: 71, 85, 105;
+  --ring: 167, 139, 250;
+}
+
+/* =========================================================
+   BASE
+   ========================================================= */
+
+html {
+  font-size: var(--text-scale);
+  scroll-behavior: smooth;
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Helvetica,
+    Arial,
+    sans-serif;
+
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: rgb(var(--border));
+
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+/* =========================================================
+   VARIABLES UTILITAIRES
+   ========================================================= */
+
+.bg-background {
+  background-color: rgb(var(--background));
+}
+
+.bg-card {
+  background-color: rgb(var(--card));
+}
+
+.bg-primary {
+  background-color: rgb(var(--primary));
+}
+
+.bg-muted {
+  background-color: rgb(var(--muted));
+}
+
+.text-foreground {
+  color: rgb(var(--foreground));
+}
+
+.text-primary {
+  color: rgb(var(--primary));
+}
+
+.text-muted-foreground {
+  color: rgb(var(--muted-foreground));
+}
+
+.border-border {
+  border-color: rgb(var(--border));
+}
+
+.border-input {
+  border-color: rgb(var(--input));
+}
+
+/* =========================================================
+   DARK MODE - TEXTES TAILWIND
+   ========================================================= */
+
+/* Noir */
+
+.dark .text-black {
+  color: #f8fafc !important;
+}
+
+/* Slate */
+
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.dark .text-slate-700 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+/* Gray */
+
+.dark .text-gray-950,
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: #f8fafc !important;
+}
+
+.dark .text-gray-700 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-gray-500 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+/* Zinc */
+
+.dark .text-zinc-950,
+.dark .text-zinc-900,
+.dark .text-zinc-800 {
+  color: #f8fafc !important;
+}
+
+.dark .text-zinc-700 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-zinc-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-zinc-500 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-zinc-400 {
+  color: #94a3b8 !important;
+}
+
+/* =========================================================
+   DARK MODE - BACKGROUNDS CLAIRS
+   ========================================================= */
+
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-gray-50,
+.dark .bg-gray-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-zinc-50,
+.dark .bg-zinc-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-neutral-50,
+.dark .bg-neutral-100 {
+  background-color: #1e293b !important;
+}
+
+/* =========================================================
+   DARK MODE - BACKGROUNDS MOYENS
+   ========================================================= */
+
+.dark .bg-slate-200,
+.dark .bg-gray-200,
+.dark .bg-zinc-200,
+.dark .bg-neutral-200 {
+  background-color: #334155 !important;
+}
+
+/* =========================================================
+   DARK MODE - BORDURES
+   ========================================================= */
+
+.dark .border-white {
+  border-color: #475569 !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #475569 !important;
+}
+
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: #475569 !important;
+}
+
+.dark .border-zinc-100,
+.dark .border-zinc-200,
+.dark .border-zinc-300 {
+  border-color: #475569 !important;
+}
+
+/* =========================================================
+   TABLEAUX - GLOBAL
+   ========================================================= */
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  /* Le navigateur garde les dimensions nécessaires aux badges */
+  table-layout: auto;
+}
+
+table th,
+table td {
+  white-space: normal;
+}
+
+table .status-cell {
+  white-space: nowrap !important;
+  min-width: 115px !important;
+}
+
+/* =========================================================
+   TABLEAUX - MODE SOMBRE
+   ========================================================= */
+
+.dark table {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+/* En-tête */
+
+.dark table thead {
+  background-color: #1e293b !important;
+}
+
+.dark table thead tr {
+  background-color: #1e293b !important;
+}
+
+.dark table thead th {
+  color: #f8fafc !important;
+  font-weight: 700;
+  border-bottom: 1px solid #475569 !important;
+}
+
+/* Corps */
+
+.dark table tbody {
+  background-color: #1e293b !important;
+}
+
+.dark table tbody tr {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+}
+
+.dark table tbody tr:hover {
+  background-color: #26364d !important;
+}
+
+/* Cellules */
+
+.dark table tbody td {
+  color: #e2e8f0 !important;
+  border-bottom: 1px solid #475569 !important;
+}
+
+/* =========================================================
+   PROJET - TEXTES DU TABLEAU
+   ========================================================= */
+
+.project-name {
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.project-code {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.project-info {
+  color: #334155;
+  font-size: 0.875rem;
+}
+
+.project-number {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.dark .project-name {
+  color: #ffffff !important;
+}
+
+.dark .project-code {
+  color: #cbd5e1 !important;
+}
+
+.dark .project-info {
+  color: #e2e8f0 !important;
+}
+
+.dark .project-number {
+  color: #ffffff !important;
+}
+
+/* =========================================================
+   STATUTS DES PROJETS
+   TOUJOURS SUR UNE SEULE LIGNE
+   ========================================================= */
+
+.project-status {
+  display: inline-flex !important;
+
+  align-items: center !important;
+  justify-content: center !important;
+
+  /* Empêche "En cours" de devenir "En / cours" */
+  width: auto !important;
+  min-width: 92px !important;
+  max-width: none !important;
+
+  height: 32px !important;
+  padding: 0 12px !important;
+
+  border-radius: 9999px !important;
+
+  font-size: 12px !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+
+  white-space: nowrap !important;
+  text-wrap: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+
+  writing-mode: horizontal-tb !important;
+  text-align: center !important;
+}
+
+/* En cours */
+
+.status-progress {
+  background-color: #dcfce7;
+  color: #166534;
+
+  border: 1px solid #bbf7d0;
+}
+
+/* Planifié */
+
+.status-planned {
+  background-color: #fef3c7;
+  color: #92400e;
+
+  border: 1px solid #fde68a;
+}
+
+/* Terminé */
+
+.status-completed {
+  background-color: #dbeafe;
+  color: #1e40af;
+
+  border: 1px solid #bfdbfe;
+}
+
+/* Suspendu */
+
+.status-suspended {
+  background-color: #fee2e2;
+  color: #991b1b;
+
+  border: 1px solid #fecaca;
+}
+
+/* =========================================================
+   DARK MODE - STATUTS LISIBLES
+   ========================================================= */
+
+.dark .project-status {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.dark .status-progress {
+  background-color: #166534 !important;
+  color: #ffffff !important;
+  border: 1px solid #4ade80 !important;
+}
+
+.dark .status-planned {
+  background-color: #854d0e !important;
+  color: #ffffff !important;
+  border: 1px solid #facc15 !important;
+}
+
+.dark .status-completed {
+  background-color: #1d4ed8 !important;
+  color: #ffffff !important;
+  border: 1px solid #60a5fa !important;
+}
+
+.dark .status-suspended {
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+  border: 1px solid #f87171 !important;
+}
+
+/* =========================================================
+   CELLULE STATUT
+   Largeur réservée pour tous les statuts
+   ========================================================= */
+
+.status-cell {
+  width: 115px !important;
+  min-width: 115px !important;
+  max-width: 150px !important;
+
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+
+  white-space: nowrap !important;
+  text-wrap: nowrap !important;
+
+  vertical-align: middle !important;
+}
+
+.status-cell > *,
+.status-cell > span,
+.status-cell > div {
+  display: inline-flex !important;
+
+  width: auto !important;
+  max-width: none !important;
+
+  white-space: nowrap !important;
+  text-wrap: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+
+  flex: 0 0 auto !important;
+}
+
+/* =========================================================
+   ACTIONS TABLEAU
+   ========================================================= */
+
+.project-actions {
+  display: flex;
+
+  align-items: center;
+  justify-content: flex-end;
+
+  gap: 0.4rem;
+
+  white-space: nowrap;
+}
+
+.project-action {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  min-height: 36px;
+
+  padding: 0.45rem 0.7rem;
+
+  border: 1px solid #cbd5e1;
+
+  border-radius: 0.65rem;
+
+  background-color: transparent;
+
+  color: #334155;
+
+  font-size: 0.8rem;
+  font-weight: 600;
+
+  white-space: nowrap;
+
+  cursor: pointer;
+}
+
+.project-action:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.dark .project-action {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #64748b !important;
+}
+
+.dark .project-action:hover {
+  background-color: #334155 !important;
+  border-color: #94a3b8 !important;
+}
+
+/* Bouton supprimer */
+
+.project-action-danger {
+  color: #dc2626 !important;
+  border-color: #64748b;
+}
+
+.dark .project-action-danger {
+  color: #f87171 !important;
+  border-color: #64748b !important;
+}
+
+/* =========================================================
+   FORMULAIRES
+   ========================================================= */
+
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.dark select option {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+/* =========================================================
+   LABELS
+   ========================================================= */
+
+.dark label {
+  color: #f8fafc;
+}
+
+/* =========================================================
+   HR
+   ========================================================= */
+
+.dark hr {
+  border-color: #475569 !important;
+}
+
+/* =========================================================
+   HOVER BACKGROUNDS
+   ========================================================= */
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: #334155 !important;
+}
+
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover {
+  background-color: #334155 !important;
+}
+
+.dark .hover\:bg-white:hover {
+  background-color: #334155 !important;
+}
+
+/* =========================================================
+   FOCUS
+   ========================================================= */
+
+*:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   SCROLLBAR
+   ========================================================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(var(--muted), 0.5);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--primary), 0.45);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--primary), 0.7);
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #64748b;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* =========================================================
+   COMPACT MODE
+   ========================================================= */
+
+.compact-mode body {
+  font-size: 0.95rem;
+}
+
+.compact-mode .p-6 {
+  padding: 1rem;
+}
+
+.compact-mode .p-5 {
+  padding: 0.875rem;
+}
+
+.compact-mode .p-4 {
+  padding: 0.75rem;
+}
+
+.compact-mode .gap-6 {
+  gap: 1rem;
+}
+
+.compact-mode .gap-5 {
+  gap: 0.875rem;
+}
+
+.compact-mode .gap-4 {
+  gap: 0.75rem;
+}
+
+/* =========================================================
+   ANIMATION
+   ========================================================= */
+
+.animate-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* =========================================================
+   HIDE SCROLLBAR
+   ========================================================= */
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .project-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .status-cell {
+    width: 115px !important;
+    min-width: 115px !important;
+  }
+
+  .project-status {
+    min-width: 92px !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-responsive {
+    grid-template-columns: 1fr;
+  }
+
+  .project-actions {
+    gap: 0.3rem;
+  }
+
+  .project-action {
+    min-height: 34px;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  .project-status {
+    min-width: 92px !important;
+    height: 30px !important;
+    padding: 0 10px !important;
+
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+
+  .status-cell {
+    width: 110px !important;
+    min-width: 110px !important;
+  }
+}
