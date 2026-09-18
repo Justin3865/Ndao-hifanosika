@@ -4,7 +4,7 @@
   "description": "API REST du système de Suivi et Évaluation de l'ONG Ndao Hifanosika",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "echo \"Tests à configurer\"",
@@ -26,6 +26,7 @@
   "author": "Ndao Hifanosika",
   "license": "ISC",
   "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "axios": "^1.20.0",
     "bcrypt": "^6.0.0",

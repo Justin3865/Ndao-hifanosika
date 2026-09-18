@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,4 +5,253 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  INACTIVE
+}
+
+enum UserRole {
+  ADMIN
+  DIRECTION
+  DSI
+  DAF
+  RH
+  COMMUNICATION
+  COORDINATOR
+  TUTEUR_L3
+  TUTEUR_M2
+  STAGIAIRE_L3
+  STAGIAIRE_M2
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+  CANCELLED
+}
+
+enum ActivityStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum EvaluationStatus {
+  DRAFT
+  SUBMITTED
+  VALIDATED
+}
+
+enum InternshipStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model User {
+  id                 Int        @id @default(autoincrement())
+  firstName          String
+  lastName           String
+  email              String     @unique
+  password           String
+  phone              String?
+  gender             Gender?
+  role               UserRole   @default(STAGIAIRE_L3)
+  status             UserStatus @default(PENDING)
+  departmentId       Int?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  lastLoginAt        DateTime?
+
+  department         Department? @relation(fields: [departmentId], references: [id])
+
+  projectsCreated    Project[]  @relation("ProjectCreator")
+  activitiesCreated  Activity[] @relation("ActivityCreator")
+  evaluationsCreated Evaluation[] @relation("EvaluationCreator")
+
+  internships        Internship[] @relation("InternshipStudent")
+  supervisedInternships Internship[] @relation("InternshipSupervisor")
+
+  auditLogs           AuditLog[]
+
+  @@index([departmentId])
+  @@index([role])
+  @@index([status])
+}
+
+model Department {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  code        String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  projects    Project[]
+
+  @@index([name])
+}
+
+model Project {
+  id             Int           @id @default(autoincrement())
+  name           String
+  code           String        @unique
+  description    String?
+  objective      String?
+  startDate      DateTime?
+  endDate        DateTime?
+  status         ProjectStatus @default(DRAFT)
+  budget         Decimal?      @db.Decimal(15, 2)
+  beneficiaryTarget Int?
+  departmentId   Int?
+  createdById    Int
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  createdBy      User          @relation("ProjectCreator", fields: [createdById], references: [id])
+
+  activities     Activity[]
+  milestones     Milestone[]
+  evaluations    Evaluation[]
+  beneficiaries  Beneficiary[]
+  internships    Internship[]
+
+  @@index([departmentId])
+  @@index([createdById])
+  @@index([status])
+}
+
+model Activity {
+  id          Int            @id @default(autoincrement())
+  projectId   Int
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      ActivityStatus @default(PLANNED)
+  budget      Decimal?       @db.Decimal(15, 2)
+  createdById Int
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User           @relation("ActivityCreator", fields: [createdById], references: [id])
+
+  @@index([projectId])
+  @@index([createdById])
+  @@index([status])
+}
+
+model Milestone {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  title       String
+  description String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  progress    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Beneficiary {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  firstName   String
+  lastName    String
+  gender      Gender?
+  age         Int?
+  phone       String?
+  email       String?
+  vulnerable  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([gender])
+}
+
+model Evaluation {
+  id          Int              @id @default(autoincrement())
+  projectId   Int
+  title       String
+  description String?
+  score       Float?
+  status      EvaluationStatus @default(DRAFT)
+  evaluatedAt DateTime?
+  createdById Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User             @relation("EvaluationCreator", fields: [createdById], references: [id])
+
+  @@index([projectId])
+  @@index([createdById])
+  @@index([status])
+}
+
+model Internship {
+  id             Int              @id @default(autoincrement())
+  projectId      Int?
+  studentId      Int
+  supervisorId   Int?
+  title          String
+  institution    String?
+  startDate      DateTime
+  endDate        DateTime?
+  status         InternshipStatus @default(PENDING)
+  description    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  project        Project?         @relation(fields: [projectId], references: [id])
+  student        User             @relation("InternshipStudent", fields: [studentId], references: [id])
+  supervisor     User?            @relation("InternshipSupervisor", fields: [supervisorId], references: [id])
+
+  @@index([projectId])
+  @@index([studentId])
+  @@index([supervisorId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String
+  entity     String?
+  entityId   Int?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
 }

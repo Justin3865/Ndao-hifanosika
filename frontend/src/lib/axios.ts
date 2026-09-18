@@ -1,12 +1,26 @@
 // src/lib/axios.ts
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosError, InternalAxiosRequestConfig } from "axios";
+
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from "axios";
 import { authService } from "@/services/auth.service";
 
-// Configuration de base
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+
 const API_TIMEOUT = 30000;
 
-// Types pour les réponses
+// ============================================================
+// TYPES
+// ============================================================
+
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
@@ -26,169 +40,309 @@ export interface ApiError {
   errors?: string[];
 }
 
-// Instance Axios
+// ============================================================
+// AXIOS INSTANCE
+// ============================================================
+
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT,
   headers: {
     "Content-Type": "application/json",
-    "Accept": "application/json",
+    Accept: "application/json",
   },
+  withCredentials: true,
 });
 
-// Intercepteur de requête - Ajout du token
+// ============================================================
+// REQUEST INTERCEPTOR
+// Ajout automatique du Access Token
+// ============================================================
+
 axiosInstance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("accessToken");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      const accessToken = localStorage.getItem("accessToken");
+
+      if (accessToken) {
+        config.headers.Authorization = `Bearer ${accessToken}`;
       }
     }
+
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  },
 );
 
-// Intercepteur de réponse - Gestion des erreurs
+// ============================================================
+// RESPONSE INTERCEPTOR
+// Gestion automatique du 401 + refresh token
+// ============================================================
+
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
+
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-    
-    // Si erreur 401 et pas déjà retry
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const originalRequest =
+      error.config as
+        | (InternalAxiosRequestConfig & {
+            _retry?: boolean;
+          })
+        | undefined;
+
+    // ----------------------------------------------------------
+    // Si pas de configuration de requête
+    // ----------------------------------------------------------
+
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    // ----------------------------------------------------------
+    // Gestion du 401
+    // ----------------------------------------------------------
+
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      typeof window !== "undefined"
+    ) {
       originalRequest._retry = true;
-      
+
       try {
-        // Essayer de rafraîchir le token
         const refreshToken = localStorage.getItem("refreshToken");
+
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refreshToken,
-          });
-          
-          if (response.data.success && response.data.data?.accessToken) {
-            localStorage.setItem("accessToken", response.data.data.accessToken);
-            originalRequest.headers.Authorization = `Bearer ${response.data.data.accessToken}`;
+          const refreshResponse = await axios.post(
+            `${API_BASE_URL}/auth/refresh`,
+            {
+              refreshToken,
+            },
+          );
+
+          if (
+            refreshResponse.data?.success &&
+            refreshResponse.data?.data?.accessToken
+          ) {
+            const newAccessToken =
+              refreshResponse.data.data.accessToken;
+
+            // Sauvegarder le nouveau token
+            localStorage.setItem(
+              "accessToken",
+              newAccessToken,
+            );
+
+            // Mettre à jour la requête originale
+            originalRequest.headers.Authorization =
+              `Bearer ${newAccessToken}`;
+
+            // Rejouer la requête
             return axiosInstance(originalRequest);
           }
         }
+
+        // Aucun refresh token valide
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+
+        window.location.href = "/login";
       } catch (refreshError) {
-        // Si le refresh échoue, rediriger vers login
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("accessToken");
-          localStorage.removeItem("refreshToken");
-          localStorage.removeItem("user");
-          window.location.href = "/login";
-        }
+        console.error(
+          "Erreur lors du refresh token :",
+          refreshError,
+        );
+
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+
+        window.location.href = "/login";
       }
     }
-    
+
     return Promise.reject(error);
-  }
+  },
 );
 
-// Fonction pour gérer les erreurs
-export const handleApiError = (error: any): ApiError => {
+// ============================================================
+// GESTION DES ERREURS
+// ============================================================
+
+export const handleApiError = (
+  error: unknown,
+): ApiError => {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError;
+
+    const responseData = axiosError.response?.data as
+      | {
+          message?: string;
+          errors?: string[];
+        }
+      | undefined;
+
     return {
       status: axiosError.response?.status || 500,
-      message: (axiosError.response?.data as any)?.message || "Une erreur est survenue",
-      errors: (axiosError.response?.data as any)?.errors,
+      message:
+        responseData?.message ||
+        axiosError.message ||
+        "Une erreur est survenue",
+      errors: responseData?.errors,
     };
   }
+
+  if (error instanceof Error) {
+    return {
+      status: 500,
+      message: error.message,
+    };
+  }
+
   return {
     status: 500,
-    message: error.message || "Une erreur est survenue",
+    message: "Une erreur est survenue",
   };
 };
 
-// Fonction pour les requêtes GET
+// ============================================================
+// GET
+// ============================================================
+
 export const apiGet = async <T = any>(
   url: string,
-  config?: AxiosRequestConfig
+  config?: AxiosRequestConfig,
 ): Promise<ApiResponse<T>> => {
   try {
-    const response = await axiosInstance.get<ApiResponse<T>>(url, config);
+    const response =
+      await axiosInstance.get<ApiResponse<T>>(
+        url,
+        config,
+      );
+
     return response.data;
   } catch (error) {
     throw handleApiError(error);
   }
 };
 
-// Fonction pour les requêtes POST
+// ============================================================
+// POST
+// ============================================================
+
 export const apiPost = async <T = any>(
   url: string,
   data?: any,
-  config?: AxiosRequestConfig
+  config?: AxiosRequestConfig,
 ): Promise<ApiResponse<T>> => {
   try {
-    const response = await axiosInstance.post<ApiResponse<T>>(url, data, config);
+    const response =
+      await axiosInstance.post<ApiResponse<T>>(
+        url,
+        data,
+        config,
+      );
+
     return response.data;
   } catch (error) {
     throw handleApiError(error);
   }
 };
 
-// Fonction pour les requêtes PUT
+// ============================================================
+// PUT
+// ============================================================
+
 export const apiPut = async <T = any>(
   url: string,
   data?: any,
-  config?: AxiosRequestConfig
+  config?: AxiosRequestConfig,
 ): Promise<ApiResponse<T>> => {
   try {
-    const response = await axiosInstance.put<ApiResponse<T>>(url, data, config);
+    const response =
+      await axiosInstance.put<ApiResponse<T>>(
+        url,
+        data,
+        config,
+      );
+
     return response.data;
   } catch (error) {
     throw handleApiError(error);
   }
 };
 
-// Fonction pour les requêtes PATCH
+// ============================================================
+// PATCH
+// ============================================================
+
 export const apiPatch = async <T = any>(
   url: string,
   data?: any,
-  config?: AxiosRequestConfig
+  config?: AxiosRequestConfig,
 ): Promise<ApiResponse<T>> => {
   try {
-    const response = await axiosInstance.patch<ApiResponse<T>>(url, data, config);
+    const response =
+      await axiosInstance.patch<ApiResponse<T>>(
+        url,
+        data,
+        config,
+      );
+
     return response.data;
   } catch (error) {
     throw handleApiError(error);
   }
 };
 
-// Fonction pour les requêtes DELETE
+// ============================================================
+// DELETE
+// ============================================================
+
 export const apiDelete = async <T = any>(
   url: string,
-  config?: AxiosRequestConfig
+  config?: AxiosRequestConfig,
 ): Promise<ApiResponse<T>> => {
   try {
-    const response = await axiosInstance.delete<ApiResponse<T>>(url, config);
+    const response =
+      await axiosInstance.delete<ApiResponse<T>>(
+        url,
+        config,
+      );
+
     return response.data;
   } catch (error) {
     throw handleApiError(error);
   }
 };
 
-// Fonction pour les uploads de fichiers
+// ============================================================
+// UPLOAD FICHIER
+// ============================================================
+
 export const apiUpload = async <T = any>(
   url: string,
   file: File,
   fieldName: string = "file",
-  additionalData?: Record<string, any>
+  additionalData?: Record<string, any>,
 ): Promise<ApiResponse<T>> => {
   const formData = new FormData();
+
   formData.append(fieldName, file);
-  
+
   if (additionalData) {
-    Object.entries(additionalData).forEach(([key, value]) => {
-      formData.append(key, value);
-    });
+    Object.entries(additionalData).forEach(
+      ([key, value]) => {
+        formData.append(key, String(value));
+      },
+    );
   }
-  
+
   return apiPost<T>(url, formData, {
     headers: {
       "Content-Type": "multipart/form-data",
@@ -196,29 +350,39 @@ export const apiUpload = async <T = any>(
   });
 };
 
-// Fonction pour les uploads multiples
+// ============================================================
+// UPLOAD MULTIPLE
+// ============================================================
+
 export const apiUploadMultiple = async <T = any>(
   url: string,
   files: File[],
   fieldName: string = "files",
-  additionalData?: Record<string, any>
+  additionalData?: Record<string, any>,
 ): Promise<ApiResponse<T>> => {
   const formData = new FormData();
+
   files.forEach((file) => {
     formData.append(fieldName, file);
   });
-  
+
   if (additionalData) {
-    Object.entries(additionalData).forEach(([key, value]) => {
-      formData.append(key, value);
-    });
+    Object.entries(additionalData).forEach(
+      ([key, value]) => {
+        formData.append(key, String(value));
+      },
+    );
   }
-  
+
   return apiPost<T>(url, formData, {
     headers: {
       "Content-Type": "multipart/form-data",
     },
   });
 };
+
+// ============================================================
+// EXPORT
+// ============================================================
 
 export default axiosInstance;
