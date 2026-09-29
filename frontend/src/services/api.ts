@@ -117,10 +117,8 @@ class ApiService {
       baseURL: API_BASE_URL,
 
       headers: {
-        "Content-Type":
-          "application/json",
-        Accept:
-          "application/json",
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
 
       timeout: 30000,
@@ -134,10 +132,8 @@ class ApiService {
       baseURL: AI_API_BASE_URL,
 
       headers: {
-        "Content-Type":
-          "application/json",
-        Accept:
-          "application/json",
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
 
       timeout: 60000,
@@ -149,8 +145,7 @@ class ApiService {
 
     this.client.interceptors.request.use(
       (config) => {
-        const token =
-          this.getToken();
+        const token = this.getToken();
 
         if (token) {
           config.headers.Authorization =
@@ -186,18 +181,14 @@ class ApiService {
         if (config.params) {
           console.log(
             "🔎 Params :",
-            sanitizeData(
-              config.params
-            )
+            sanitizeData(config.params)
           );
         }
 
         if (config.data) {
           console.log(
             "📦 Données :",
-            sanitizeData(
-              config.data
-            )
+            sanitizeData(config.data)
           );
         }
 
@@ -219,9 +210,7 @@ class ApiService {
           error
         );
 
-        return Promise.reject(
-          error
-        );
+        return Promise.reject(error);
       }
     );
 
@@ -231,8 +220,7 @@ class ApiService {
 
     this.aiClient.interceptors.request.use(
       (config) => {
-        const token =
-          this.getToken();
+        const token = this.getToken();
 
         if (token) {
           config.headers.Authorization =
@@ -268,18 +256,14 @@ class ApiService {
         if (config.params) {
           console.log(
             "🔎 Params :",
-            sanitizeData(
-              config.params
-            )
+            sanitizeData(config.params)
           );
         }
 
         if (config.data) {
           console.log(
             "📦 Données IA :",
-            sanitizeData(
-              config.data
-            )
+            sanitizeData(config.data)
           );
         }
 
@@ -294,9 +278,7 @@ class ApiService {
           error
         );
 
-        return Promise.reject(
-          error
-        );
+        return Promise.reject(error);
       }
     );
 
@@ -329,9 +311,7 @@ class ApiService {
 
         console.log(
           "📥 Réponse :",
-          sanitizeData(
-            response.data
-          )
+          sanitizeData(response.data)
         );
 
         console.groupEnd();
@@ -371,9 +351,7 @@ class ApiService {
 
         console.log(
           "📥 Réponse IA :",
-          sanitizeData(
-            response.data
-          )
+          sanitizeData(response.data)
         );
 
         console.groupEnd();
@@ -467,15 +445,13 @@ class ApiService {
 
     console.error(
       "📥 Réponse serveur :",
-      sanitizeData(
-        serverData
-      )
+      sanitizeData(serverData)
     );
 
     console.groupEnd();
 
     // ========================================================
-    // TOKEN INVALIDE
+    // TOKEN INVALIDE OU EXPIRÉ
     // ========================================================
 
     if (status === 401) {
@@ -495,8 +471,10 @@ class ApiService {
           "user"
         );
 
+        // Ton application n'a pas de /login.
+        // Le formulaire de connexion est dans la page "/".
         window.location.href =
-          "/login";
+          "/";
       }
     }
 
@@ -563,12 +541,14 @@ class ApiService {
 
     console.error(
       "📥 Réponse IA :",
-      sanitizeData(
-        serverData
-      )
+      sanitizeData(serverData)
     );
 
     console.groupEnd();
+
+    // ========================================================
+    // TOKEN IA INVALIDE OU EXPIRÉ
+    // ========================================================
 
     if (status === 401) {
       if (
@@ -587,8 +567,10 @@ class ApiService {
           "user"
         );
 
+        // Retour vers la page d'accueil
+        // car /login n'existe pas.
         window.location.href =
-          "/login";
+          "/";
       }
     }
 

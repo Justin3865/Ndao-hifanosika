@@ -10,6 +10,7 @@ export interface User {
   department: string;
   position?: string;
   avatar?: string;
+  status?: string;
 }
 
 // ============================================================
@@ -22,7 +23,8 @@ export const getCurrentUser = (): User | null => {
   }
 
   try {
-    const user = localStorage.getItem("user");
+    const user =
+      localStorage.getItem("user");
 
     if (!user) {
       return null;
@@ -48,7 +50,9 @@ export const getAccessToken = (): string | null => {
     return null;
   }
 
-  return localStorage.getItem("accessToken");
+  return localStorage.getItem(
+    "accessToken",
+  );
 };
 
 // ============================================================
@@ -60,7 +64,9 @@ export const getRefreshToken = (): string | null => {
     return null;
   }
 
-  return localStorage.getItem("refreshToken");
+  return localStorage.getItem(
+    "refreshToken",
+  );
 };
 
 // ============================================================
@@ -72,35 +78,63 @@ export const isAuthenticated = (): boolean => {
     return false;
   }
 
-  const token = getAccessToken();
+  const user =
+    getCurrentUser();
 
-  return Boolean(token);
+  if (!user) {
+    return false;
+  }
+
+  // Seul un compte ACTIVE peut accéder
+  if (
+    user.status?.trim().toUpperCase() !==
+    "ACTIVE"
+  ) {
+    return false;
+  }
+
+  // Vérification JWT + expiration
+  return authService.isAuthenticated();
 };
 
 // ============================================================
 // RÔLE
 // ============================================================
 
-export const hasRole = (role: string): boolean => {
-  const user = getCurrentUser();
+export const hasRole = (
+  role: string,
+): boolean => {
+  const user =
+    getCurrentUser();
 
-  if (!user) {
+  if (!user || !isAuthenticated()) {
     return false;
   }
 
-  return user.role === role;
+  return (
+    user.role?.trim().toUpperCase() ===
+    role.trim().toUpperCase()
+  );
 };
 
 export const hasAnyRole = (
   roles: string[],
 ): boolean => {
-  const user = getCurrentUser();
+  const user =
+    getCurrentUser();
 
-  if (!user) {
+  if (!user || !isAuthenticated()) {
     return false;
   }
 
-  return roles.includes(user.role);
+  const userRole =
+    user.role?.trim().toUpperCase();
+
+  return roles.some(
+    (role) =>
+      role.trim().toUpperCase() ===
+      userRole,
+  );
 };
 
 // ============================================================
@@ -110,15 +144,28 @@ export const hasAnyRole = (
 export const hasPermissions = (
   permissions: string[],
 ): boolean => {
-  return permissions.every((permission) =>
-    authService.hasPermission(permission),
+  if (!isAuthenticated()) {
+    return false;
+  }
+
+  return permissions.every(
+    (permission) =>
+      authService.hasPermission(
+        permission,
+      ),
   );
 };
 
 export const hasPermission = (
   permission: string,
 ): boolean => {
-  return authService.hasPermission(permission);
+  if (!isAuthenticated()) {
+    return false;
+  }
+
+  return authService.hasPermission(
+    permission,
+  );
 };
 
 // ============================================================
@@ -134,11 +181,18 @@ export const logout = async (): Promise<void> => {
       error,
     );
 
-    // Nettoyage local même si le backend échoue
     if (typeof window !== "undefined") {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      localStorage.removeItem("user");
+      localStorage.removeItem(
+        "accessToken",
+      );
+
+      localStorage.removeItem(
+        "refreshToken",
+      );
+
+      localStorage.removeItem(
+        "user",
+      );
     }
 
     throw error;
@@ -146,7 +200,7 @@ export const logout = async (): Promise<void> => {
 };
 
 // ============================================================
-// REDIRECTION LOGIN
+// REDIRECTION VERS LOGIN
 // ============================================================
 
 export const redirectToLogin = (
@@ -156,9 +210,16 @@ export const redirectToLogin = (
     return;
   }
 
+  /*
+   * Le système actuel utilise LoginModal
+   * sur la page d'accueil.
+   */
+
   const url = returnUrl
-    ? `/login?returnUrl=${encodeURIComponent(returnUrl)}`
-    : "/login";
+    ? `/?login=true&returnUrl=${encodeURIComponent(
+        returnUrl,
+      )}`
+    : "/?login=true";
 
   window.location.href = url;
 };
@@ -172,7 +233,8 @@ export const redirectToDashboard = (): void => {
     return;
   }
 
-  window.location.href = "/dashboard";
+  window.location.href =
+    "/dashboard";
 };
 
 // ============================================================
@@ -180,11 +242,11 @@ export const redirectToDashboard = (): void => {
 // ============================================================
 
 export const protectRoute = (
-  requiredRoles?: string[],
-  requiredPermissions?: string[],
+  requiredRoles: string[] = [],
+  requiredPermissions: string[] = [],
 ): boolean => {
   // ----------------------------------------------------------
-  // Vérification authentification
+  // AUTHENTIFICATION
   // ----------------------------------------------------------
 
   if (!isAuthenticated()) {
@@ -198,33 +260,31 @@ export const protectRoute = (
   }
 
   // ----------------------------------------------------------
-  // Vérification des rôles
+  // RÔLES
   // ----------------------------------------------------------
 
   if (
-    requiredRoles &&
-    requiredRoles.length > 0
+    requiredRoles.length > 0 &&
+    !hasAnyRole(requiredRoles)
   ) {
-    if (!hasAnyRole(requiredRoles)) {
-      redirectToDashboard();
+    redirectToDashboard();
 
-      return false;
-    }
+    return false;
   }
 
   // ----------------------------------------------------------
-  // Vérification des permissions
+  // PERMISSIONS
   // ----------------------------------------------------------
 
   if (
-    requiredPermissions &&
-    requiredPermissions.length > 0
+    requiredPermissions.length > 0 &&
+    !hasPermissions(
+      requiredPermissions,
+    )
   ) {
-    if (!hasPermissions(requiredPermissions)) {
-      redirectToDashboard();
+    redirectToDashboard();
 
-      return false;
-    }
+    return false;
   }
 
   return true;

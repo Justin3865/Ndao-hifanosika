@@ -8,36 +8,63 @@ import {
   deleteProject,
 } from "../controllers/project.controller";
 
+import { authenticate } from "../middlewares/auth.middleware";
+import { authorizeRoles } from "../middlewares/role.middleware";
+
 const router = Router();
+
+// Toutes les routes Projects nécessitent une authentification
+router.use(authenticate);
 
 /**
  * GET /api/projects
- * Liste des projets
+ * ADMIN : tous les projets
+ * DIRECTION / DAF : accès aux projets
+ * COORDINATOR : projets autorisés
  */
-router.get("/", getProjects);
+router.get(
+  "/",
+  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  getProjects,
+);
 
 /**
  * GET /api/projects/:id
- * Détails d'un projet
  */
-router.get("/:id", getProjectById);
+router.get(
+  "/:id",
+  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  getProjectById,
+);
 
 /**
  * POST /api/projects
- * Création d'un projet
+ * ADMIN : création globale
+ * DIRECTION / DAF / COORDINATOR : création selon leurs droits
  */
-router.post("/", createProject);
+router.post(
+  "/",
+  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  createProject,
+);
 
 /**
  * PUT /api/projects/:id
- * Modification d'un projet
  */
-router.put("/:id", updateProject);
+router.put(
+  "/:id",
+  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  updateProject,
+);
 
 /**
  * DELETE /api/projects/:id
- * Suppression d'un projet
+ * ADMIN uniquement
  */
-router.delete("/:id", deleteProject);
+router.delete(
+  "/:id",
+  authorizeRoles("ADMIN"),
+  deleteProject,
+);
 
 export default router;

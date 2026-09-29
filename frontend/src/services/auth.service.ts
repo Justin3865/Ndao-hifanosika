@@ -68,6 +68,18 @@ class AuthService {
 
     const authData = response.data;
 
+    // Un compte doit être ACTIVE pour accéder à la plateforme.
+    if (
+      authData.user?.status?.trim().toUpperCase() !==
+      "ACTIVE"
+    ) {
+      this.clearAuthentication();
+
+      throw new Error(
+        "Votre compte n'est pas encore actif."
+      );
+    }
+
     // Stocker les informations de connexion
     this.setTokens(
       authData.accessToken,
@@ -100,27 +112,34 @@ class AuthService {
     const authData = response.data;
 
     /*
-     * Le backend peut créer le compte avec le statut PENDING.
+     * Une inscription peut créer un compte PENDING.
      *
-     * Si le backend renvoie des tokens immédiatement,
-     * on les conserve.
-     *
-     * Si le backend ne renvoie pas de tokens,
-     * l'inscription reste simplement terminée.
+     * Un utilisateur PENDING ne doit pas être considéré
+     * comme authentifié.
      */
 
     if (
       authData.accessToken &&
-      authData.refreshToken
+      authData.refreshToken &&
+      authData.user?.status?.trim().toUpperCase() ===
+        "ACTIVE"
     ) {
       this.setTokens(
         authData.accessToken,
         authData.refreshToken
       );
-    }
 
-    if (authData.user) {
       this.setUser(authData.user);
+    } else {
+      // Si le compte est PENDING ou n'a pas de token,
+      // aucun accès authentifié ne doit être conservé.
+      this.clearAuthentication();
+
+      if (authData.user) {
+        // On conserve uniquement les informations nécessaires
+        // au résultat de l'inscription si le backend les fournit.
+        // Le compte n'est cependant pas considéré connecté.
+      }
     }
 
     return authData;
@@ -134,20 +153,22 @@ class AuthService {
     try {
       const refreshToken = this.getRefreshToken();
 
-      await api.post(`${this.basePath}/logout`, {
-        refreshToken,
-      });
+      if (refreshToken) {
+        await api.post(`${this.basePath}/logout`, {
+          refreshToken,
+        });
+      }
     } catch {
       /*
        * Même si le backend refuse le logout,
-       * on supprime localement les informations
-       * d'authentification.
+       * le nettoyage local doit quand même être effectué.
        */
     } finally {
       this.clearAuthentication();
 
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        // Le login actuel est une modal sur la page d'accueil.
+        window.location.href = "/";
       }
     }
   }
@@ -250,9 +271,28 @@ class AuthService {
   // ==========================================================
 
   isAuthenticated(): boolean {
-    const token = this.getAccessToken();
+    if (typeof window === "undefined") {
+      return false;
+    }
 
+    const token = this.getAccessToken();
+    const user = this.getUser();
+
+    // Aucun token
     if (!token) {
+      return false;
+    }
+
+    // Aucun utilisateur
+    if (!user) {
+      return false;
+    }
+
+    // Le compte doit être ACTIVE
+    if (
+      user.status?.trim().toUpperCase() !==
+      "ACTIVE"
+    ) {
       return false;
     }
 
@@ -263,10 +303,12 @@ class AuthService {
         return false;
       }
 
-      // Si le JWT possède une date d'expiration,
-      // vérifier qu'elle n'est pas dépassée.
+      // Vérifier l'expiration du JWT
       if (payload.exp) {
-        return payload.exp * 1000 > Date.now();
+        return (
+          payload.exp * 1000 >
+          Date.now()
+        );
       }
 
       return true;
@@ -433,8 +475,10 @@ class AuthService {
           .split("")
           .map(
             (char) =>
-              `%${("00" + char.charCodeAt(0).toString(16))
-                .slice(-2)}`
+              `%${(
+                "00" +
+                char.charCodeAt(0).toString(16)
+              ).slice(-2)}`
           )
           .join("")
       );
@@ -452,12 +496,19 @@ class AuthService {
   getUserPermissions(): string[] {
     const user = this.getUser();
 
-    if (!user) {
+    if (
+      !user ||
+      user.status?.trim().toUpperCase() !==
+        "ACTIVE"
+    ) {
       return [];
     }
 
     /*
-     * Les rôles correspondent aux rôles Prisma du backend.
+     * Ces permissions servent au contrôle de l'interface.
+     *
+     * La sécurité réelle devra également être vérifiée
+     * côté backend.
      */
 
     const permissionsMap: Record<string, string[]> = {
@@ -529,7 +580,10 @@ class AuthService {
       ],
     };
 
-    return permissionsMap[user.role] || ["read"];
+    const role =
+      user.role?.trim().toUpperCase();
+
+    return permissionsMap[role] || [];
   }
 
   // ==========================================================
@@ -539,9 +593,15 @@ class AuthService {
   hasPermission(
     permission: string
   ): boolean {
+    const normalizedPermission =
+      permission.trim().toLowerCase();
+
     return this
       .getUserPermissions()
-      .includes(permission);
+      .map((item) =>
+        item.trim().toLowerCase()
+      )
+      .includes(normalizedPermission);
   }
 
   // ==========================================================
@@ -551,7 +611,18 @@ class AuthService {
   hasRole(role: string): boolean {
     const user = this.getUser();
 
-    return user?.role === role;
+    if (
+      !user ||
+      user.status?.trim().toUpperCase() !==
+        "ACTIVE"
+    ) {
+      return false;
+    }
+
+    return (
+      user.role?.trim().toUpperCase() ===
+      role.trim().toUpperCase()
+    );
   }
 
   // ==========================================================
@@ -563,9 +634,22 @@ class AuthService {
   ): boolean {
     const user = this.getUser();
 
-    return user
-      ? roles.includes(user.role)
-      : false;
+    if (
+      !user ||
+      user.status?.trim().toUpperCase() !==
+        "ACTIVE"
+    ) {
+      return false;
+    }
+
+    const userRole =
+      user.role?.trim().toUpperCase();
+
+    return roles.some(
+      (role) =>
+        role.trim().toUpperCase() ===
+        userRole
+    );
   }
 }
 
@@ -573,6 +657,7 @@ class AuthService {
 // SINGLETON
 // ============================================================
 
-export const authService = new AuthService();
+export const authService =
+  new AuthService();
 
 export default authService;

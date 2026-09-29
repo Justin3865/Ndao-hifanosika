@@ -1,13 +1,35 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import { AuthenticatedRequest } from "../middlewares/auth.middleware";
+
+function getAuthUser(req: Request) {
+  return (req as AuthenticatedRequest).user;
+}
 
 export async function getProjects(
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<Response> {
   try {
+    const user = getAuthUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentification requise.",
+      });
+    }
+
+    const where =
+      user.role === "COORDINATOR"
+        ? {
+            createdById: user.id,
+          }
+        : undefined;
+
     const projects = await prisma.project.findMany({
+      where,
       include: {
         department: true,
         createdBy: {
@@ -53,13 +75,36 @@ export async function getProjectById(
   res: Response,
 ): Promise<Response> {
   try {
+    const user = getAuthUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentification requise.",
+      });
+    }
+
     const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Identifiant de projet invalide.",
+      });
+    }
 
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
         department: true,
-        createdBy: true,
+        createdBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
         activities: true,
         milestones: true,
         evaluations: true,
@@ -72,6 +117,17 @@ export async function getProjectById(
       return res.status(404).json({
         success: false,
         message: "Projet introuvable.",
+      });
+    }
+
+    // Un coordinateur ne peut consulter que ses propres projets.
+    if (
+      user.role === "COORDINATOR" &&
+      project.createdById !== user.id
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Accès refusé à ce projet.",
       });
     }
 
@@ -94,6 +150,15 @@ export async function createProject(
   res: Response,
 ): Promise<Response> {
   try {
+    const user = getAuthUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentification requise.",
+      });
+    }
+
     const {
       name,
       code,
@@ -105,14 +170,12 @@ export async function createProject(
       budget,
       beneficiaryTarget,
       departmentId,
-      createdById,
     } = req.body;
 
-    if (!name || !code || !createdById) {
+    if (!name || !code) {
       return res.status(400).json({
         success: false,
-        message:
-          "Le nom, le code et le créateur du projet sont obligatoires.",
+        message: "Le nom et le code du projet sont obligatoires.",
       });
     }
 
@@ -125,7 +188,7 @@ export async function createProject(
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         status: status || "DRAFT",
-        budget: budget !== undefined ? budget : null,
+        budget: budget !== undefined ? Number(budget) : null,
         beneficiaryTarget:
           beneficiaryTarget !== undefined
             ? Number(beneficiaryTarget)
@@ -134,11 +197,21 @@ export async function createProject(
           departmentId !== undefined && departmentId !== null
             ? Number(departmentId)
             : null,
-        createdById: Number(createdById),
+
+        // Le créateur vient du token JWT,
+        // et non du frontend.
+        createdById: user.id,
       },
       include: {
         department: true,
-        createdBy: true,
+        createdBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
       },
     });
 
@@ -162,7 +235,49 @@ export async function updateProject(
   res: Response,
 ): Promise<Response> {
   try {
+    const user = getAuthUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentification requise.",
+      });
+    }
+
     const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Identifiant de projet invalide.",
+      });
+    }
+
+    const existingProject = await prisma.project.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        createdById: true,
+      },
+    });
+
+    if (!existingProject) {
+      return res.status(404).json({
+        success: false,
+        message: "Projet introuvable.",
+      });
+    }
+
+    // Le coordinateur ne peut modifier que ses propres projets.
+    if (
+      user.role === "COORDINATOR" &&
+      existingProject.createdById !== user.id
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Vous ne pouvez pas modifier ce projet.",
+      });
+    }
 
     const {
       name,
@@ -184,8 +299,12 @@ export async function updateProject(
         code,
         description,
         objective,
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
+        startDate: startDate
+          ? new Date(startDate)
+          : undefined,
+        endDate: endDate
+          ? new Date(endDate)
+          : undefined,
         status,
         budget,
         beneficiaryTarget:
@@ -198,6 +317,17 @@ export async function updateProject(
             : departmentId !== undefined
               ? Number(departmentId)
               : undefined,
+      },
+      include: {
+        department: true,
+        createdBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
       },
     });
 
@@ -223,6 +353,25 @@ export async function deleteProject(
   try {
     const id = Number(req.params.id);
 
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Identifiant de projet invalide.",
+      });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Projet introuvable.",
+      });
+    }
+
     await prisma.project.delete({
       where: { id },
     });
@@ -240,4 +389,3 @@ export async function deleteProject(
     });
   }
 }
-

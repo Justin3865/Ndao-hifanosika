@@ -6,38 +6,97 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  activateUser,
+  rejectUser,
 } from "../controllers/user.controller";
+
+import { authenticate } from "../middlewares/auth.middleware";
+import { authorizeRoles } from "../middlewares/role.middleware";
 
 const router = Router();
 
 /**
- * GET /api/users
- * Liste des utilisateurs
+ * Toutes les routes /api/users nécessitent une authentification.
  */
-router.get("/", getUsers);
+router.use(authenticate);
+
+/**
+ * GET /api/users
+ *
+ * ADMIN : accès complet
+ * DSI   : consultation technique des utilisateurs
+ */
+router.get(
+  "/",
+  authorizeRoles("ADMIN", "DSI"),
+  getUsers,
+);
 
 /**
  * GET /api/users/:id
- * Détails d'un utilisateur
+ *
+ * ADMIN : accès complet
+ * DSI   : consultation technique
  */
-router.get("/:id", getUserById);
+router.get(
+  "/:id",
+  authorizeRoles("ADMIN", "DSI"),
+  getUserById,
+);
 
 /**
  * POST /api/users
- * Création d'un utilisateur
+ *
+ * ADMIN uniquement.
  */
-router.post("/", createUser);
+router.post(
+  "/",
+  authorizeRoles("ADMIN"),
+  createUser,
+);
 
 /**
  * PUT /api/users/:id
- * Modification d'un utilisateur
+ *
+ * ADMIN uniquement.
  */
-router.put("/:id", updateUser);
+router.put(
+  "/:id",
+  authorizeRoles("ADMIN"),
+  updateUser,
+);
 
 /**
  * DELETE /api/users/:id
- * Suppression d'un utilisateur
+ *
+ * ADMIN uniquement.
  */
-router.delete("/:id", deleteUser);
+router.delete(
+  "/:id",
+  authorizeRoles("ADMIN"),
+  deleteUser,
+);
+
+/**
+ * PATCH /api/users/:id/activate
+ *
+ * ADMIN uniquement.
+ */
+router.patch(
+  "/:id/activate",
+  authorizeRoles("ADMIN"),
+  activateUser,
+);
+
+/**
+ * PATCH /api/users/:id/reject
+ *
+ * ADMIN uniquement.
+ */
+router.patch(
+  "/:id/reject",
+  authorizeRoles("ADMIN"),
+  rejectUser,
+);
 
 export default router;

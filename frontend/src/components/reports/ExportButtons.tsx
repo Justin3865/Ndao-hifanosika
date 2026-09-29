@@ -1,4 +1,4 @@
-// src/components/reports/ExportButtons.tsx
+﻿// src/components/reports/ExportButtons.tsx
 "use client";
 
 import { useState } from "react";
@@ -56,7 +56,7 @@ export function ExportButtons({
   const formatOptions = formats.map((format) => ({
     value: format,
     label: formatLabels[format],
-    icon: <formatIcons[format] className={cn("h-4 w-4", formatColors[format])} />,
+    icon: (() => { const Icon = formatIcons[format]; return React.createElement(Icon, { className: cn('h-4 w-4', formatColors[format]) }); })(),
   }));
 
   const handleExport = (format: string) => {

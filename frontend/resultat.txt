@@ -6,3 +6,78 @@ tsy atao (git pull origin main)
 git add .
 git commit -m "Mise à jour du projet"
 git push origin main
+
+
+cd C:\ndao-hifanosika
+git status
+git add .
+git commit -m "Mise à jour du projet"
+git push origin main
+
+
+
+
+| # | Rôle              | Anjara asa / responsabilité                                                                   |
+| - | ----------------- | --------------------------------------------------------------------------------------------- |
+| 1 | **ADMIN**         | Fitantanana technique globale, utilisateurs, rôles sy permissions, configuration              |
+| 2 | **DIRECTION**     | Fitantanana sy fanaraha-maso ankapobeny, consultation des indicateurs, rapports ary décisions |
+| 3 | **DSI**           | Rafitra informatique, sécurité, utilisateurs, maintenance ary aspects techniques              |
+| 4 | **DAF**           | Fitantanana administratif sy financier, suivi des ressources sy données financières           |
+| 5 | **RH**            | Gestion des membres/personnel, informations RH ary suivi administratif                        |
+| 6 | **COMMUNICATION** | Communication, contenus, visibilité ary données mifandraika amin'ny communication             |
+| 7 | **COORDINATOR**   | Coordination des projets, bénéficiaires, activités ary suivi-évaluation                       |
+| 8 | **TUTEUR_L3/M2**  | Fanaraha-maso sy accompagnement ireo stagiaires L3/M2, validation/suivi ny asa                |
+
+
+ADMIN
+  → accès complet
+
+DIRECTION
+  → Dashboard
+  → Projets
+  → Bénéficiaires
+  → Évaluations
+  → Rapports
+  → Indicateurs
+
+DSI
+  → Dashboard
+  → Utilisateurs
+  → Administration
+  → Sécurité
+  → Configuration
+  → système/technique
+
+DAF
+  → Dashboard
+  → Projets
+  → Rapports
+  → données administratives/financières
+
+RH
+  → Dashboard
+  → Membres
+  → Utilisateurs/profils RH
+  → Rapports RH
+
+COMMUNICATION
+  → Dashboard
+  → Projets
+  → Rapports
+  → Communication
+
+COORDINATOR
+  → Dashboard
+  → Projets
+  → Bénéficiaires
+  → Activités
+  → Évaluations
+  → Indicateurs
+  → Rapports
+
+TUTEUR_L3 / TUTEUR_M2
+  → Dashboard
+  → Stagiaires concernés
+  → Activités
+  → Évaluations
+  → Rapports de suivi
