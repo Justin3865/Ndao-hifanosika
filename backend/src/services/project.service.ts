@@ -1,17 +1,27 @@
 import { prisma } from "../config/database";
 
-export async function findAllProjects() {
+export async function findAllProjects(createdById?: number) {
   return prisma.project.findMany({
+    where:
+      createdById !== undefined
+        ? {
+            createdById,
+          }
+        : undefined,
+
     include: {
       department: true,
+
       createdBy: {
         select: {
           id: true,
           firstName: true,
           lastName: true,
           email: true,
+          role: true,
         },
       },
+
       _count: {
         select: {
           activities: true,
@@ -22,6 +32,7 @@ export async function findAllProjects() {
         },
       },
     },
+
     orderBy: {
       createdAt: "desc",
     },
@@ -30,17 +41,23 @@ export async function findAllProjects() {
 
 export async function findProjectById(id: number) {
   return prisma.project.findUnique({
-    where: { id },
+    where: {
+      id,
+    },
+
     include: {
       department: true,
+
       createdBy: {
         select: {
           id: true,
           firstName: true,
           lastName: true,
           email: true,
+          role: true,
         },
       },
+
       activities: true,
       milestones: true,
       beneficiaries: true,
@@ -53,33 +70,53 @@ export async function findProjectById(id: number) {
 export async function createProject(data: {
   name: string;
   code: string;
-  description?: string;
-  objective?: string;
-  startDate?: Date;
-  endDate?: Date;
-  status?: any;
-  budget?: number;
-  beneficiaryTarget?: number;
-  departmentId?: number;
+  description?: string | null;
+  objective?: string | null;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  status?:
+    | "DRAFT"
+    | "ACTIVE"
+    | "SUSPENDED"
+    | "COMPLETED"
+    | "CANCELLED";
+  budget?: number | null;
+  beneficiaryTarget?: number | null;
+  departmentId?: number | null;
   createdById: number;
 }) {
   return prisma.project.create({
     data: {
       name: data.name,
       code: data.code,
-      description: data.description,
-      objective: data.objective,
-      startDate: data.startDate,
-      endDate: data.endDate,
+      description: data.description ?? null,
+      objective: data.objective ?? null,
+      startDate: data.startDate ?? null,
+      endDate: data.endDate ?? null,
       status: data.status ?? "DRAFT",
-      budget: data.budget,
-      beneficiaryTarget: data.beneficiaryTarget,
-      departmentId: data.departmentId,
+      budget: data.budget ?? null,
+      beneficiaryTarget:
+        data.beneficiaryTarget ?? null,
+      departmentId: data.departmentId ?? null,
+
+      /*
+       * Toujours issu du JWT.
+       */
       createdById: data.createdById,
     },
+
     include: {
       department: true,
-      createdBy: true,
+
+      createdBy: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          role: true,
+        },
+      },
     },
   });
 }
@@ -89,29 +126,48 @@ export async function updateProject(
   data: {
     name?: string;
     code?: string;
-    description?: string;
-    objective?: string;
+    description?: string | null;
+    objective?: string | null;
     startDate?: Date | null;
     endDate?: Date | null;
-    status?: any;
+    status?:
+      | "DRAFT"
+      | "ACTIVE"
+      | "SUSPENDED"
+      | "COMPLETED"
+      | "CANCELLED";
     budget?: number | null;
     beneficiaryTarget?: number | null;
     departmentId?: number | null;
-    createdById?: number;
   },
 ) {
   return prisma.project.update({
-    where: { id },
+    where: {
+      id,
+    },
+
     data,
+
     include: {
       department: true,
-      createdBy: true,
+
+      createdBy: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          role: true,
+        },
+      },
     },
   });
 }
 
 export async function deleteProject(id: number) {
   return prisma.project.delete({
-    where: { id },
+    where: {
+      id,
+    },
   });
 }

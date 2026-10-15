@@ -1,6 +1,11 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import {
+  canSeeInternship,
+  getReqUser,
+  internshipScope,
+} from "../utils/dataScope";
 
 export async function getInternships(
   req: Request,
@@ -19,11 +24,18 @@ export async function getInternships(
       ? Number(req.query.projectId)
       : undefined;
 
+    const scope = internshipScope(getReqUser(req));
+
     const internships = await prisma.internship.findMany({
       where: {
-        ...(studentId ? { studentId } : {}),
-        ...(supervisorId ? { supervisorId } : {}),
-        ...(projectId ? { projectId } : {}),
+        AND: [
+          {
+            ...(studentId ? { studentId } : {}),
+            ...(supervisorId ? { supervisorId } : {}),
+            ...(projectId ? { projectId } : {}),
+          },
+          scope,
+        ],
       },
       include: {
         project: {
@@ -114,6 +126,15 @@ export async function getInternshipById(
     });
 
     if (!internship) {
+      res.status(404).json({
+        success: false,
+        message: "Stage introuvable",
+      });
+      return;
+    }
+
+    // Un stagiaire / tuteur ne voit que ses propres stages
+    if (!canSeeInternship(getReqUser(req), internship)) {
       res.status(404).json({
         success: false,
         message: "Stage introuvable",

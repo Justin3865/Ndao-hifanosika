@@ -1,0 +1,251 @@
+export declare function findAllInternships(): Promise<({
+    project: {
+        id: number;
+        status: import("../../generated/prisma/enums").ProjectStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        description: string | null;
+        code: string;
+        objective: string | null;
+        startDate: Date | null;
+        endDate: Date | null;
+        budget: import("@prisma/client-runtime-utils").Decimal | null;
+        beneficiaryTarget: number | null;
+        createdById: number;
+    } | null;
+    student: {
+        email: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        role: import("../../generated/prisma/enums").UserRole;
+    };
+    supervisor: {
+        email: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        role: import("../../generated/prisma/enums").UserRole;
+    } | null;
+} & {
+    id: number;
+    status: import("../../generated/prisma/enums").InternshipStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    description: string | null;
+    startDate: Date;
+    endDate: Date | null;
+    projectId: number | null;
+    title: string;
+    studentId: number;
+    supervisorId: number | null;
+    institution: string | null;
+})[]>;
+export declare function findInternshipById(id: number): Promise<({
+    project: {
+        id: number;
+        status: import("../../generated/prisma/enums").ProjectStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        description: string | null;
+        code: string;
+        objective: string | null;
+        startDate: Date | null;
+        endDate: Date | null;
+        budget: import("@prisma/client-runtime-utils").Decimal | null;
+        beneficiaryTarget: number | null;
+        createdById: number;
+    } | null;
+    student: {
+        email: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        role: import("../../generated/prisma/enums").UserRole;
+    };
+    supervisor: {
+        email: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        role: import("../../generated/prisma/enums").UserRole;
+    } | null;
+} & {
+    id: number;
+    status: import("../../generated/prisma/enums").InternshipStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    description: string | null;
+    startDate: Date;
+    endDate: Date | null;
+    projectId: number | null;
+    title: string;
+    studentId: number;
+    supervisorId: number | null;
+    institution: string | null;
+}) | null>;
+export declare function createInternship(data: {
+    projectId?: number;
+    studentId: number;
+    supervisorId?: number;
+    title: string;
+    institution?: string;
+    startDate: Date;
+    endDate?: Date;
+    status?: any;
+    description?: string;
+}): Promise<{
+    project: {
+        id: number;
+        status: import("../../generated/prisma/enums").ProjectStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        description: string | null;
+        code: string;
+        objective: string | null;
+        startDate: Date | null;
+        endDate: Date | null;
+        budget: import("@prisma/client-runtime-utils").Decimal | null;
+        beneficiaryTarget: number | null;
+        createdById: number;
+    } | null;
+    student: {
+        email: string;
+        password: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        gender: import("../../generated/prisma/enums").Gender | null;
+        role: import("../../generated/prisma/enums").UserRole;
+        status: import("../../generated/prisma/enums").UserStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        lastLoginAt: Date | null;
+    };
+    supervisor: {
+        email: string;
+        password: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        gender: import("../../generated/prisma/enums").Gender | null;
+        role: import("../../generated/prisma/enums").UserRole;
+        status: import("../../generated/prisma/enums").UserStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        lastLoginAt: Date | null;
+    } | null;
+} & {
+    id: number;
+    status: import("../../generated/prisma/enums").InternshipStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    description: string | null;
+    startDate: Date;
+    endDate: Date | null;
+    projectId: number | null;
+    title: string;
+    studentId: number;
+    supervisorId: number | null;
+    institution: string | null;
+}>;
+export declare function updateInternship(id: number, data: {
+    projectId?: number | null;
+    studentId?: number;
+    supervisorId?: number | null;
+    title?: string;
+    institution?: string;
+    startDate?: Date;
+    endDate?: Date | null;
+    status?: any;
+    description?: string;
+}): Promise<{
+    project: {
+        id: number;
+        status: import("../../generated/prisma/enums").ProjectStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        description: string | null;
+        code: string;
+        objective: string | null;
+        startDate: Date | null;
+        endDate: Date | null;
+        budget: import("@prisma/client-runtime-utils").Decimal | null;
+        beneficiaryTarget: number | null;
+        createdById: number;
+    } | null;
+    student: {
+        email: string;
+        password: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        gender: import("../../generated/prisma/enums").Gender | null;
+        role: import("../../generated/prisma/enums").UserRole;
+        status: import("../../generated/prisma/enums").UserStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        lastLoginAt: Date | null;
+    };
+    supervisor: {
+        email: string;
+        password: string;
+        id: number;
+        firstName: string;
+        lastName: string;
+        phone: string | null;
+        gender: import("../../generated/prisma/enums").Gender | null;
+        role: import("../../generated/prisma/enums").UserRole;
+        status: import("../../generated/prisma/enums").UserStatus;
+        departmentId: number | null;
+        createdAt: Date;
+        updatedAt: Date;
+        lastLoginAt: Date | null;
+    } | null;
+} & {
+    id: number;
+    status: import("../../generated/prisma/enums").InternshipStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    description: string | null;
+    startDate: Date;
+    endDate: Date | null;
+    projectId: number | null;
+    title: string;
+    studentId: number;
+    supervisorId: number | null;
+    institution: string | null;
+}>;
+export declare function deleteInternship(id: number): Promise<{
+    id: number;
+    status: import("../../generated/prisma/enums").InternshipStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    description: string | null;
+    startDate: Date;
+    endDate: Date | null;
+    projectId: number | null;
+    title: string;
+    studentId: number;
+    supervisorId: number | null;
+    institution: string | null;
+}>;
+export declare function countInternships(): Promise<number>;
+export declare function countCompletedInternships(): Promise<number>;
+//# sourceMappingURL=internship.service.d.ts.map

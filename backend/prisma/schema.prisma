@@ -87,6 +87,7 @@ model User {
   supervisedInternships Internship[] @relation("InternshipSupervisor")
 
   auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([departmentId])
   @@index([role])
@@ -254,4 +255,28 @@ model AuditLog {
   @@index([userId])
   @@index([entity])
   @@index([createdAt])
+}
+
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+
+model RevokedRefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }

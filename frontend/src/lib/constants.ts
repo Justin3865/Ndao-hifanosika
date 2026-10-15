@@ -3,7 +3,7 @@ export const APP_NAME = "Ndao Hifanosika";
 export const APP_DESCRIPTION = "Plateforme de Suivi et Évaluation des Équipes et Bénéficiaires";
 
 // URLs
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 export const AI_API_BASE_URL = process.env.NEXT_PUBLIC_AI_API_URL || "http://localhost:8000";
 
 // Pagination

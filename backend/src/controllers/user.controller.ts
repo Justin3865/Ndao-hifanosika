@@ -1,39 +1,49 @@
 import { Request, Response } from "express";
-import { prisma } from "../config/database";
+
 import { logger } from "../config/logger";
 
-function sanitizeUser(user: any) {
-  if (!user) return user;
+import {
+  findAllUsers,
+  findUserById,
+  createUser as createUserService,
+  updateUser as updateUserService,
+  deleteUser as deleteUserService,
+  activateUser as activateUserService,
+  rejectUser as rejectUserService,
+  isValidUserRole,
+  isValidUserStatus,
+} from "../services/user.service";
 
-  const { password, ...safeUser } = user;
+function sanitizeUser(user: any) {
+  if (!user) {
+    return user;
+  }
+
+  const {
+    password,
+    ...safeUser
+  } = user;
 
   return safeUser;
 }
 
 /**
  * GET /api/users
- * Liste de tous les utilisateurs.
- *
- * L'accès est contrôlé dans users.routes.ts.
  */
 export async function getUsers(
   _req: Request,
   res: Response,
 ): Promise<Response> {
   try {
-    const users = await prisma.user.findMany({
-      include: {
-        department: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const users =
+      await findAllUsers();
 
     return res.status(200).json({
       success: true,
       count: users.length,
-      users: users.map(sanitizeUser),
+      users: users.map(
+        sanitizeUser,
+      ),
     });
   } catch (error) {
     logger.error(
@@ -43,42 +53,43 @@ export async function getUsers(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible de récupérer les utilisateurs.",
+      message:
+        "Impossible de récupérer les utilisateurs.",
     });
   }
 }
 
 /**
  * GET /api/users/:id
- * Détails d'un utilisateur.
  */
 export async function getUserById(
   req: Request,
   res: Response,
 ): Promise<Response> {
   try {
-    const id = Number(req.params.id);
+    const id = Number(
+      req.params.id,
+    );
 
-    if (!Number.isInteger(id) || id <= 0) {
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Identifiant utilisateur invalide.",
+        message:
+          "Identifiant utilisateur invalide.",
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id },
-      include: {
-        department: true,
-        projectsCreated: true,
-        internships: true,
-      },
-    });
+    const user =
+      await findUserById(id);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Utilisateur introuvable.",
+        message:
+          "Utilisateur introuvable.",
       });
     }
 
@@ -94,18 +105,19 @@ export async function getUserById(
 
     return res.status(500).json({
       success: false,
-      message: "Erreur interne du serveur.",
+      message:
+        "Erreur interne du serveur.",
     });
   }
 }
 
 /**
  * POST /api/users
- * Création d'un utilisateur par ADMIN.
  *
- * IMPORTANT :
- * Le hashage du mot de passe pour les créations ADMIN
- * devra être assuré avec bcrypt.
+ * ADMIN uniquement.
+ *
+ * Contrairement à /auth/register,
+ * l'ADMIN peut choisir le rôle.
  */
 export async function createUser(
   req: Request,
@@ -124,66 +136,169 @@ export async function createUser(
       departmentId,
     } = req.body;
 
-    if (!firstName || !lastName || !email || !password) {
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Les champs obligatoires sont manquants.",
+        message:
+          "Les champs obligatoires sont manquants.",
       });
     }
 
-    const normalizedEmail = String(email)
-      .trim()
-      .toLowerCase();
-
-    const existing = await prisma.user.findUnique({
-      where: {
-        email: normalizedEmail,
-      },
-    });
-
-    if (existing) {
-      return res.status(409).json({
+    if (
+      String(password).length < 8
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Cette adresse e-mail est déjà utilisée.",
+        message:
+          "Le mot de passe doit contenir au moins 8 caractères.",
       });
     }
 
-    /*
-     * Pour éviter d'enregistrer un mot de passe en clair,
-     * cette fonction doit recevoir un mot de passe déjà hashé
-     * ou être complétée avec bcrypt.
-     *
-     * Pour l'instant, on conserve le fonctionnement existant
-     * afin de ne pas casser l'authentification actuelle.
-     */
-    const user = await prisma.user.create({
-      data: {
-        firstName: String(firstName).trim(),
-        lastName: String(lastName).trim(),
-        email: normalizedEmail,
-        password,
-        phone: phone || null,
-        gender: gender || null,
-        role: role || "STAGIAIRE_L3",
-        status: status || "PENDING",
-        departmentId:
-          departmentId !== undefined &&
-          departmentId !== null &&
-          departmentId !== ""
-            ? Number(departmentId)
+    const normalizedRole = (
+      role ?? "STAGIAIRE_L3"
+    )
+      .toString()
+      .trim()
+      .toUpperCase();
+
+    const normalizedStatus = (
+      status ?? "PENDING"
+    )
+      .toString()
+      .trim()
+      .toUpperCase();
+
+    if (
+      !isValidUserRole(
+        normalizedRole,
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Rôle utilisateur invalide.",
+      });
+    }
+
+    if (
+      !isValidUserStatus(
+        normalizedStatus,
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Statut utilisateur invalide.",
+      });
+    }
+
+    let parsedDepartmentId:
+      | number
+      | null = null;
+
+    if (
+      departmentId !== undefined &&
+      departmentId !== null &&
+      departmentId !== ""
+    ) {
+      parsedDepartmentId =
+        Number(departmentId);
+
+      if (
+        !Number.isInteger(
+          parsedDepartmentId,
+        ) ||
+        parsedDepartmentId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Identifiant de département invalide.",
+        });
+      }
+    }
+
+    const user =
+      await createUserService({
+        firstName: String(
+          firstName,
+        ),
+        lastName: String(
+          lastName,
+        ),
+        email: String(email),
+        password: String(password),
+        phone:
+          phone !== undefined
+            ? String(phone)
             : null,
-      },
-      include: {
-        department: true,
-      },
-    });
+        gender,
+        role: normalizedRole,
+        status: normalizedStatus,
+        departmentId:
+          parsedDepartmentId,
+      });
 
     return res.status(201).json({
       success: true,
-      message: "Utilisateur créé avec succès.",
+      message:
+        "Utilisateur créé avec succès.",
       user: sanitizeUser(user),
     });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "EMAIL_ALREADY_EXISTS"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Cette adresse e-mail est déjà utilisée.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_ALREADY_EXISTS"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Un administrateur existe déjà. Un seul ADMIN est autorisé.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "INVALID_USER_ROLE"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Rôle utilisateur invalide.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "INVALID_USER_STATUS"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Statut utilisateur invalide.",
+      });
+    }
+
     logger.error(
       "Erreur lors de la création de l'utilisateur.",
       error,
@@ -191,28 +306,34 @@ export async function createUser(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible de créer l'utilisateur.",
+      message:
+        "Impossible de créer l'utilisateur.",
     });
   }
 }
 
 /**
  * PUT /api/users/:id
- * Modification d'un utilisateur.
  *
- * Cette route est réservée à ADMIN dans users.routes.ts.
+ * ADMIN uniquement.
  */
 export async function updateUser(
   req: Request,
   res: Response,
 ): Promise<Response> {
   try {
-    const id = Number(req.params.id);
+    const id = Number(
+      req.params.id,
+    );
 
-    if (!Number.isInteger(id) || id <= 0) {
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Identifiant utilisateur invalide.",
+        message:
+          "Identifiant utilisateur invalide.",
       });
     }
 
@@ -220,6 +341,7 @@ export async function updateUser(
       firstName,
       lastName,
       email,
+      password,
       phone,
       gender,
       role,
@@ -227,96 +349,205 @@ export async function updateUser(
       departmentId,
     } = req.body;
 
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({
+    if (
+      role !== undefined &&
+      !isValidUserRole(
+        String(role)
+          .trim()
+          .toUpperCase(),
+      )
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Utilisateur introuvable.",
+        message:
+          "Rôle utilisateur invalide.",
       });
     }
 
-    if (email) {
-      const normalizedEmail = String(email)
-        .trim()
-        .toLowerCase();
-
-      const emailUsed = await prisma.user.findFirst({
-        where: {
-          email: normalizedEmail,
-          NOT: {
-            id,
-          },
-        },
+    if (
+      status !== undefined &&
+      !isValidUserStatus(
+        String(status)
+          .trim()
+          .toUpperCase(),
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Statut utilisateur invalide.",
       });
+    }
 
-      if (emailUsed) {
-        return res.status(409).json({
+    if (
+      password !== undefined &&
+      String(password).length < 8
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Le mot de passe doit contenir au moins 8 caractères.",
+      });
+    }
+
+    let parsedDepartmentId:
+      | number
+      | null
+      | undefined = undefined;
+
+    if (
+      departmentId === null ||
+      departmentId === ""
+    ) {
+      parsedDepartmentId = null;
+    } else if (
+      departmentId !== undefined
+    ) {
+      parsedDepartmentId =
+        Number(departmentId);
+
+      if (
+        !Number.isInteger(
+          parsedDepartmentId,
+        ) ||
+        parsedDepartmentId <= 0
+      ) {
+        return res.status(400).json({
           success: false,
-          message: "Cette adresse e-mail est déjà utilisée.",
+          message:
+            "Identifiant de département invalide.",
         });
       }
     }
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        firstName:
-          firstName !== undefined
-            ? String(firstName).trim()
-            : undefined,
-
-        lastName:
-          lastName !== undefined
-            ? String(lastName).trim()
-            : undefined,
-
-        email:
-          email !== undefined
-            ? String(email).trim().toLowerCase()
-            : undefined,
-
-        phone:
-          phone !== undefined
-            ? phone
-            : undefined,
-
-        gender:
-          gender !== undefined
-            ? gender
-            : undefined,
-
-        role:
-          role !== undefined
-            ? role
-            : undefined,
-
-        status:
-          status !== undefined
-            ? status
-            : undefined,
-
-        departmentId:
-          departmentId === null
-            ? null
-            : departmentId !== undefined &&
-                departmentId !== ""
-              ? Number(departmentId)
+    const user =
+      await updateUserService(
+        id,
+        {
+          firstName:
+            firstName !== undefined
+              ? String(firstName)
               : undefined,
-      },
-      include: {
-        department: true,
-      },
-    });
+
+          lastName:
+            lastName !== undefined
+              ? String(lastName)
+              : undefined,
+
+          email:
+            email !== undefined
+              ? String(email)
+              : undefined,
+
+          password:
+            password !== undefined
+              ? String(password)
+              : undefined,
+
+          phone:
+            phone !== undefined
+              ? phone
+              : undefined,
+
+          gender:
+            gender !== undefined
+              ? gender
+              : undefined,
+
+          role:
+            role !== undefined
+              ? String(role)
+              : undefined,
+
+          status:
+            status !== undefined
+              ? String(status)
+              : undefined,
+
+          departmentId:
+            parsedDepartmentId,
+        },
+      );
 
     return res.status(200).json({
       success: true,
-      message: "Utilisateur mis à jour avec succès.",
+      message:
+        "Utilisateur mis à jour avec succès.",
       user: sanitizeUser(user),
     });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "USER_NOT_FOUND"
+    ) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Utilisateur introuvable.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "EMAIL_ALREADY_EXISTS"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Cette adresse e-mail est déjà utilisée.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_ALREADY_EXISTS"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Un administrateur existe déjà. Un seul ADMIN est autorisé.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "INVALID_USER_ROLE"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Rôle utilisateur invalide.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "INVALID_USER_STATUS"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Statut utilisateur invalide.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "PASSWORD_TOO_SHORT"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Le mot de passe doit contenir au moins 8 caractères.",
+      });
+    }
+
     logger.error(
       "Erreur lors de la modification de l'utilisateur.",
       error,
@@ -324,51 +555,57 @@ export async function updateUser(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible de modifier l'utilisateur.",
+      message:
+        "Impossible de modifier l'utilisateur.",
     });
   }
 }
 
 /**
  * DELETE /api/users/:id
- * Suppression d'un utilisateur.
  *
- * Cette route est réservée à ADMIN dans users.routes.ts.
+ * ADMIN uniquement.
  */
 export async function deleteUser(
   req: Request,
   res: Response,
 ): Promise<Response> {
   try {
-    const id = Number(req.params.id);
+    const id = Number(
+      req.params.id,
+    );
 
-    if (!Number.isInteger(id) || id <= 0) {
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Identifiant utilisateur invalide.",
+        message:
+          "Identifiant utilisateur invalide.",
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "Utilisateur introuvable.",
-      });
-    }
-
-    await prisma.user.delete({
-      where: { id },
-    });
+    await deleteUserService(id);
 
     return res.status(200).json({
       success: true,
-      message: "Utilisateur supprimé avec succès.",
+      message:
+        "Utilisateur supprimé avec succès.",
     });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "USER_NOT_FOUND"
+    ) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Utilisateur introuvable.",
+      });
+    }
+
     logger.error(
       "Erreur lors de la suppression de l'utilisateur.",
       error,
@@ -376,7 +613,8 @@ export async function deleteUser(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible de supprimer l'utilisateur.",
+      message:
+        "Impossible de supprimer l'utilisateur.",
     });
   }
 }
@@ -393,43 +631,23 @@ export async function activateUser(
   res: Response,
 ): Promise<Response> {
   try {
-    const id = Number(req.params.id);
+    const id = Number(
+      req.params.id,
+    );
 
-    if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Identifiant utilisateur invalide.",
-      });
-    }
-
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: "Utilisateur introuvable.",
-      });
-    }
-
-    if (existingUser.status !== "PENDING") {
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
       return res.status(400).json({
         success: false,
         message:
-          "Seul un compte en attente peut être activé.",
+          "Identifiant utilisateur invalide.",
       });
     }
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        status: "ACTIVE",
-      },
-      include: {
-        department: true,
-      },
-    });
+    const user =
+      await activateUserService(id);
 
     logger.info(
       `Compte utilisateur activé : ${user.email}`,
@@ -437,10 +655,35 @@ export async function activateUser(
 
     return res.status(200).json({
       success: true,
-      message: "Compte utilisateur activé avec succès.",
+      message:
+        "Compte utilisateur activé avec succès.",
       user: sanitizeUser(user),
     });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "USER_NOT_FOUND"
+    ) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Utilisateur introuvable.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "USER_NOT_PENDING"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Seul un compte en attente peut être activé.",
+      });
+    }
+
     logger.error(
       "Erreur lors de l'activation de l'utilisateur.",
       error,
@@ -448,7 +691,8 @@ export async function activateUser(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible d'activer le compte utilisateur.",
+      message:
+        "Impossible d'activer le compte utilisateur.",
     });
   }
 }
@@ -465,43 +709,23 @@ export async function rejectUser(
   res: Response,
 ): Promise<Response> {
   try {
-    const id = Number(req.params.id);
+    const id = Number(
+      req.params.id,
+    );
 
-    if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Identifiant utilisateur invalide.",
-      });
-    }
-
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: "Utilisateur introuvable.",
-      });
-    }
-
-    if (existingUser.status !== "PENDING") {
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
       return res.status(400).json({
         success: false,
         message:
-          "Seul un compte en attente peut être rejeté.",
+          "Identifiant utilisateur invalide.",
       });
     }
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        status: "REJECTED",
-      },
-      include: {
-        department: true,
-      },
-    });
+    const user =
+      await rejectUserService(id);
 
     logger.info(
       `Compte utilisateur rejeté : ${user.email}`,
@@ -509,10 +733,35 @@ export async function rejectUser(
 
     return res.status(200).json({
       success: true,
-      message: "Compte utilisateur rejeté avec succès.",
+      message:
+        "Compte utilisateur rejeté avec succès.",
       user: sanitizeUser(user),
     });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "USER_NOT_FOUND"
+    ) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Utilisateur introuvable.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "USER_NOT_PENDING"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Seul un compte en attente peut être rejeté.",
+      });
+    }
+
     logger.error(
       "Erreur lors du rejet de l'utilisateur.",
       error,
@@ -520,7 +769,8 @@ export async function rejectUser(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible de rejeter le compte utilisateur.",
+      message:
+        "Impossible de rejeter le compte utilisateur.",
     });
   }
 }

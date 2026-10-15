@@ -15,39 +15,36 @@ import { authorizeRoles } from "../middlewares/role.middleware";
 
 const router = Router();
 
-/**
- * Toutes les routes /api/users nécessitent une authentification.
- */
 router.use(authenticate);
 
 /**
  * GET /api/users
- *
- * ADMIN : accès complet
- * DSI   : consultation technique des utilisateurs
  */
 router.get(
   "/",
-  authorizeRoles("ADMIN", "DSI"),
+  authorizeRoles(
+    "ADMIN",
+    "DSI",
+    "RH",
+  ),
   getUsers,
 );
 
 /**
  * GET /api/users/:id
- *
- * ADMIN : accès complet
- * DSI   : consultation technique
  */
 router.get(
   "/:id",
-  authorizeRoles("ADMIN", "DSI"),
+  authorizeRoles(
+    "ADMIN",
+    "DSI",
+    "RH",
+  ),
   getUserById,
 );
 
 /**
  * POST /api/users
- *
- * ADMIN uniquement.
  */
 router.post(
   "/",
@@ -57,8 +54,6 @@ router.post(
 
 /**
  * PUT /api/users/:id
- *
- * ADMIN uniquement.
  */
 router.put(
   "/:id",
@@ -68,8 +63,6 @@ router.put(
 
 /**
  * DELETE /api/users/:id
- *
- * ADMIN uniquement.
  */
 router.delete(
   "/:id",
@@ -79,8 +72,6 @@ router.delete(
 
 /**
  * PATCH /api/users/:id/activate
- *
- * ADMIN uniquement.
  */
 router.patch(
   "/:id/activate",
@@ -90,8 +81,6 @@ router.patch(
 
 /**
  * PATCH /api/users/:id/reject
- *
- * ADMIN uniquement.
  */
 router.patch(
   "/:id/reject",

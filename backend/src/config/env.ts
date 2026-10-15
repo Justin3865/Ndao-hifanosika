@@ -15,7 +15,7 @@ const requiredEnv = (name: string): string => {
 export const env = {
   NODE_ENV: process.env.NODE_ENV || "development",
 
-  PORT: Number(process.env.PORT || 5000),
+  PORT: Number(process.env.PORT || 4000),
 
   DATABASE_URL: requiredEnv("DATABASE_URL"),
 
@@ -25,16 +25,12 @@ export const env = {
   CORS_ORIGIN:
     process.env.CORS_ORIGIN || "http://localhost:3000",
 
-  JWT_SECRET:
-    process.env.JWT_SECRET ||
-    "ndao-hifanosika-development-secret",
+  JWT_SECRET: requiredEnv("JWT_SECRET"),
 
   JWT_EXPIRES_IN:
     process.env.JWT_EXPIRES_IN || "1d",
 
-  JWT_REFRESH_SECRET:
-    process.env.JWT_REFRESH_SECRET ||
-    "ndao-hifanosika-refresh-development-secret",
+  JWT_REFRESH_SECRET: requiredEnv("JWT_REFRESH_SECRET"),
 
   JWT_REFRESH_EXPIRES_IN:
     process.env.JWT_REFRESH_EXPIRES_IN || "7d",

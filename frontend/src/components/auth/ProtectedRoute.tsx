@@ -5,6 +5,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
+import { canAccessPath } from "@/lib/access";
 
 export interface ProtectedRouteProps {
   children: ReactNode;
@@ -140,7 +141,17 @@ export function ProtectedRoute({
         requiredPermissions
       );
 
-      setHasAccess(access);
+      /**
+       * Contrôle par chemin (matrice rôle -> routes de lib/access.ts).
+       * Ignoré si la page demande explicitement requiredRoles /
+       * requiredPermissions.
+       */
+      const pathAllowed =
+        requiredRoles.length > 0 ||
+        requiredPermissions.length > 0 ||
+        canAccessPath(user.role, pathname);
+
+      setHasAccess(access && pathAllowed);
       setIsLoading(false);
     };
 

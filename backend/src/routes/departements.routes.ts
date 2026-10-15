@@ -8,36 +8,70 @@ import {
   deleteDepartment,
 } from "../controllers/departement.controller";
 
+import { authenticate } from "../middlewares/auth.middleware";
+import { authorizeRoles } from "../middlewares/role.middleware";
+
 const router = Router();
+
+router.use(authenticate);
 
 /**
  * GET /api/departements
- * Liste des départements
  */
-router.get("/", getDepartments);
+router.get(
+  "/",
+  authorizeRoles(
+    "ADMIN",
+    "DSI",
+    "RH",
+  ),
+  getDepartments,
+);
 
 /**
  * GET /api/departements/:id
- * Détails d'un département
  */
-router.get("/:id", getDepartmentById);
+router.get(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "DSI",
+    "RH",
+  ),
+  getDepartmentById,
+);
 
 /**
  * POST /api/departements
- * Création d'un département
  */
-router.post("/", createDepartment);
+router.post(
+  "/",
+  authorizeRoles(
+    "ADMIN",
+    "DSI",
+  ),
+  createDepartment,
+);
 
 /**
  * PUT /api/departements/:id
- * Modification d'un département
  */
-router.put("/:id", updateDepartment);
+router.put(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "DSI",
+  ),
+  updateDepartment,
+);
 
 /**
  * DELETE /api/departements/:id
- * Suppression d'un département
  */
-router.delete("/:id", deleteDepartment);
+router.delete(
+  "/:id",
+  authorizeRoles("ADMIN"),
+  deleteDepartment,
+);
 
 export default router;

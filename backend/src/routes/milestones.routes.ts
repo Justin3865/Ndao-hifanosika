@@ -8,36 +8,84 @@ import {
   deleteMilestone,
 } from "../controllers/milestone.controller";
 
+import { authenticate } from "../middlewares/auth.middleware";
+import { authorizeRoles } from "../middlewares/role.middleware";
+
 const router = Router();
+
+router.use(authenticate);
 
 /**
  * GET /api/milestones
- * Liste des jalons
  */
-router.get("/", getMilestones);
+router.get(
+  "/",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "COORDINATOR",
+    "TUTEUR_L3",
+    "TUTEUR_M2",
+  ),
+  getMilestones,
+);
 
 /**
  * GET /api/milestones/:id
- * Détails d'un jalon
  */
-router.get("/:id", getMilestoneById);
+router.get(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "COORDINATOR",
+    "TUTEUR_L3",
+    "TUTEUR_M2",
+  ),
+  getMilestoneById,
+);
 
 /**
  * POST /api/milestones
- * Création d'un jalon
  */
-router.post("/", createMilestone);
+router.post(
+  "/",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "COORDINATOR",
+    "TUTEUR_L3",
+    "TUTEUR_M2",
+  ),
+  createMilestone,
+);
 
 /**
  * PUT /api/milestones/:id
- * Modification d'un jalon
  */
-router.put("/:id", updateMilestone);
+router.put(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "COORDINATOR",
+    "TUTEUR_L3",
+    "TUTEUR_M2",
+  ),
+  updateMilestone,
+);
 
 /**
  * DELETE /api/milestones/:id
- * Suppression d'un jalon
  */
-router.delete("/:id", deleteMilestone);
+router.delete(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "COORDINATOR",
+  ),
+  deleteMilestone,
+);
 
 export default router;

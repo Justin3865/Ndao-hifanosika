@@ -1,10 +1,19 @@
-import { NextFunction, Request, Response } from "express";
+import {
+  NextFunction,
+  Request,
+  Response,
+} from "express";
 
 import { AuthenticatedRequest } from "./auth.middleware";
 
 export function authorizeRoles(
   ...allowedRoles: string[]
 ) {
+  const normalizedRoles =
+    allowedRoles.map((role) =>
+      role.trim().toUpperCase(),
+    );
+
   return (
     req: Request,
     res: Response,
@@ -16,19 +25,24 @@ export function authorizeRoles(
     if (!authenticatedRequest.user) {
       res.status(401).json({
         success: false,
-        message: "Authentification requise",
+        message:
+          "Authentification requise",
       });
       return;
     }
 
+    const userRole =
+      authenticatedRequest.user.role
+        .trim()
+        .toUpperCase();
+
     if (
-      !allowedRoles.includes(
-        authenticatedRequest.user.role,
-      )
+      !normalizedRoles.includes(userRole)
     ) {
       res.status(403).json({
         success: false,
-        message: "Accès refusé",
+        message:
+          "Accès refusé : rôle insuffisant.",
       });
       return;
     }

@@ -256,11 +256,11 @@ export default function HomePage() {
   /* =========================================================
      API URL
      IMPORTANT :
-     NEXT_PUBLIC_API_URL = http://localhost:5000/api
+     NEXT_PUBLIC_API_URL = http://localhost:4000/api
   ========================================================= */
 
   const getApiUrl = () =>
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
   /* =========================================================
      OPEN / CLOSE AUTH
@@ -329,7 +329,7 @@ export default function HomePage() {
     try {
       /*
        * IMPORTANT :
-       * getApiUrl() = http://localhost:5000/api
+       * getApiUrl() = http://localhost:4000/api
        *
        * Donc on utilise :
        * /auth/login

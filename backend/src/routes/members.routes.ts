@@ -7,30 +7,63 @@ import {
   deactivateMember,
 } from "../controllers/member.controller";
 
+import { authenticate } from "../middlewares/auth.middleware";
+import { authorizeRoles } from "../middlewares/role.middleware";
+
 const router = Router();
+
+router.use(authenticate);
 
 /**
  * GET /api/members
- * Liste des membres actifs
  */
-router.get("/", getMembers);
+router.get(
+  "/",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "RH",
+    "COORDINATOR",
+  ),
+  getMembers,
+);
 
 /**
  * GET /api/members/:id
- * Détails d'un membre
  */
-router.get("/:id", getMemberById);
+router.get(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "RH",
+    "COORDINATOR",
+  ),
+  getMemberById,
+);
 
 /**
  * PUT /api/members/:id
- * Modification d'un membre
  */
-router.put("/:id", updateMember);
+router.put(
+  "/:id",
+  authorizeRoles(
+    "ADMIN",
+    "RH",
+  ),
+  updateMember,
+);
 
 /**
  * PATCH /api/members/:id/deactivate
- * Désactivation d'un membre
  */
-router.patch("/:id/deactivate", deactivateMember);
+router.patch(
+  "/:id/deactivate",
+  authorizeRoles(
+    "ADMIN",
+    "RH",
+  ),
+  deactivateMember,
+);
 
 export default router;

@@ -13,18 +13,20 @@ import { authorizeRoles } from "../middlewares/role.middleware";
 
 const router = Router();
 
-// Toutes les routes Projects nécessitent une authentification
 router.use(authenticate);
 
 /**
  * GET /api/projects
- * ADMIN : tous les projets
- * DIRECTION / DAF : accès aux projets
- * COORDINATOR : projets autorisés
  */
 router.get(
   "/",
-  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "DAF",
+    "COMMUNICATION",
+    "COORDINATOR",
+  ),
   getProjects,
 );
 
@@ -33,18 +35,27 @@ router.get(
  */
 router.get(
   "/:id",
-  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "DAF",
+    "COMMUNICATION",
+    "COORDINATOR",
+  ),
   getProjectById,
 );
 
 /**
  * POST /api/projects
- * ADMIN : création globale
- * DIRECTION / DAF / COORDINATOR : création selon leurs droits
  */
 router.post(
   "/",
-  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "DAF",
+    "COORDINATOR",
+  ),
   createProject,
 );
 
@@ -53,13 +64,17 @@ router.post(
  */
 router.put(
   "/:id",
-  authorizeRoles("ADMIN", "DIRECTION", "DAF", "COORDINATOR"),
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "DAF",
+    "COORDINATOR",
+  ),
   updateProject,
 );
 
 /**
  * DELETE /api/projects/:id
- * ADMIN uniquement
  */
 router.delete(
   "/:id",

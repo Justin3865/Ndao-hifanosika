@@ -81,3 +81,98 @@ TUTEUR_L3 / TUTEUR_M2
   → Activités
   → Évaluations
   → Rapports de suivi
+
+
+| Rôle            | Activities                                       |
+| --------------- | ------------------------------------------------ |
+| `ADMIN`         | lecture + création + modification + suppression  |
+| `DIRECTION`     | lecture + création + modification                |
+| `COORDINATOR`   | lecture + création + modification de ses projets |
+| `COMMUNICATION` | lecture                                          |
+| `TUTEUR_L3`     | lecture + gestion selon ses activités            |
+| `TUTEUR_M2`     | lecture + gestion selon ses activités            |
+| `DAF`           | lecture                                          |
+| `DSI`           | pas d'accès métier direct                        |
+| `RH`            | pas d'accès métier direct                        |
+| `STAGIAIRE_L3`  | lecture/participation selon le périmètre         |
+| `STAGIAIRE_M2`  | lecture/participation selon le périmètre         |
+
+
+
+ÉTAPE 1
+↓
+backend/prisma/schema.prisma
+
+ÉTAPE 2
+↓
+backend/src/controllers/auth.controller.ts
+backend/src/services/auth.service.ts
+
+ÉTAPE 3
+↓
+backend/src/middlewares/auth.middleware.ts
+backend/src/middlewares/authorize.middleware.ts
+
+ÉTAPE 4
+↓
+backend/src/routes/auth.routes.ts
+backend/src/routes/*.routes.ts
+
+ÉTAPE 5
+↓
+frontend/src/lib/api.ts
+frontend/src/lib/rbac.ts
+
+ÉTAPE 6
+↓
+frontend/src/components/ProtectedRoute.tsx
+
+ÉTAPE 7
+↓
+frontend/src/components/Sidebar.tsx
+frontend/src/components/Header.tsx
+
+ÉTAPE 8
+↓
+frontend/src/components/auth/*
+frontend/src/app/page.tsx
+
+ÉTAPE 9
+↓
+pages rehetra
+/dashboard
+/users
+/departements
+/projects
+/activities
+/members
+/beneficiaries
+/milestones
+/evaluations
+/internships
+/reports
+/notifications
+/ai
+/settings
+
+ÉTAPE 10
+↓
+TEST COMPLET
+JWT + 11 ROLES + PostgreSQL + frontend/backend
+
+
+
+| Module        | Rôles afaka miditra                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| Users         | ADMIN, DSI, RH                                                                                 |
+| Départements  | ADMIN, DSI, RH                                                                                 |
+| Projets       | ADMIN, DIRECTION, DAF, COMMUNICATION, COORDINATOR                                              |
+| Activités     | ADMIN, DIRECTION, COMMUNICATION, COORDINATOR, TUTEUR_L3, TUTEUR_M2, STAGIAIRE_L3, STAGIAIRE_M2 |
+| Membres       | ADMIN, DIRECTION, RH, COORDINATOR                                                              |
+| Bénéficiaires | ADMIN, DIRECTION, DAF, COORDINATOR                                                             |
+| Jalons        | ADMIN, DIRECTION, COORDINATOR, TUTEUR_L3, TUTEUR_M2                                            |
+| Évaluations   | ADMIN, DIRECTION, COORDINATOR, TUTEUR_L3, TUTEUR_M2, STAGIAIRE_L3, STAGIAIRE_M2                |
+| Internships   | ADMIN, RH, COORDINATOR, TUTEUR_L3, TUTEUR_M2, STAGIAIRE_L3, STAGIAIRE_M2                       |
+| Rapports      | ADMIN, DIRECTION, DAF, RH, COMMUNICATION, COORDINATOR                                          |
+| IA            | ADMIN, DIRECTION, DSI, COORDINATOR                                                             |
+| Notifications | utilisateur authentifié                                                                        |

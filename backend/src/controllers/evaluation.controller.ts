@@ -1,6 +1,12 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import {
+  evaluationScope,
+  getReqUser,
+  scopedProjectIds,
+  isScopedRole,
+} from "../utils/dataScope";
 
 export async function getEvaluations(
   req: Request,
@@ -15,10 +21,17 @@ export async function getEvaluations(
       ? String(req.query.status)
       : undefined;
 
+    const scope = await evaluationScope(getReqUser(req));
+
     const evaluations = await prisma.evaluation.findMany({
       where: {
-        ...(projectId ? { projectId } : {}),
-        ...(status ? { status: status as any } : {}),
+        AND: [
+          {
+            ...(projectId ? { projectId } : {}),
+            ...(status ? { status: status as any } : {}),
+          },
+          scope,
+        ],
       },
       include: {
         project: {
@@ -93,6 +106,21 @@ export async function getEvaluationById(
         message: "Évaluation introuvable",
       });
       return;
+    }
+
+    // Stagiaire / tuteur : uniquement les évaluations de leurs projets
+    const reqUser = getReqUser(req);
+
+    if (reqUser && isScopedRole(reqUser)) {
+      const allowedProjects = await scopedProjectIds(reqUser);
+
+      if (!allowedProjects.includes(evaluation.projectId as number)) {
+        res.status(404).json({
+          success: false,
+          message: "Évaluation introuvable",
+        });
+        return;
+      }
     }
 
     res.status(200).json({

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { canAccessPath, getStoredRole } from "@/lib/access";
 
 import {
   Activity,
@@ -93,6 +95,18 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
 
+  // Rôle lu côté client uniquement (évite l'erreur d'hydratation)
+  const [role, setRole] = useState("");
+
+  useEffect(() => {
+    setRole(getStoredRole());
+  }, []);
+
+  // Seuls les menus autorisés pour ce rôle sont affichés
+  const visibleItems = menuItems.filter((item) =>
+    canAccessPath(role, item.href)
+  );
+
   const isActive = (href: string) => {
     if (href === "/dashboard") {
       return pathname === "/dashboard";
@@ -116,7 +130,7 @@ export default function Sidebar({
           <nav className="flex h-full flex-col">
             {/* MENU PRINCIPAL */}
             <div className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
-              {menuItems.map((item) => {
+              {visibleItems.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href);
 
@@ -190,7 +204,7 @@ export default function Sidebar({
         {/* MENU MOBILE */}
         <nav className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
-            {menuItems.map((item) => {
+            {visibleItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.href);
 

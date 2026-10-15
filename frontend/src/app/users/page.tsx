@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Plus,
@@ -18,14 +18,26 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/layout";
+import { getStoredRole } from "@/lib/access";
+import { roleLabel, statusLabel } from "@/lib/roles";
+import {
+  ApiUser,
+  apiErrorMessage,
+  deleteUser,
+  fetchUsers,
+  formatDateTime,
+  fullName,
+  initialsOf,
+} from "@/lib/usersApi";
 
-type UserStatus = "Actif" | "Inactif" | "Suspendu";
+type UserStatus = "Actif" | "Inactif" | "En attente" | "Rejeté";
 
 type UserItem = {
   id: number;
   name: string;
   email: string;
   role: string;
+  roleCode: string;
   department: string;
   phone: string;
   status: UserStatus;
@@ -33,99 +45,58 @@ type UserItem = {
   initials: string;
 };
 
-const initialUsers: UserItem[] = [
-  {
-    id: 1,
-    name: "Jean Rakoto",
-    email: "jean.rakoto@ndao-hifanosika.org",
-    role: "Administrateur",
-    department: "Direction",
-    phone: "+261 34 00 000 01",
-    status: "Actif",
-    lastLogin: "02/09/2026 08:45",
-    initials: "JR",
-  },
-  {
-    id: 2,
-    name: "Marie Andria",
-    email: "marie.andria@ndao-hifanosika.org",
-    role: "Responsable S&E",
-    department: "DSI",
-    phone: "+261 34 00 000 02",
-    status: "Actif",
-    lastLogin: "02/09/2026 09:10",
-    initials: "MA",
-  },
-  {
-    id: 3,
-    name: "Paul Rabe",
-    email: "paul.rabe@ndao-hifanosika.org",
-    role: "Chef de projet",
-    department: "Communication",
-    phone: "+261 34 00 000 03",
-    status: "Actif",
-    lastLogin: "01/09/2026 15:20",
-    initials: "PR",
-  },
-  {
-    id: 4,
-    name: "Sarah Rakoto",
-    email: "sarah.rakoto@ndao-hifanosika.org",
-    role: "Chargée RH",
-    department: "RH",
-    phone: "+261 34 00 000 04",
-    status: "Actif",
-    lastLogin: "01/09/2026 14:30",
-    initials: "SR",
-  },
-  {
-    id: 5,
-    name: "David Ranaivo",
-    email: "david.ranaivo@ndao-hifanosika.org",
-    role: "Assistant",
-    department: "DAF",
-    phone: "+261 34 00 000 05",
-    status: "Inactif",
-    lastLogin: "28/08/2026 10:15",
-    initials: "DR",
-  },
-  {
-    id: 6,
-    name: "Lucien Razaf",
-    email: "lucien.razaf@ndao-hifanosika.org",
-    role: "Évaluateur",
-    department: "DSI",
-    phone: "+261 34 00 000 06",
-    status: "Actif",
-    lastLogin: "02/09/2026 07:55",
-    initials: "LR",
-  },
-  {
-    id: 7,
-    name: "Nathalie Raso",
-    email: "nathalie.raso@ndao-hifanosika.org",
-    role: "Coordinatrice",
-    department: "Direction",
-    phone: "+261 34 00 000 07",
-    status: "Suspendu",
-    lastLogin: "25/08/2026 11:40",
-    initials: "NR",
-  },
-  {
-    id: 8,
-    name: "Hery Andri",
-    email: "hery.andri@ndao-hifanosika.org",
-    role: "Agent terrain",
-    department: "Communication",
-    phone: "+261 34 00 000 08",
-    status: "Actif",
-    lastLogin: "02/09/2026 08:20",
-    initials: "HA",
-  },
-];
+function mapApiUser(user: ApiUser): UserItem {
+  return {
+    id: user.id,
+    name: fullName(user),
+    email: user.email,
+    role: roleLabel(user.role),
+    roleCode: user.role,
+    department: user.department?.name ?? "—",
+    phone: user.phone ?? "—",
+    status: statusLabel(user.status) as UserStatus,
+    lastLogin: formatDateTime(user.lastLoginAt),
+    initials: initialsOf(user),
+  };
+}
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserItem[]>(initialUsers);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(getStoredRole() === "ADMIN");
+
+    let cancelled = false;
+
+    fetchUsers()
+      .then((data) => {
+        if (!cancelled) setUsers(data.map(mapApiUser));
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(
+            apiErrorMessage(err, "Impossible de charger les utilisateurs.")
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const departments = useMemo(
+    () =>
+      Array.from(
+        new Set(users.map((user) => user.department).filter((d) => d !== "—"))
+      ).sort(),
+    [users]
+  );
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [departmentFilter, setDepartmentFilter] = useState("Tous");
@@ -174,13 +145,18 @@ export default function UsersPage() {
   ).length;
 
   const suspendedUsers = users.filter(
-    (user) => user.status === "Suspendu"
+    (user) => user.status === "En attente"
   ).length;
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     const user = users.find((item) => item.id === id);
 
     if (!user) return;
+
+    if (user.roleCode === "ADMIN") {
+      window.alert("Le compte administrateur ne peut pas être supprimé.");
+      return;
+    }
 
     const confirmed = window.confirm(
       `Voulez-vous vraiment supprimer l'utilisateur "${user.name}" ?`
@@ -188,20 +164,27 @@ export default function UsersPage() {
 
     if (!confirmed) return;
 
-    setUsers((currentUsers) =>
-      currentUsers.filter((item) => item.id !== id)
-    );
+    try {
+      await deleteUser(id);
 
-    const newFilteredLength = filteredUsers.length - 1;
+      setUsers((currentUsers) =>
+        currentUsers.filter((item) => item.id !== id)
+      );
 
-    const newTotalPages = Math.max(
-      1,
-      Math.ceil(newFilteredLength / itemsPerPage)
-    );
+      const newTotalPages = Math.max(
+        1,
+        Math.ceil((filteredUsers.length - 1) / itemsPerPage)
+      );
 
-    setCurrentPage((page) =>
-      Math.min(page, newTotalPages)
-    );
+      setCurrentPage((page) => Math.min(page, newTotalPages));
+    } catch (err) {
+      window.alert(
+        apiErrorMessage(
+          err,
+          "Suppression impossible (l'utilisateur est peut-être lié à des projets)."
+        )
+      );
+    }
   };
 
   const handleSearch = (value: string) => {
@@ -250,13 +233,15 @@ export default function UsersPage() {
         </div>
 
         {/* BOUTON AJOUTER - BLEU */}
-        <Link
-          href="/users/create"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700"
-        >
-          <Plus className="h-5 w-5" />
-          Ajouter un utilisateur
-        </Link>
+        {isAdmin && (
+          <Link
+            href="/users/create"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700"
+          >
+            <Plus className="h-5 w-5" />
+            Ajouter un utilisateur
+          </Link>
+        )}
       </div>
 
       {/* =========================================================
@@ -329,7 +314,7 @@ export default function UsersPage() {
 
             <div>
               <p className="text-sm text-gray-500">
-                Suspendus
+                En attente
               </p>
 
               <p className="text-2xl font-bold text-gray-900">
@@ -381,8 +366,12 @@ export default function UsersPage() {
                 Inactif
               </option>
 
-              <option value="Suspendu">
-                Suspendu
+              <option value="En attente">
+                En attente
+              </option>
+
+              <option value="Rejeté">
+                Rejeté
               </option>
             </select>
           </div>
@@ -399,28 +388,24 @@ export default function UsersPage() {
               Tous les départements
             </option>
 
-            <option value="Direction">
-              Direction
-            </option>
-
-            <option value="DSI">
-              DSI
-            </option>
-
-            <option value="DAF">
-              DAF
-            </option>
-
-            <option value="Communication">
-              Communication
-            </option>
-
-            <option value="RH">
-              RH
-            </option>
+            {departments.map((department) => (
+              <option key={department} value={department}>
+                {department}
+              </option>
+            ))}
           </select>
         </div>
       </div>
+
+      {isLoading && (
+        <p className="mb-4 text-sm text-gray-500">Chargement des utilisateurs...</p>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* =========================================================
           TABLE
@@ -506,7 +491,9 @@ export default function UsersPage() {
                             ? "bg-green-100 text-green-700"
                             : user.status === "Inactif"
                               ? "bg-gray-100 text-gray-700"
-                              : "bg-red-100 text-red-700"
+                              : user.status === "En attente"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-red-100 text-red-700"
                         }`}
                       >
                         {user.status}
@@ -530,24 +517,28 @@ export default function UsersPage() {
                           <Eye className="h-4 w-4" />
                         </Link>
 
-                        {/* MODIFIER */}
-                        <Link
-                          href={`/users/${user.id}/edit`}
-                          className="rounded-lg p-2 text-gray-500 transition hover:bg-blue-50 hover:text-blue-600"
-                          title="Modifier"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Link>
+                        {isAdmin && (
+                          <>
+                            {/* MODIFIER */}
+                            <Link
+                              href={`/users/${user.id}/edit`}
+                              className="rounded-lg p-2 text-gray-500 transition hover:bg-blue-50 hover:text-blue-600"
+                              title="Modifier"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Link>
 
-                        {/* SUPPRIMER - ROUGE */}
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(user.id)}
-                          className="rounded-lg p-2 text-red-600 transition hover:bg-red-50 hover:text-red-700"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                            {/* SUPPRIMER - ROUGE */}
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(user.id)}
+                              className="rounded-lg p-2 text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

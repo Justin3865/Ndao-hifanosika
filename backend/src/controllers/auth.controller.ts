@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
+import { createHash, randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
@@ -36,6 +37,12 @@ function generateAccessToken(user: {
   });
 }
 
+function getRefreshSecret(): string {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) throw new Error("JWT_REFRESH_SECRET est introuvable dans le fichier .env");
+  return secret;
+}
+
 function generateRefreshToken(user: {
   id: number;
   email: string;
@@ -47,8 +54,8 @@ function generateRefreshToken(user: {
     role: user.role,
   };
 
-  return jwt.sign(payload, getJwtSecret(), {
-    expiresIn: "7d",
+  return jwt.sign(payload, getRefreshSecret(), {
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
   });
 }
 
@@ -64,7 +71,10 @@ function formatUser(user: any) {
     role: user.role,
     status: user.status,
     department: user.department?.name || "",
-    position: undefined,
+    departmentId: user.departmentId ?? null,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    lastLoginAt: user.lastLoginAt,
   };
 }
 
@@ -87,9 +97,13 @@ export async function login(
       });
     }
 
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
+
     const user = await prisma.user.findUnique({
       where: {
-        email: String(email).trim().toLowerCase(),
+        email: normalizedEmail,
       },
       include: {
         department: true,
@@ -105,24 +119,13 @@ export async function login(
     }
 
     /*
-     * Comparaison du mot de passe.
-     *
-     * bcrypt.compare fonctionne avec les mots de passe
-     * hashés. Pour les anciens comptes éventuellement
-     * encore en clair, on conserve temporairement une
-     * compatibilité.
+     * Tous les nouveaux comptes doivent avoir
+     * un mot de passe bcrypt.
      */
-
-    let passwordValid = false;
-
-    if (user.password.startsWith("$2")) {
-      passwordValid = await bcrypt.compare(
-        password,
-        user.password,
-      );
-    } else {
-      passwordValid = user.password === password;
-    }
+    const passwordValid = await bcrypt.compare(
+      String(password),
+      user.password,
+    );
 
     if (!passwordValid) {
       return res.status(401).json({
@@ -132,6 +135,10 @@ export async function login(
       });
     }
 
+    /*
+     * Le compte doit être ACTIVE pour obtenir
+     * un JWT.
+     */
     if (user.status !== "ACTIVE") {
       return res.status(403).json({
         success: false,
@@ -152,15 +159,16 @@ export async function login(
       },
     });
 
-    logger.info(
-      `Connexion réussie : ${user.email}`,
-    );
+    logger.info(`Connexion réussie : ${user.email}`);
 
     return res.status(200).json({
       success: true,
       message: "Connexion réussie.",
       data: {
-        user: formatUser(user),
+        user: formatUser({
+          ...user,
+          lastLoginAt: new Date(),
+        }),
         accessToken,
         refreshToken,
         expiresIn: 86400,
@@ -196,20 +204,16 @@ export async function register(
       password,
       phone,
       gender,
-      role,
       departmentId,
     } = req.body;
 
     /*
-     * Compatibilité avec le frontend :
-     *
-     * Le frontend peut envoyer :
+     * Compatibilité avec :
      * firstName + lastName
      *
-     * ou éventuellement :
+     * ou :
      * name
      */
-
     let finalFirstName = firstName;
     let finalLastName = lastName;
 
@@ -256,12 +260,38 @@ export async function register(
     }
 
     /*
-     * Hash du mot de passe avant stockage.
+     * Le rôle envoyé par le frontend est volontairement
+     * ignoré.
+     *
+     * Une inscription publique crée toujours :
+     *
+     * role   = STAGIAIRE_L3
+     * status = PENDING
+     *
+     * Le rôle pourra ensuite être modifié par une personne
+     * autorisée depuis le module de gestion des utilisateurs.
      */
     const hashedPassword = await bcrypt.hash(
       String(password),
       12,
     );
+
+    const parsedDepartmentId =
+      departmentId !== undefined &&
+      departmentId !== null &&
+      departmentId !== ""
+        ? Number(departmentId)
+        : null;
+
+    if (
+      parsedDepartmentId !== null &&
+      !Number.isInteger(parsedDepartmentId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Identifiant de département invalide.",
+      });
+    }
 
     const user = await prisma.user.create({
       data: {
@@ -269,13 +299,17 @@ export async function register(
         lastName: String(finalLastName).trim(),
         email: normalizedEmail,
         password: hashedPassword,
-        phone: phone || null,
+        phone: phone ? String(phone).trim() : null,
         gender: gender || null,
-        role: role || "STAGIAIRE_L3",
+
+        // IMPORTANT :
+        // jamais de role venant directement du frontend
+        role: "STAGIAIRE_L3",
+
+        // validation administrative obligatoire
         status: "PENDING",
-        departmentId: departmentId
-          ? Number(departmentId)
-          : null,
+
+        departmentId: parsedDepartmentId,
       },
       include: {
         department: true,
@@ -285,15 +319,6 @@ export async function register(
     logger.info(
       `Nouvelle inscription : ${user.email}`,
     );
-
-    /*
-     * IMPORTANT :
-     * Le compte est PENDING.
-     *
-     * Aucun token n'est généré ici.
-     * L'administrateur doit d'abord activer
-     * le compte.
-     */
 
     return res.status(201).json({
       success: true,
@@ -338,9 +363,25 @@ export async function refresh(
     }
 
     const decoded = jwt.verify(
-      refreshToken,
-      getJwtSecret(),
-    ) as JwtPayload;
+      String(refreshToken),
+      getRefreshSecret(),
+    ) as JwtPayload & { exp?: number };
+
+    const tokenHash = hashRefreshToken(String(refreshToken));
+    const revokedToken = await prisma.revokedRefreshToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (revokedToken && revokedToken.expiresAt > new Date()) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token révoqué.",
+      });
+    }
+
+    if (revokedToken) {
+      await prisma.revokedRefreshToken.delete({ where: { tokenHash } });
+    }
 
     const user = await prisma.user.findUnique({
       where: {
@@ -370,6 +411,14 @@ export async function refresh(
 
     const newRefreshToken =
       generateRefreshToken(user);
+
+    // Rotation à usage unique : l’ancien refresh token ne peut plus être rejoué.
+    await prisma.revokedRefreshToken.create({
+      data: {
+        tokenHash,
+        expiresAt: new Date((decoded.exp ?? Math.floor(Date.now() / 1000) + 7 * 86400) * 1000),
+      },
+    });
 
     return res.status(200).json({
       success: true,
@@ -403,15 +452,33 @@ export async function me(
   res: Response,
 ): Promise<Response> {
   try {
-    const userId = Number(req.params.id);
+    /*
+     * Le userId doit venir du JWT.
+     *
+     * Il ne faut plus utiliser :
+     * /auth/me/:id
+     *
+     * sinon un utilisateur peut tenter de consulter
+     * le profil d'un autre utilisateur.
+     */
 
-    if (!userId) {
-      return res.status(400).json({
+    const authenticatedRequest = req as Request & {
+      user?: {
+        id: number;
+        email: string;
+        role: string;
+        status?: string;
+      };
+    };
+
+    if (!authenticatedRequest.user?.id) {
+      return res.status(401).json({
         success: false,
-        message:
-          "Identifiant utilisateur invalide.",
+        message: "Authentification requise.",
       });
     }
+
+    const userId = authenticatedRequest.user.id;
 
     const user = await prisma.user.findUnique({
       where: {
@@ -429,13 +496,17 @@ export async function me(
       });
     }
 
+    if (user.status !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        message: "Le compte n'est pas actif.",
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         user: formatUser(user),
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        lastLoginAt: user.lastLoginAt,
       },
     });
   } catch (error) {
@@ -456,9 +527,36 @@ export async function me(
 // ============================================================
 
 export async function logout(
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<Response> {
+  const refreshToken = req.body?.refreshToken;
+
+  // Réponse idempotente : le client peut nettoyer sa session même si le token est déjà invalide.
+  if (typeof refreshToken === "string" && refreshToken.length > 0) {
+    try {
+      const decoded = jwt.verify(
+        refreshToken,
+        getRefreshSecret(),
+      ) as JwtPayload & { exp?: number };
+      const tokenHash = hashRefreshToken(refreshToken);
+      const existing = await prisma.revokedRefreshToken.findUnique({
+        where: { tokenHash },
+      });
+
+      if (!existing) {
+        await prisma.revokedRefreshToken.create({
+          data: {
+            tokenHash,
+            expiresAt: new Date((decoded.exp ?? Math.floor(Date.now() / 1000) + 7 * 86400) * 1000),
+          },
+        });
+      }
+    } catch {
+      // Ne révèle pas si un refresh token fourni était valide ou déjà expiré.
+    }
+  }
+
   return res.status(200).json({
     success: true,
     message: "Déconnexion réussie.",
@@ -466,45 +564,105 @@ export async function logout(
 }
 
 // ============================================================
-// FORGOT PASSWORD
+// FORGOT PASSWORD — jeton opaque, stocké uniquement sous forme hachée
+// Envoi par l'API Resend; aucun secret ni jeton n'est journalisé.
 // ============================================================
 
-export async function forgotPassword(
-  _req: Request,
-  res: Response,
-): Promise<Response> {
-  return res.status(200).json({
-    success: true,
-    message:
-      "Si cette adresse existe, un code de réinitialisation sera envoyé.",
+const hashResetToken = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
+
+const hashRefreshToken = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
+
+async function sendResetEmail(email: string, token: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESET_EMAIL_FROM;
+  if (!apiKey || !from) {
+    throw new Error("RESEND_API_KEY et RESET_EMAIL_FROM doivent être configurés pour l'envoi des e-mails.");
+  }
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const link = `${frontendUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject: "Réinitialisation de votre mot de passe — Ndao Hifanosika",
+      text: `Une demande de réinitialisation a été effectuée. Ce lien expire dans 30 minutes : ${link}. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+    }),
   });
+  if (!response.ok) throw new Error(`Échec de l'envoi du courriel (HTTP ${response.status}).`);
 }
 
-// ============================================================
-// VERIFY RESET CODE
-// ============================================================
-
-export async function verifyResetCode(
-  _req: Request,
-  res: Response,
-): Promise<Response> {
-  return res.status(200).json({
-    success: true,
-    message: "Code vérifié.",
-  });
+export async function forgotPassword(req: Request, res: Response): Promise<Response> {
+  const generic = { success: true, message: "Si cette adresse correspond à un compte, un lien de réinitialisation sera envoyé." };
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: "Adresse e-mail invalide." });
+    }
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, status: true } });
+    // Réponse identique pour éviter de révéler l'existence d'un compte.
+    if (!user || user.status !== "ACTIVE") return res.status(200).json(generic);
+    const rawToken = randomBytes(32).toString("hex");
+    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+    await prisma.passwordResetToken.create({ data: {
+      userId: user.id,
+      tokenHash: hashResetToken(rawToken),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+    } });
+    try {
+      await sendResetEmail(user.email, rawToken);
+    } catch (emailError) {
+      await prisma.passwordResetToken.deleteMany({ where: { tokenHash: hashResetToken(rawToken) } });
+      logger.error("Échec d'envoi du courriel de réinitialisation.", emailError);
+      return res.status(503).json({ success: false, code: "EMAIL_DELIVERY_UNAVAILABLE", message: "Le service d'envoi d'e-mail est indisponible. Contactez l'administrateur." });
+    }
+    return res.status(200).json(generic);
+  } catch (error) {
+    logger.error("Erreur lors de la demande de réinitialisation.", error);
+    return res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+  }
 }
 
-// ============================================================
-// RESET PASSWORD
-// ============================================================
+export async function verifyResetCode(req: Request, res: Response): Promise<Response> {
+  try {
+    const token = String(req.body?.token || "");
+    if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(400).json({ success: false, message: "Lien de réinitialisation invalide ou expiré." });
+    const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashResetToken(token) } });
+    if (!record || record.usedAt || record.expiresAt <= new Date() || record.attempts >= 5) {
+      return res.status(400).json({ success: false, message: "Lien de réinitialisation invalide ou expiré." });
+    }
+    return res.status(200).json({ success: true, message: "Lien de réinitialisation valide." });
+  } catch (error) {
+    logger.error("Erreur lors de la vérification du jeton de réinitialisation.", error);
+    return res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+  }
+}
 
-export async function resetPassword(
-  _req: Request,
-  res: Response,
-): Promise<Response> {
-  return res.status(200).json({
-    success: true,
-    message:
-      "Mot de passe réinitialisé avec succès.",
-  });
+export async function resetPassword(req: Request, res: Response): Promise<Response> {
+  try {
+    const token = String(req.body?.token || "");
+    const newPassword = String(req.body?.newPassword || "");
+    if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(400).json({ success: false, message: "Lien de réinitialisation invalide ou expiré." });
+    if (newPassword.length < 12 || newPassword.length > 128) return res.status(400).json({ success: false, message: "Le mot de passe doit contenir entre 12 et 128 caractères." });
+    const tokenHash = hashResetToken(token);
+    const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    if (!record || record.usedAt || record.expiresAt <= new Date() || record.attempts >= 5) {
+      if (record && !record.usedAt) await prisma.passwordResetToken.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+      return res.status(400).json({ success: false, message: "Lien de réinitialisation invalide ou expiré." });
+    }
+    const password = await bcrypt.hash(newPassword, 12);
+    // Transaction atomique : changement du mot de passe et consommation du jeton.
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: record.userId }, data: { password } }),
+      prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+      prisma.passwordResetToken.updateMany({ where: { userId: record.userId, id: { not: record.id }, usedAt: null }, data: { usedAt: new Date() } }),
+    ]);
+    return res.status(200).json({ success: true, message: "Mot de passe réinitialisé avec succès. Vous pouvez vous connecter." });
+  } catch (error) {
+    logger.error("Erreur lors de la réinitialisation du mot de passe.", error);
+    return res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+  }
 }
