@@ -5,17 +5,22 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  ArrowLeft,
   BarChart3,
   Bell,
   Building2,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
+  Eye,
+  EyeOff,
   FolderKanban,
   GraduationCap,
   Info,
   LayoutDashboard,
+  Lock,
   LogIn,
+  Mail,
   Menu,
   ShieldAlert,
   ShieldCheck,
@@ -30,8 +35,6 @@ import { FormEvent, useState } from "react";
 import PlatformCategories from "@/components/home/PlatformCategories";
 import LocationSection from "@/components/home/LocationSection";
 import {
-  LoginModal,
-  RegisterModal,
   ForgotPasswordModal,
   VerifyCodeModal,
   ResetPasswordModal,
@@ -220,6 +223,17 @@ const colorClasses: Record<
     hover: "hover:border-cyan-300",
   },
 };
+
+/* =========================================================
+   AUTH DARK STYLES
+========================================================= */
+
+const authInputWrap =
+  "flex h-11 items-center gap-3 rounded-xl border border-slate-600/60 bg-slate-700/60 px-3 focus-within:border-red-500";
+const authInput =
+  "w-full bg-transparent text-sm text-white placeholder:text-slate-400 outline-none";
+const authLabel =
+  "mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400";
 
 /* =========================================================
    HOME PAGE
@@ -540,7 +554,7 @@ export default function HomePage() {
     if (registerPassword.length < 8) {
       openResult(
         "error",
-        "Le mot de passe doit contenir au moins 12 caractères."
+        "Le mot de passe doit contenir au moins 8 caractères."
       );
 
       return;
@@ -914,6 +928,9 @@ export default function HomePage() {
     resultModal
       ? resultConfig[resultModal]
       : null;
+
+  const isAuthTabs =
+    authModal === "login" || authModal === "register";
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -1431,81 +1448,282 @@ export default function HomePage() {
 
       {authModal && (
         <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6"
           role="dialog"
           aria-modal="true"
+          className={
+            isAuthTabs
+              ? "fixed inset-0 z-[1000] flex h-[100dvh] items-center justify-center overflow-hidden bg-[#0f1424] px-4"
+              : "fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6"
+          }
         >
-          {authModal === "login" && (
-            <LoginModal
-              loginEmail={loginEmail}
-              setLoginEmail={setLoginEmail}
-              loginPassword={loginPassword}
-              setLoginPassword={
-                setLoginPassword
-              }
-              rememberMe={rememberMe}
-              setRememberMe={setRememberMe}
-              showPassword={showPassword}
-              setShowPassword={
-                setShowPassword
-              }
-              isLoading={isLoading}
-              onSubmit={handleLogin}
-              onClose={closeAuth}
-              onForgot={() =>
-                switchAuth("forgot")
-              }
-              onRegister={() =>
-                switchAuth("register")
-              }
-            />
+          {/* ================= LOGIN + INSCRIPTION (dark, 1 page) ================= */}
+          {isAuthTabs && (
+            <div className="flex max-h-full w-full max-w-md flex-col rounded-3xl border border-slate-700/70 bg-[#1e2638] p-5 shadow-2xl sm:p-6">
+              {/* LOGO */}
+              <div className="flex justify-center">
+                <Image
+                  src="/logos/ndao-hifanosika.png"
+                  alt="Ndao Hifanosika"
+                  width={160}
+                  height={56}
+                  priority
+                  className="h-12 w-auto object-contain"
+                />
+              </div>
+
+              <h2 className="mt-2 text-center text-xl font-bold text-white">
+                {authModal === "login"
+                  ? "Bon retour !"
+                  : "Créer un compte"}
+              </h2>
+
+              {/* TABS */}
+              <div className="mt-3 flex rounded-2xl border border-slate-600/60 bg-slate-800/60 p-1">
+                {(["login", "register"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => switchAuth(t)}
+                    className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${
+                      authModal === t
+                        ? "bg-red-600 text-white shadow-lg shadow-red-900/40"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {t === "login" ? "Connexion" : "Inscription"}
+                  </button>
+                ))}
+              </div>
+
+              {/* ---------- FORM LOGIN ---------- */}
+              {authModal === "login" && (
+                <form onSubmit={handleLogin} className="mt-4 space-y-3">
+                  <div>
+                    <label className={authLabel}>Adresse e-mail</label>
+                    <div className={authInputWrap}>
+                      <Mail className="h-4 w-4 text-slate-400" />
+                      <input
+                        type="email"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder="exemple@email.com"
+                        autoComplete="email"
+                        className={authInput}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={authLabel}>Mot de passe</label>
+                    <div className={authInputWrap}>
+                      <Lock className="h-4 w-4 text-slate-400" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="Votre mot de passe"
+                        autoComplete="current-password"
+                        className={authInput}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-xs text-slate-400">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="accent-red-600"
+                      />
+                      Se souvenir de moi
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => switchAuth("forgot")}
+                      className="text-xs font-semibold text-red-500 hover:text-red-400"
+                    >
+                      Mot de passe oublié ?
+                    </button>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/40 transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    {isLoading ? "Connexion..." : "Se connecter"}
+                  </button>
+                </form>
+              )}
+
+              {/* ---------- FORM INSCRIPTION ---------- */}
+              {authModal === "register" && (
+                <form onSubmit={handleRegister} className="mt-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={authLabel}>Nom</label>
+                      <div className={authInputWrap}>
+                        <input
+                          value={registerNom}
+                          onChange={(e) => setRegisterNom(e.target.value)}
+                          placeholder="Votre nom"
+                          className={authInput}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={authLabel}>Prénom</label>
+                      <div className={authInputWrap}>
+                        <input
+                          value={registerPrenom}
+                          onChange={(e) => setRegisterPrenom(e.target.value)}
+                          placeholder="Votre prénom"
+                          className={authInput}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={authLabel}>Adresse e-mail</label>
+                    <div className={authInputWrap}>
+                      <Mail className="h-4 w-4 text-slate-400" />
+                      <input
+                        type="email"
+                        value={registerEmail}
+                        onChange={(e) => setRegisterEmail(e.target.value)}
+                        placeholder="exemple@email.com"
+                        className={authInput}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={authLabel}>Mot de passe</label>
+                      <div className={authInputWrap}>
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={registerPassword}
+                          onChange={(e) => setRegisterPassword(e.target.value)}
+                          placeholder="Min. 8 caractères"
+                          className={authInput}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={authLabel}>Confirmer</label>
+                      <div className={authInputWrap}>
+                        <input
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={registerConfirmPassword}
+                          onChange={(e) =>
+                            setRegisterConfirmPassword(e.target.value)
+                          }
+                          placeholder="Confirmez"
+                          className={authInput}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword((v) => !v)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-blue-300">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      Après votre inscription, votre compte sera placé en
+                      attente. Un administrateur devra le vérifier et
+                      l'activer avant votre première connexion.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/40 transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    {isLoading ? "Création..." : "Créer mon compte"}
+                  </button>
+                </form>
+              )}
+
+              {/* FOOTER */}
+              <p className="mt-4 text-center text-xs text-slate-400">
+                {authModal === "login" ? (
+                  <>
+                    Pas encore de compte ?{" "}
+                    <button
+                      type="button"
+                      onClick={() => switchAuth("register")}
+                      className="font-semibold text-red-500 hover:text-red-400"
+                    >
+                      S'inscrire
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Vous avez déjà un compte ?{" "}
+                    <button
+                      type="button"
+                      onClick={() => switchAuth("login")}
+                      className="font-semibold text-red-500 hover:text-red-400"
+                    >
+                      Se connecter
+                    </button>
+                  </>
+                )}
+              </p>
+
+              <button
+                type="button"
+                onClick={closeAuth}
+                className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-300"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Retour à l'accueil
+              </button>
+            </div>
           )}
 
-          {authModal === "register" && (
-            <RegisterModal
-              registerNom={registerNom}
-              setRegisterNom={
-                setRegisterNom
-              }
-              registerPrenom={registerPrenom}
-              setRegisterPrenom={
-                setRegisterPrenom
-              }
-              registerEmail={registerEmail}
-              setRegisterEmail={
-                setRegisterEmail
-              }
-              registerPassword={
-                registerPassword
-              }
-              setRegisterPassword={
-                setRegisterPassword
-              }
-              registerConfirmPassword={
-                registerConfirmPassword
-              }
-              setRegisterConfirmPassword={
-                setRegisterConfirmPassword
-              }
-              showPassword={showPassword}
-              setShowPassword={
-                setShowPassword
-              }
-              showConfirmPassword={
-                showConfirmPassword
-              }
-              setShowConfirmPassword={
-                setShowConfirmPassword
-              }
-              isLoading={isLoading}
-              onSubmit={handleRegister}
-              onClose={closeAuth}
-              onLogin={() =>
-                switchAuth("login")
-              }
-            />
-          )}
-
+          {/* ================= FORGOT / VERIFY / RESET ================= */}
           {authModal === "forgot" && (
             <ForgotPasswordModal
               forgotEmail={forgotEmail}
@@ -1513,13 +1731,9 @@ export default function HomePage() {
               forgotChannel={forgotChannel}
               setForgotChannel={setForgotChannel}
               isLoading={isLoading}
-              onSubmit={
-                handleForgotPassword
-              }
+              onSubmit={handleForgotPassword}
               onClose={closeAuth}
-              onLogin={() =>
-                switchAuth("login")
-              }
+              onLogin={() => switchAuth("login")}
             />
           )}
 
@@ -1531,38 +1745,22 @@ export default function HomePage() {
               isLoading={isLoading}
               onSubmit={handleVerifyCode}
               onClose={closeAuth}
-              onBack={() =>
-                switchAuth("forgot")
-              }
+              onBack={() => switchAuth("forgot")}
             />
           )}
 
           {authModal === "reset" && (
             <ResetPasswordModal
               newPassword={newPassword}
-              setNewPassword={
-                setNewPassword
-              }
-              confirmNewPassword={
-                confirmNewPassword
-              }
-              setConfirmNewPassword={
-                setConfirmNewPassword
-              }
+              setNewPassword={setNewPassword}
+              confirmNewPassword={confirmNewPassword}
+              setConfirmNewPassword={setConfirmNewPassword}
               showPassword={showPassword}
-              setShowPassword={
-                setShowPassword
-              }
-              showConfirmPassword={
-                showConfirmPassword
-              }
-              setShowConfirmPassword={
-                setShowConfirmPassword
-              }
+              setShowPassword={setShowPassword}
+              showConfirmPassword={showConfirmPassword}
+              setShowConfirmPassword={setShowConfirmPassword}
               isLoading={isLoading}
-              onSubmit={
-                handleResetPassword
-              }
+              onSubmit={handleResetPassword}
               onClose={closeAuth}
             />
           )}
