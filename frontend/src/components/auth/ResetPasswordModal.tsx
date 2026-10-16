@@ -87,9 +87,9 @@ export default function ResetPasswordModal({
               onChange={(event) =>
                 setNewPassword(event.target.value)
               }
-              placeholder="Minimum 8 caractères"
+              placeholder="Minimum 12 caractères"
               autoComplete="new-password"
-              minLength={8}
+              minLength={12}
               disabled={isLoading}
               required
               className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-12 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -161,7 +161,7 @@ export default function ResetPasswordModal({
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
 
             <p className="text-sm leading-6 text-blue-700">
-              Votre mot de passe doit contenir au minimum 8 caractères.
+              Votre mot de passe doit contenir au minimum 12 caractères.
             </p>
           </div>
         </div>

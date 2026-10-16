@@ -27,6 +27,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { FormEvent, useState } from "react";
+import PlatformCategories from "@/components/home/PlatformCategories";
+import LocationSection from "@/components/home/LocationSection";
 import {
   LoginModal,
   RegisterModal,
@@ -249,6 +251,8 @@ export default function HomePage() {
 
   /* FORGOT PASSWORD */
   const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotChannel, setForgotChannel] = useState<"email" | "sms">("email");
+  const [resetToken, setResetToken] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -536,7 +540,7 @@ export default function HomePage() {
     if (registerPassword.length < 8) {
       openResult(
         "error",
-        "Le mot de passe doit contenir au moins 8 caractères."
+        "Le mot de passe doit contenir au moins 12 caractères."
       );
 
       return;
@@ -638,16 +642,19 @@ export default function HomePage() {
   ) => {
     event.preventDefault();
 
-    const email = forgotEmail.trim().toLowerCase();
+    const identifier = forgotEmail.trim();
+    const looksEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const looksPhone = /^\+?[\d\s().-]{9,16}$/.test(identifier);
 
-    if (!email) {
+    if (!looksEmail && !looksPhone) {
       openResult(
         "error",
-        "Veuillez saisir votre adresse e-mail."
+        "Saisissez une adresse e-mail ou un numéro de téléphone valide."
       );
-
       return;
     }
+
+    const channel = looksEmail ? forgotChannel : "sms";
 
     setIsLoading(true);
 
@@ -656,18 +663,13 @@ export default function HomePage() {
         `${getApiUrl()}/auth/forgot-password`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            email,
-          }),
+          body: JSON.stringify({ identifier, channel }),
         }
       );
 
       let data: ApiResponse = {};
-
       try {
         data = await response.json();
       } catch {
@@ -680,21 +682,13 @@ export default function HomePage() {
           data.message ||
             "Impossible d'envoyer le code de vérification."
         );
-
         return;
       }
 
       setAuthModal("verify");
     } catch (error) {
-      console.error(
-        "Erreur forgot password:",
-        error
-      );
-
-      openResult(
-        "error",
-        "Impossible de contacter le serveur."
-      );
+      console.error("Erreur forgot password:", error);
+      openResult("error", "Impossible de contacter le serveur.");
     } finally {
       setIsLoading(false);
     }
@@ -714,7 +708,7 @@ export default function HomePage() {
     if (!code) {
       openResult(
         "error",
-        "Veuillez saisir le code reçu par e-mail."
+        "Veuillez saisir le code reçu par e-mail ou SMS."
       );
 
       return;
@@ -741,9 +735,7 @@ export default function HomePage() {
           },
           credentials: "include",
           body: JSON.stringify({
-            email: forgotEmail
-              .trim()
-              .toLowerCase(),
+            identifier: forgotEmail.trim(),
             code,
           }),
         }
@@ -767,6 +759,7 @@ export default function HomePage() {
         return;
       }
 
+      setResetToken((data as any)?.data?.resetToken ?? "");
       setAuthModal("reset");
     } catch (error) {
       console.error(
@@ -792,10 +785,10 @@ export default function HomePage() {
   ) => {
     event.preventDefault();
 
-    if (newPassword.length < 8) {
+    if (newPassword.length < 12) {
       openResult(
         "error",
-        "Le nouveau mot de passe doit contenir au moins 8 caractères."
+        "Le nouveau mot de passe doit contenir au moins 12 caractères."
       );
 
       return;
@@ -825,11 +818,8 @@ export default function HomePage() {
           },
           credentials: "include",
           body: JSON.stringify({
-            email: forgotEmail
-              .trim()
-              .toLowerCase(),
-            code: resetCode.trim(),
-            password: newPassword,
+            token: resetToken,
+            newPassword,
           }),
         }
       );
@@ -856,6 +846,7 @@ export default function HomePage() {
 
       setForgotEmail("");
       setResetCode("");
+      setResetToken("");
       setNewPassword("");
       setConfirmNewPassword("");
 
@@ -1251,6 +1242,10 @@ export default function HomePage() {
           STAGES
       ===================================================== */}
 
+      <PlatformCategories />
+
+      <LocationSection />
+
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 to-cyan-600 shadow-xl">
           <div className="grid items-center gap-8 p-8 sm:p-10 lg:grid-cols-2 lg:p-14">
@@ -1514,9 +1509,9 @@ export default function HomePage() {
           {authModal === "forgot" && (
             <ForgotPasswordModal
               forgotEmail={forgotEmail}
-              setForgotEmail={
-                setForgotEmail
-              }
+              setForgotEmail={setForgotEmail}
+              forgotChannel={forgotChannel}
+              setForgotChannel={setForgotChannel}
               isLoading={isLoading}
               onSubmit={
                 handleForgotPassword

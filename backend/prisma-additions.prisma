@@ -1,0 +1,34 @@
+// À AJOUTER à votre schema.prisma, puis : npx prisma migrate dev -n zones_altitude
+
+model ZoneIntervention {
+  id            Int           @id @default(autoincrement())
+  name          String        @unique
+  region        String?
+  district      String?
+  latitude      Float
+  longitude     Float
+  altitude      Float?        // mètres
+  active        Boolean       @default(true)
+  createdById   Int?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  beneficiaries Beneficiary[]
+}
+
+// Dans le modèle Beneficiary existant, ajouter :
+//   altitude  Float?
+//   zoneId    Int?
+//   zone      ZoneIntervention? @relation(fields: [zoneId], references: [id])
+
+// Position GPS en direct des mpiasa (une ligne par utilisateur)
+model UserLocation {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  altitude  Float?
+  accuracy  Float?
+  updatedAt DateTime @updatedAt
+}
+// Dans le modèle User existant, ajouter :  location UserLocation?

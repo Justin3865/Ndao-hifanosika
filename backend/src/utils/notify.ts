@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { emitToUser } from "../realtime/socket";
+import { deliverToUser } from "../services/delivery.service";
 
 export type NotificationKind = "INFO" | "SUCCESS" | "WARNING" | "ERROR";
 
@@ -10,7 +11,7 @@ interface Payload {
   type?: NotificationKind;
 }
 
-/** Crée une notification en base pour chaque utilisateur et la pousse en temps réel. */
+/** Crée la notification en base, la pousse en temps réel et l'envoie par e-mail/SMS. */
 export async function notifyUsers(
   userIds: Array<number | null | undefined>,
   payload: Payload,
@@ -36,6 +37,15 @@ export async function notifyUsers(
       });
 
       emitToUser(userId, "notification:new", row);
+
+      // Envoi externe (e-mail + SMS), non bloquant.
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, phone: true, status: true },
+      });
+      if (user && user.status === "ACTIVE") {
+        void deliverToUser(user, payload.title, payload.message);
+      }
     } catch (error) {
       logger.error("Erreur création notification", error);
     }

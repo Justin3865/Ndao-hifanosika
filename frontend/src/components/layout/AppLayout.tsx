@@ -6,6 +6,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
 import Footer from "./Footer";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -16,6 +17,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <ProtectedRoute>
+      <ToastProvider>
       <div className="min-h-screen bg-slate-50 lg:flex">
         <Sidebar
           mobileMenuOpen={mobileMenuOpen}
@@ -33,6 +35,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <Footer />
         </div>
       </div>
+      </ToastProvider>
     </ProtectedRoute>
   );
 }

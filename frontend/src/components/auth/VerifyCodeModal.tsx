@@ -55,7 +55,7 @@ export default function VerifyCodeModal({
         </h2>
 
         <p className="mt-2 text-sm text-blue-100">
-          Vérifiez votre adresse e-mail
+          Saisissez le code reçu
         </p>
       </div>
 
