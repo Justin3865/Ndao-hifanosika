@@ -20,6 +20,11 @@ import reportsRoutes from "./routes/reports.routes";
 import notificationsRoutes from "./routes/notifications.routes";
 import aiRoutes from "./routes/ai.routes";
 import lookupsRoutes from "./routes/lookups.routes";
+import profileRoutes from "./routes/profile.routes";
+import auditRoutes from "./routes/audit.routes";
+import { campaignsRouter, gridsRouter } from "./routes/evalconfig.routes";
+import { trackingRouter, publicTrackingRouter } from "./routes/tracking.routes";
+import { eventNotifier } from "./middlewares/eventNotifier.middleware";
 
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
@@ -41,6 +46,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan("dev"));
 
 app.use(auditMiddleware);
+app.use(eventNotifier);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
@@ -72,6 +78,12 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/lookups", lookupsRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/audit", auditRoutes);
+app.use("/api/evaluation-grids", gridsRouter);
+app.use("/api/evaluation-campaigns", campaignsRouter);
+app.use("/api/tracking", trackingRouter);
+app.use("/api/public/tracking", publicTrackingRouter);
 
 app.use((_req, res) => {
   res.status(404).json({

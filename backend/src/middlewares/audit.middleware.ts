@@ -15,6 +15,16 @@ export async function auditMiddleware(
   const authenticatedRequest =
     req as AuthenticatedRequest;
 
+  // Pas de journalisation des lectures (GET) ni des envois de position en continu
+  if (
+    req.method === "GET" ||
+    req.method === "OPTIONS" ||
+    req.originalUrl.startsWith("/api/public/tracking")
+  ) {
+    next();
+    return;
+  }
+
   const originalEnd = res.end.bind(res);
 
   res.end = function (

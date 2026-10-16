@@ -1,229 +1,85 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Activity,
-  AlertTriangle,
-  ArrowRight,
-  Award,
-  BarChart3,
-  Brain,
-  FileText,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
-
+import { AlertTriangle, BarChart3, FileText, Lightbulb, ShieldAlert } from "lucide-react";
 import { AppLayout } from "@/components/layout";
+import { METHOD_NOTE, State, useInsight } from "@/components/insights/parts";
 
-const modules = [
-  {
-    title: "Risque d'abandon",
-    description:
-      "Analyser les indicateurs des bénéficiaires et identifier les profils présentant un risque d'abandon.",
-    href: "/ai/dropout-risk",
-    icon: AlertTriangle,
-    color: "text-red-600",
-    bg: "bg-red-100",
-  },
-  {
-    title: "Performance",
-    description:
-      "Évaluer automatiquement la performance des membres et bénéficiaires à partir des indicateurs disponibles.",
-    href: "/ai/performance",
-    icon: Award,
-    color: "text-blue-600",
-    bg: "bg-blue-100",
-  },
-  {
-    title: "Synthèse automatique",
-    description:
-      "Générer une synthèse intelligente des activités, résultats, indicateurs et observations.",
-    href: "/ai/summary",
-    icon: FileText,
-    color: "text-purple-600",
-    bg: "bg-purple-100",
-  },
-  {
-    title: "Détection d'anomalies",
-    description:
-      "Identifier les valeurs inhabituelles ou incohérentes dans les données de suivi et d'évaluation.",
-    href: "/ai/anomaly",
-    icon: Activity,
-    color: "text-orange-600",
-    bg: "bg-orange-100",
-  },
-];
-
-export default function AIPage() {
-  return (
-    <AppLayout>
-      <div className="space-y-6">
-        {/* =================================================
-            BREADCRUMB
-        ================================================= */}
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <Link
-            href="/dashboard"
-            className="transition hover:text-purple-600"
-          >
-            Tableau de bord
-          </Link>
-
-          <span>/</span>
-
-          <span className="font-medium text-gray-900">
-            IA & Analytics
-          </span>
-        </div>
-
-        {/* =================================================
-            AI HERO
-        ================================================= */}
-        <section className="overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-700 to-purple-700 p-6 text-white shadow-lg md:p-8">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="mb-3 flex items-center gap-3">
-                <div className="rounded-xl bg-white/20 p-3">
-                  <Brain className="h-8 w-8" />
-                </div>
-
-                <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium">
-                  Module IA
-                </span>
-              </div>
-
-              <h1 className="text-3xl font-bold md:text-4xl">
-                Intelligence Artificielle
-              </h1>
-
-              <p className="mt-3 max-w-2xl text-indigo-100">
-                Utiliser l&apos;intelligence artificielle
-                pour améliorer le suivi, l&apos;évaluation
-                et la prise de décision de Ndao Hifanosika.
-              </p>
-            </div>
-
-            <Sparkles
-              className="hidden md:block"
-              size={80}
-            />
-          </div>
-        </section>
-
-        {/* =================================================
-            INFORMATIONS
-        ================================================= */}
-        <section className="grid gap-5 md:grid-cols-3">
-          <InfoCard
-            icon={
-              <ShieldCheck className="h-6 w-6 text-green-600" />
-            }
-            title="Aide à la décision"
-            description="L'IA fournit des indicateurs et analyses pour faciliter les décisions des responsables S&E."
-          />
-
-          <InfoCard
-            icon={
-              <BarChart3 className="h-6 w-6 text-blue-600" />
-            }
-            title="Analyse des données"
-            description="Analyse automatique des données issues des projets, membres et bénéficiaires."
-          />
-
-          <InfoCard
-            icon={
-              <Brain className="h-6 w-6 text-purple-600" />
-            }
-            title="FastAPI IA"
-            description="Les traitements IA sont prévus pour être connectés au microservice FastAPI."
-          />
-        </section>
-
-        {/* =================================================
-            MODULES
-        ================================================= */}
-        <section>
-          <div className="mb-5">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Fonctionnalités IA
-            </h2>
-
-            <p className="mt-1 text-gray-600">
-              Sélectionnez une fonctionnalité pour commencer
-              une analyse.
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            {modules.map((module) => {
-              const Icon = module.icon;
-
-              return (
-                <Link
-                  key={module.href}
-                  href={module.href}
-                  className="group rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                >
-                  <div className="flex items-start justify-between">
-                    <div
-                      className={`rounded-xl ${module.bg} p-4 ${module.color}`}
-                    >
-                      <Icon size={30} />
-                    </div>
-
-                    <ArrowRight
-                      className="text-gray-400 transition group-hover:translate-x-1 group-hover:text-gray-700"
-                      size={22}
-                    />
-                  </div>
-
-                  <h3 className="mt-5 text-xl font-bold text-gray-900">
-                    {module.title}
-                  </h3>
-
-                  <p className="mt-2 text-sm leading-6 text-gray-600">
-                    {module.description}
-                  </p>
-
-                  <div className="mt-5 text-sm font-semibold text-indigo-600">
-                    Ouvrir l&apos;analyse →
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      </div>
-    </AppLayout>
-  );
+interface Summary {
+  headline: string;
+  highlights: string[];
+  recommendations: string[];
+  counters: {
+    projects: number;
+    activeProjects: number;
+    anomalies: number;
+    criticalAnomalies: number;
+    highRiskBeneficiaries: number;
+  };
 }
 
-/* =========================================================
-   INFO CARD
-========================================================= */
+const CARDS = [
+  { href: "/ai/summary", title: "Synthèse intelligente", text: "Résumé et recommandations prêts à présenter.", icon: FileText, tone: "from-blue-600 to-blue-800" },
+  { href: "/ai/performance", title: "Performance des projets", text: "Score par projet : jalons, activités, évaluations.", icon: BarChart3, tone: "from-emerald-500 to-teal-700" },
+  { href: "/ai/anomaly", title: "Détection d'anomalies", text: "Retards, budgets dépassés, scores atypiques.", icon: AlertTriangle, tone: "from-amber-400 to-orange-600" },
+  { href: "/ai/dropout-risk", title: "Risque d'abandon", text: "Bénéficiaires à accompagner en priorité.", icon: ShieldAlert, tone: "from-rose-500 to-red-700" },
+];
 
-function InfoCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
+export default function AiHubPage() {
+  const { data, loading, error } = useInsight<Summary>("/ai/summary");
+
   return (
-    <div className="rounded-xl bg-white p-5 shadow-sm transition hover:shadow-md">
-      <div className="mb-3 flex items-center gap-3">
-        {icon}
+    <AppLayout>
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Analyses IA</h1>
+          <p className="text-sm text-gray-500">Aide à la décision calculée sur les données réelles de l&apos;ONG.</p>
+        </div>
 
-        <h2 className="font-semibold text-gray-900">
-          {title}
-        </h2>
+        <State loading={loading} error={error}>
+          {data && (
+            <section className="rounded-3xl bg-gradient-to-br from-blue-950 to-blue-700 p-8 text-white shadow-xl">
+              <div className="flex items-start gap-4">
+                <div className="rounded-2xl bg-white/15 p-3"><Lightbulb className="h-6 w-6 text-amber-300" /></div>
+                <div>
+                  <h2 className="text-xl font-bold">{data.headline}</h2>
+                  <ul className="mt-3 space-y-1 text-sm text-blue-100">
+                    {data.highlights.map((line) => <li key={line}>• {line}</li>)}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  ["Projets actifs", data.counters.activeProjects],
+                  ["Anomalies", data.counters.anomalies],
+                  ["Critiques", data.counters.criticalAnomalies],
+                  ["Bénéf. à risque", data.counters.highRiskBeneficiaries],
+                ].map(([label, value]) => (
+                  <div key={label as string} className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
+                    <p className="text-2xl font-bold">{value}</p>
+                    <p className="text-xs text-blue-200">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </State>
+
+        <div className="grid gap-5 md:grid-cols-2">
+          {CARDS.map((card) => (
+            <Link key={card.href} href={card.href} className="group flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+              <div className={`rounded-xl bg-gradient-to-br p-3 text-white shadow-md ${card.tone}`}><card.icon className="h-6 w-6" /></div>
+              <div>
+                <h3 className="font-semibold text-gray-900">{card.title}</h3>
+                <p className="text-sm text-gray-500">{card.text}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-400">{METHOD_NOTE}</p>
       </div>
-
-      <p className="text-sm leading-6 text-gray-600">
-        {description}
-      </p>
-    </div>
+    </AppLayout>
   );
 }

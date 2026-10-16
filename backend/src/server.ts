@@ -1,4 +1,6 @@
+import http from "http";
 import app from "./app";
+import { initSocket } from "./realtime/socket";
 import { env } from "./config/env";
 import {
   connectDatabase,
@@ -10,7 +12,10 @@ async function startServer() {
   try {
     await connectDatabase();
 
-    const server = app.listen(env.PORT, () => {
+    const server = http.createServer(app);
+    initSocket(server);
+
+    server.listen(env.PORT, () => {
       logger.success(
         `Serveur démarré sur http://localhost:${env.PORT}`,
       );

@@ -1,378 +1,92 @@
 "use client";
 
-import Link from "next/link";
-import {
-  ArrowLeft,
-  Landmark,
-  FileText,
-  Download,
-  Eye,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Printer } from "lucide-react";
+import api from "@/lib/axios";
+import { AppLayout } from "@/components/layout";
+import { Logo } from "@/components/brand/Logo";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+interface Dashboard { totals: Record<string, number>; status: Record<string, number> }
+interface EvalReport { total: number; averageScore: number | null; byStatus: { draft: number; submitted: number; validated: number } }
+interface Zone { city: string; activities: number; projects: number; beneficiaries: number }
 
-import {
-  formatDate,
-  getReports,
-  Report,
-} from "@/lib/reports";
-
-export default function BailleurReportsPage() {
-  const [reports, setReports] =
-    useState<Report[]>([]);
-
-  const [selectedBailleur, setSelectedBailleur] =
-    useState("all");
+export default function DonorReportPage() {
+  const [dash, setDash] = useState<Dashboard | null>(null);
+  const [ev, setEv] = useState<EvalReport | null>(null);
+  const [zones, setZones] = useState<Zone[]>([]);
 
   useEffect(() => {
-    setReports(
-      getReports()
-    );
+    api.get("/reports/dashboard").then((r) => setDash(r.data?.data ?? null)).catch(() => undefined);
+    api.get("/reports/evaluations").then((r) => setEv(r.data?.data ?? null)).catch(() => undefined);
+    api.get("/tracking/zones").then((r) => setZones(r.data?.data ?? [])).catch(() => undefined);
   }, []);
 
-  const bailleurs = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          reports
-            .map(
-              (report) =>
-                report.bailleur
-            )
-            .filter(
-              (item) =>
-                item !==
-                "Tous"
-            )
-        )
-      ),
-    [reports]
-  );
-
-  const filteredReports =
-    reports.filter(
-      (report) => {
-        if (
-          selectedBailleur ===
-          "all"
-        ) {
-          return (
-            report.type ===
-              "Bailleur" ||
-            report.bailleur !==
-              "Tous"
-          );
-        }
-
-        return (
-          report.bailleur ===
-          selectedBailleur
-        );
-      }
-    );
-
-  const totalBeneficiaries =
-    filteredReports.reduce(
-      (sum, report) =>
-        sum +
-        report.nombreBeneficiaires,
-      0
-    );
-
-  const averageSuccess =
-    filteredReports.length >
-    0
-      ? Math.round(
-          filteredReports.reduce(
-            (sum, report) =>
-              sum +
-              report.tauxReussite,
-            0
-          ) /
-            filteredReports.length
-        )
-      : 0;
+  const totals = dash?.totals ?? {};
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-6">
-
-      <div className="mx-auto max-w-6xl">
-
-        <div className="mb-6 flex items-center gap-3">
-
-          <Link
-            href="/reports"
-            className="rounded-lg border bg-white p-2"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-
-          <div>
-            <h1 className="text-2xl font-bold">
-              Reporting bailleurs
-            </h1>
-
-            <p className="text-sm text-gray-500">
-              Rapports destinés aux partenaires et bailleurs.
-            </p>
-          </div>
-
+    <AppLayout>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <div className="flex justify-end print:hidden">
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-2.5 text-sm font-medium text-white">
+            <Printer className="h-4 w-4" /> Imprimer / PDF
+          </button>
         </div>
 
-        {/* SELECTEUR */}
-
-        <div className="mb-6 rounded-xl border bg-white p-5 shadow-sm">
-
-          <label className="mb-2 block text-sm font-medium">
-            Sélectionner un bailleur
-          </label>
-
-          <select
-            value={
-              selectedBailleur
-            }
-            onChange={(e) =>
-              setSelectedBailleur(
-                e.target.value
-              )
-            }
-            className="w-full max-w-md rounded-lg border px-3 py-2.5"
-          >
-            <option value="all">
-              Tous les bailleurs
-            </option>
-
-            {bailleurs.map(
-              (bailleur) => (
-                <option
-                  key={bailleur}
-                  value={
-                    bailleur
-                  }
-                >
-                  {bailleur}
-                </option>
-              )
-            )}
-
-          </select>
-
-        </div>
-
-        {/* STATS */}
-
-        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-                <p className="text-sm text-gray-500">
-                  Rapports
-                </p>
-
-                <p className="mt-1 text-2xl font-bold">
-                  {
-                    filteredReports.length
-                  }
-                </p>
-              </div>
-
-              <FileText className="text-blue-600" />
-
+        <article className="space-y-8 rounded-3xl border border-gray-200 bg-white p-10 shadow-sm print:border-0 print:shadow-none">
+          <header className="flex items-center justify-between border-b border-gray-200 pb-6">
+            <Logo size={56} />
+            <div className="text-right">
+              <h1 className="text-2xl font-bold text-blue-900">Rapport d&apos;impact</h1>
+              <p className="text-sm text-gray-500">Édité le {new Date().toLocaleDateString("fr-FR")}</p>
             </div>
+          </header>
 
-          </div>
-
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-                <p className="text-sm text-gray-500">
-                  Bénéficiaires
-                </p>
-
-                <p className="mt-1 text-2xl font-bold">
-                  {
-                    totalBeneficiaries
-                  }
-                </p>
-              </div>
-
-              <Landmark className="text-purple-600" />
-
-            </div>
-
-          </div>
-
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-                <p className="text-sm text-gray-500">
-                  Réussite moyenne
-                </p>
-
-                <p className="mt-1 text-2xl font-bold">
-                  {averageSuccess}%
-                </p>
-              </div>
-
-              <Download className="text-green-600" />
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* LISTE */}
-
-        <div className="space-y-4">
-
-          {filteredReports.map(
-            (report) => (
-              <div
-                key={
-                  report.id
-                }
-                className="rounded-xl border bg-white p-5 shadow-sm"
-              >
-
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-
-                  <div>
-
-                    <div className="flex items-center gap-2">
-
-                      <Landmark
-                        size={20}
-                        className="text-purple-600"
-                      />
-
-                      <h2 className="font-semibold text-gray-900">
-                        {
-                          report.titre
-                        }
-                      </h2>
-
-                    </div>
-
-                    <p className="mt-1 text-sm text-gray-500">
-                      {
-                        report.reference
-                      }{" "}
-                      ·{" "}
-                      {
-                        report.bailleur
-                      }
-                    </p>
-
-                    <p className="mt-2 text-sm text-gray-600">
-                      {
-                        report.projectName
-                      }{" "}
-                      ·{" "}
-                      {formatDate(
-                        report.periodeDebut
-                      )}{" "}
-                      au{" "}
-                      {formatDate(
-                        report.periodeFin
-                      )}
-                    </p>
-
-                  </div>
-
-                  <div className="flex gap-2">
-
-                    <Link
-                      href={`/reports/${report.id}`}
-                      className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-                    >
-                      <Eye size={16} />
-                      Voir
-                    </Link>
-
-                    <Link
-                      href="/reports/export"
-                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
-                    >
-                      <Download
-                        size={16}
-                      />
-                      Exporter
-                    </Link>
-
-                  </div>
-
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-gray-900">Chiffres clés</h2>
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                ["Projets", totals.projects],
+                ["Activités", totals.activities],
+                ["Bénéficiaires", totals.beneficiaries],
+                ["Évaluations", totals.evaluations],
+                ["Stages", totals.internships],
+                ["Projets terminés", dash?.status?.completedProjects],
+              ].map(([label, value]) => (
+                <div key={label as string} className="rounded-2xl bg-blue-50 p-4">
+                  <p className="text-3xl font-bold text-blue-900">{value ?? 0}</p>
+                  <p className="text-sm text-gray-600">{label}</p>
                 </div>
+              ))}
+            </div>
+          </section>
 
-                <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-
-                  <Metric
-                    label="Bénéficiaires"
-                    value={
-                      report.nombreBeneficiaires
-                    }
-                  />
-
-                  <Metric
-                    label="Actifs"
-                    value={
-                      report.nombreBeneficiairesActifs
-                    }
-                  />
-
-                  <Metric
-                    label="Complétion"
-                    value={`${report.tauxCompletion}%`}
-                  />
-
-                  <Metric
-                    label="Réussite"
-                    value={`${report.tauxReussite}%`}
-                  />
-
-                </div>
-
-              </div>
-            )
+          {ev && (
+            <section>
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">Qualité et évaluation</h2>
+              <p className="text-gray-700">
+                {ev.total} évaluation(s) réalisée(s), score moyen{" "}
+                <strong>{ev.averageScore !== null ? ev.averageScore.toFixed(1) : "—"}/100</strong> ({ev.byStatus.validated} validée(s), {ev.byStatus.submitted} soumise(s), {ev.byStatus.draft} brouillon(s)).
+              </p>
+            </section>
           )}
 
-        </div>
-
+          {zones.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">Zones d&apos;intervention</h2>
+              <table className="w-full text-sm">
+                <thead className="border-b text-left text-gray-500">
+                  <tr><th className="py-2">Ville</th><th>Projets</th><th>Activités</th><th>Bénéficiaires</th></tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {zones.map((z) => (
+                    <tr key={z.city}><td className="py-2 font-medium">{z.city}</td><td>{z.projects}</td><td>{z.activities}</td><td>{z.beneficiaries}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+        </article>
       </div>
-
-    </main>
-  );
-}
-
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-lg bg-gray-50 p-3">
-
-      <p className="text-xs text-gray-500">
-        {label}
-      </p>
-
-      <p className="mt-1 font-bold">
-        {value}
-      </p>
-
-    </div>
+    </AppLayout>
   );
 }

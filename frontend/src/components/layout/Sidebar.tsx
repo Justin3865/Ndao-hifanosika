@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { canAccessPath, getStoredRole } from "@/lib/access";
-
 import {
   Activity,
+  BarChart3,
+  Bell,
   Briefcase,
   Building2,
   ClipboardList,
@@ -14,239 +14,147 @@ import {
   Flag,
   GraduationCap,
   Heart,
+  KeyRound,
   LayoutDashboard,
+  MapPin,
   Settings,
-  TrendingUp,
+  ShieldCheck,
+  Sparkles,
+  UserCog,
   Users,
   X,
 } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
+import { canAccessPath, getStoredRole } from "@/lib/access";
+import { roleLabel } from "@/lib/roles";
 
 interface SidebarProps {
   mobileMenuOpen: boolean;
   setMobileMenuOpen: (open: boolean) => void;
 }
 
-const menuItems = [
+const groups = [
   {
-    href: "/dashboard",
-    label: "Tableau de bord",
-    icon: LayoutDashboard,
+    title: "Pilotage",
+    items: [
+      { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+      { href: "/tracking", label: "Suivi terrain", icon: MapPin },
+      { href: "/reports", label: "Rapports", icon: BarChart3 },
+      { href: "/ai", label: "Analyses IA", icon: Sparkles },
+    ],
   },
   {
-    href: "/users",
-    label: "Utilisateurs",
-    icon: Users,
+    title: "Programmes",
+    items: [
+      { href: "/projects", label: "Projets", icon: Briefcase },
+      { href: "/activities", label: "Activités", icon: Activity },
+      { href: "/milestones", label: "Jalons", icon: Flag },
+      { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
+      { href: "/evaluations", label: "Évaluations", icon: ClipboardList },
+      { href: "/internships", label: "Stages", icon: GraduationCap },
+    ],
   },
   {
-    href: "/departements",
-    label: "Départements",
-    icon: Building2,
+    title: "Organisation",
+    items: [
+      { href: "/members", label: "Membres", icon: UserCog },
+      { href: "/users", label: "Utilisateurs", icon: Users },
+      { href: "/departements", label: "Départements", icon: Building2 },
+    ],
   },
   {
-    href: "/projects",
-    label: "Projets",
-    icon: Briefcase,
-  },
-  {
-    href: "/activities",
-    label: "Activités",
-    icon: Activity,
-  },
-  {
-    href: "/members",
-    label: "Membres",
-    icon: Users,
-  },
-  {
-    href: "/beneficiaries",
-    label: "Bénéficiaires",
-    icon: Heart,
-  },
-  {
-    href: "/milestones",
-    label: "Jalons",
-    icon: Flag,
-  },
-  {
-    href: "/evaluations",
-    label: "Évaluations",
-    icon: ClipboardList,
-  },
-  {
-    href: "/internships",
-    label: "Internships",
-    icon: GraduationCap,
-  },
-  {
-    href: "/reports",
-    label: "Rapports",
-    icon: FileText,
-  },
-  {
-    href: "/ai",
-    label: "IA & Analytics",
-    icon: TrendingUp,
+    title: "Système",
+    items: [
+      { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/administration/permissions", label: "Rôles & accès", icon: KeyRound },
+      { href: "/security", label: "Journal d'audit", icon: ShieldCheck },
+      { href: "/settings", label: "Paramètres", icon: Settings },
+    ],
   },
 ];
 
-export default function Sidebar({
-  mobileMenuOpen,
-  setMobileMenuOpen,
-}: SidebarProps) {
+export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
   const pathname = usePathname();
-
-  // Rôle lu côté client uniquement (évite l'erreur d'hydratation)
   const [role, setRole] = useState("");
 
   useEffect(() => {
     setRole(getStoredRole());
   }, []);
 
-  // Seuls les menus autorisés pour ce rôle sont affichés
-  const visibleItems = menuItems.filter((item) =>
-    canAccessPath(role, item.href)
-  );
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canAccessPath(role, item.href)),
+    }))
+    .filter((group) => group.items.length > 0);
 
-  const isActive = (href: string) => {
-    if (href === "/dashboard") {
-      return pathname === "/dashboard";
-    }
+  const content = (
+    <div className="flex h-full flex-col bg-gradient-to-b from-blue-950 via-blue-900 to-blue-800 text-blue-100">
+      <div className="flex items-center justify-between px-5 py-5">
+        <Logo light size={42} />
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-lg p-2 text-blue-200 hover:bg-white/10 lg:hidden"
+          aria-label="Fermer le menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-6">
+        {visibleGroups.map((group) => (
+          <div key={group.title}>
+            <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-blue-300/70">
+              {group.title}
+            </p>
 
-  const closeMobileMenu = () => {
-    setMobileMenuOpen(false);
-  };
-
-  return (
-    <>
-      {/* =========================================================
-          SIDEBAR DESKTOP
-      ========================================================= */}
-
-      <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white lg:block">
-        <div className="sticky top-16 h-[calc(100vh-64px)]">
-          <nav className="flex h-full flex-col">
-            {/* MENU PRINCIPAL */}
-            <div className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
-              {visibleItems.map((item) => {
+            <div className="space-y-1">
+              {group.items.map((item) => {
+                const active =
+                  pathname === item.href || pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
-                const active = isActive(item.href);
 
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                       active
-                        ? "bg-blue-100 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                        ? "bg-white text-blue-900 shadow-lg shadow-blue-950/30"
+                        : "text-blue-100 hover:bg-white/10"
                     }`}
                   >
-                    <Icon className="h-5 w-5 shrink-0" />
-
-                    <span className="min-w-0 truncate">
-                      {item.label}
-                    </span>
+                    <Icon className={`h-[18px] w-[18px] ${active ? "text-amber-500" : ""}`} />
+                    {item.label}
                   </Link>
                 );
               })}
             </div>
+          </div>
+        ))}
+      </nav>
 
-            {/* PARAMÈTRES */}
-            <div className="shrink-0 border-t border-gray-200 p-4">
-              <Link
-                href="/settings"
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive("/settings")
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                }`}
-              >
-                <Settings className="h-5 w-5 shrink-0" />
+      <div className="border-t border-white/10 px-5 py-4 text-xs text-blue-300">
+        Connecté : <span className="font-semibold text-white">{roleLabel(role)}</span>
+      </div>
+    </div>
+  );
 
-                <span>Paramètres</span>
-              </Link>
-            </div>
-          </nav>
-        </div>
-      </aside>
-
-      {/* =========================================================
-          OVERLAY MOBILE
-      ========================================================= */}
+  return (
+    <>
+      <aside className="sticky top-0 hidden h-screen w-72 shrink-0 lg:block">{content}</aside>
 
       {mobileMenuOpen && (
-        <button
-          type="button"
-          aria-label="Fermer le menu"
-          onClick={closeMobileMenu}
-          className="fixed inset-x-0 bottom-0 top-16 z-[80] bg-slate-950/50 backdrop-blur-[2px] lg:hidden"
-        />
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <aside className="absolute left-0 top-0 h-full w-72 shadow-2xl">{content}</aside>
+        </div>
       )}
-
-      {/* =========================================================
-          SIDEBAR MOBILE
-          
-          IMPORTANT :
-          Tsy misy logo na soratra "Ndao Hifanosika" eto intsony,
-          satria efa ao amin'ny Header.
-      ========================================================= */}
-
-      <aside
-        className={`fixed left-0 top-16 z-[90] flex h-[calc(100dvh-4rem)] w-[min(18rem,85vw)] max-w-[320px] flex-col border-r border-gray-200 bg-white shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
-          mobileMenuOpen
-            ? "translate-x-0"
-            : "-translate-x-full"
-        }`}
-      >
-        {/* MENU MOBILE */}
-        <nav className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden p-4">
-            {visibleItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={closeMobileMenu}
-                  className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-                    active
-                      ? "bg-blue-100 text-blue-700 shadow-sm"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  }`}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-
-                  <span className="min-w-0 truncate">
-                    {item.label}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* PARAMÈTRES MOBILE */}
-          <div className="shrink-0 border-t border-gray-200 bg-white p-4">
-            <Link
-              href="/settings"
-              onClick={closeMobileMenu}
-              className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-                isActive("/settings")
-                  ? "bg-blue-100 text-blue-700 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              }`}
-            >
-              <Settings className="h-5 w-5 shrink-0" />
-
-              <span>Paramètres</span>
-            </Link>
-          </div>
-        </nav>
-      </aside>
     </>
   );
 }

@@ -7,6 +7,12 @@ import {
 
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
+import {
+  getAnomalies,
+  getDropoutRiskList,
+  getPerformance,
+  getSummary,
+} from "../controllers/insights.controller";
 
 const router = Router();
 
@@ -39,5 +45,12 @@ router.post(
   ),
   scoreDropoutRisk,
 );
+
+const AI_ROLES = ["ADMIN", "DIRECTION", "DSI", "COORDINATOR"] as const;
+
+router.get("/summary", authorizeRoles(...AI_ROLES), getSummary);
+router.get("/performance", authorizeRoles(...AI_ROLES), getPerformance);
+router.get("/anomalies", authorizeRoles(...AI_ROLES), getAnomalies);
+router.get("/dropout-risk", authorizeRoles(...AI_ROLES), getDropoutRiskList);
 
 export default router;

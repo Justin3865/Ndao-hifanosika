@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
@@ -59,6 +60,15 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rapports</h1>
           <p className="text-sm text-gray-500">Données agrégées en temps réel</p>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <Link href="/reports/bailleur" className="rounded-xl bg-blue-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-900">
+            Rapport d&apos;impact (bailleurs)
+          </Link>
+          <Link href="/reports/export" className="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Exports CSV
+          </Link>
         </div>
 
         {loading && <p className="text-gray-500">Chargement...</p>}

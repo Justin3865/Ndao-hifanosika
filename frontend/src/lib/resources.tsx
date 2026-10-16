@@ -3,6 +3,7 @@
 // Les rôles d'écriture reflètent authorizeRoles() du backend.
 
 import { StatusBadge } from "@/components/crud/StatusBadge";
+import { TrackingPanel } from "@/components/tracking/TrackingPanel";
 import {
   ResourceConfig,
   fmtDate,
@@ -228,6 +229,7 @@ export const beneficiariesConfig: ResourceConfig = {
     { label: "Vulnérable", value: b.vulnerable ? "Oui" : "Non" },
   ],
   titleOf: (b) => personName(b),
+  extra: (b) => <TrackingPanel beneficiaryId={b.id} />,
   searchOf: (b) => `${personName(b)} ${b.project?.name ?? ""} ${b.email ?? ""}`,
   createRoles: BENEFICIARY_WRITERS,
   editRoles: BENEFICIARY_WRITERS,
@@ -411,4 +413,96 @@ export const departementsConfig: ResourceConfig = {
   createRoles: ["ADMIN", "DSI"],
   editRoles: ["ADMIN", "DSI"],
   deleteRoles: ["ADMIN"],
+};
+
+/* ------------------------------------------------------------------ */
+/* GRILLES D'ÉVALUATION                                                 */
+/* ------------------------------------------------------------------ */
+const EVAL_CONFIG_ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"];
+
+export const gridsConfig: ResourceConfig = {
+  title: "Grilles d'évaluation",
+  singular: "une grille",
+  basePath: "/evaluations/grids",
+  endpoint: "/evaluation-grids",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    { header: "Grille", render: (g) => <span className="font-medium text-gray-900">{g.name}</span> },
+    { header: "Critères", render: (g) => (Array.isArray(g.criteria) ? g.criteria.length : 0) },
+    { header: "Description", render: (g) => g.description || "—" },
+    { header: "Créée le", render: (g) => fmtDate(g.createdAt) },
+  ],
+  fields: [
+    { name: "name", label: "Nom de la grille", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+    {
+      name: "criteriaText",
+      label: "Critères — un par ligne : Libellé | poids",
+      type: "textarea",
+      full: true,
+    },
+  ],
+  detail: (g) => [
+    { label: "Description", value: g.description || "—" },
+    {
+      label: "Critères",
+      value: (
+        <ul className="space-y-1 text-right">
+          {(g.criteria ?? []).map((c: { label: string; weight: number }) => (
+            <li key={c.label}>
+              {c.label} <span className="text-gray-400">(poids {c.weight})</span>
+            </li>
+          ))}
+        </ul>
+      ),
+    },
+    { label: "Créée le", value: fmtDate(g.createdAt) },
+  ],
+  titleOf: (g) => g.name,
+  searchOf: (g) => `${g.name} ${g.description ?? ""}`,
+  createRoles: EVAL_CONFIG_ROLES,
+  editRoles: EVAL_CONFIG_ROLES,
+  deleteRoles: ["ADMIN", "DIRECTION"],
+};
+
+/* ------------------------------------------------------------------ */
+/* CAMPAGNES D'ÉVALUATION                                               */
+/* ------------------------------------------------------------------ */
+const CAMPAIGN_STATUS = ["DRAFT", "ACTIVE", "CLOSED"];
+
+export const campaignsConfig: ResourceConfig = {
+  title: "Campagnes d'évaluation",
+  singular: "une campagne",
+  basePath: "/evaluations/campaigns",
+  endpoint: "/evaluation-campaigns",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    { header: "Campagne", render: (c) => <span className="font-medium text-gray-900">{c.name}</span> },
+    { header: "Période", render: (c) => period(c.startDate, c.endDate) },
+    { header: "Statut", render: (c) => <StatusBadge status={c.status} /> },
+  ],
+  fields: [
+    { name: "name", label: "Nom de la campagne", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+    { name: "projectId", label: "Projet concerné", type: "select", lookup: "projects" },
+    { name: "gridId", label: "Grille utilisée", type: "select", lookup: "grids" },
+    { name: "startDate", label: "Début", type: "date" },
+    { name: "endDate", label: "Fin", type: "date" },
+    { name: "status", label: "Statut", type: "select", options: statusOptions(CAMPAIGN_STATUS) },
+  ],
+  detail: (c) => [
+    { label: "Statut", value: <StatusBadge status={c.status} /> },
+    { label: "Période", value: period(c.startDate, c.endDate) },
+    { label: "Projet", value: c.projectId ? `#${c.projectId}` : "—" },
+    { label: "Grille", value: c.gridId ? `#${c.gridId}` : "—" },
+    { label: "Description", value: c.description || "—" },
+  ],
+  titleOf: (c) => c.name,
+  searchOf: (c) => `${c.name} ${c.description ?? ""}`,
+  statusFilter: { field: "status", options: statusOptions(CAMPAIGN_STATUS) },
+  createRoles: EVAL_CONFIG_ROLES,
+  editRoles: EVAL_CONFIG_ROLES,
+  deleteRoles: ["ADMIN", "DIRECTION"],
 };

@@ -25,7 +25,8 @@ export type LookupKind =
   | "departments"
   | "students"
   | "tutors"
-  | "users";
+  | "users"
+  | "grids";
 
 export interface FieldDef {
   name: string;
@@ -73,6 +74,8 @@ export interface ResourceConfig {
   deleteRoles: string[];
   deleteMode?: "delete" | "deactivate";
   createHref?: string;
+  /** Bloc supplémentaire affiché sous la fiche détail */
+  extra?: (item: Item) => ReactNode;
 }
 
 /* ---------- Appels API ---------- */
@@ -167,6 +170,7 @@ export const STATUS_LABELS: Record<string, string> = {
   PENDING: "En attente",
   INACTIVE: "Inactif",
   REJECTED: "Rejeté",
+  CLOSED: "Clôturée",
 };
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -182,7 +186,37 @@ export const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "bg-red-100 text-red-700",
   SUSPENDED: "bg-red-100 text-red-700",
   REJECTED: "bg-red-100 text-red-700",
+  CLOSED: "bg-gray-200 text-gray-700",
 };
 
 export const statusOptions = (values: string[]): Option[] =>
   values.map((value) => ({ value, label: STATUS_LABELS[value] ?? value }));
+
+/** Export CSV (compatible Excel : BOM UTF-8 + séparateur point-virgule). */
+export function exportCsv(
+  filename: string,
+  fields: FieldDef[],
+  rows: Item[]
+): void {
+  const escape = (value: unknown) => {
+    const text = value === null || value === undefined ? "" : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const header = ["ID", ...fields.map((field) => field.label)].map(escape).join(";");
+
+  const body = rows.map((row) =>
+    [row.id, ...fields.map((field) => row[field.name])].map(escape).join(";")
+  );
+
+  const blob = new Blob(["\uFEFF" + [header, ...body].join("\r\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}

@@ -1,233 +1,88 @@
 "use client";
 
-import Link from "next/link";
-import {
-  ArrowLeft,
-  BarChart3,
-  TrendingUp,
-  Award,
-  Users,
-  UserCheck,
-  GraduationCap,
-} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import api from "@/lib/axios";
+import { AppLayout } from "@/components/layout";
+import { errorMessage } from "@/lib/crud";
 
-import {
-  Evaluation,
-  getEvaluations,
-} from "@/lib/evaluations";
-
-export default function ResultsPage() {
-  const [evaluations, setEvaluations] =
-    useState<Evaluation[]>([]);
-
-  useEffect(() => {
-    setEvaluations(
-      getEvaluations()
-    );
-  }, []);
-
-  const average =
-    useMemo(() => {
-      if (!evaluations.length) {
-        return 0;
-      }
-
-      return Math.round(
-        evaluations.reduce(
-          (sum, e) =>
-            sum + e.percentage,
-          0
-        ) / evaluations.length
-      );
-    }, [evaluations]);
-
-  const members =
-    evaluations.filter(
-      (e) => e.target === "Membre"
-    );
-
-  const beneficiaries =
-    evaluations.filter(
-      (e) =>
-        e.target ===
-        "Bénéficiaire"
-    );
-
-  const trainees =
-    evaluations.filter(
-      (e) =>
-        e.target ===
-        "Stagiaire"
-    );
-
-  return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="mx-auto max-w-7xl">
-
-        <div className="mb-6 flex items-center gap-3">
-
-          <Link
-            href="/evaluations"
-            className="rounded-lg border bg-white p-2"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-
-          <div>
-            <h1 className="text-2xl font-bold">
-              Résultats des évaluations
-            </h1>
-
-            <p className="text-sm text-gray-500">
-              Analyse consolidée des performances.
-            </p>
-          </div>
-
-        </div>
-
-        {/* KPI */}
-
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-          <Kpi
-            icon={<BarChart3 />}
-            label="Score moyen"
-            value={`${average}%`}
-          />
-
-          <Kpi
-            icon={<Users />}
-            label="Membres"
-            value={String(
-              members.length
-            )}
-          />
-
-          <Kpi
-            icon={<UserCheck />}
-            label="Bénéficiaires"
-            value={String(
-              beneficiaries.length
-            )}
-          />
-
-          <Kpi
-            icon={<GraduationCap />}
-            label="Stagiaires"
-            value={String(
-              trainees.length
-            )}
-          />
-
-        </div>
-
-        {/* PERFORMANCE */}
-
-        <section className="rounded-xl border bg-white p-5 shadow-sm">
-
-          <div className="mb-5 flex items-center gap-2">
-            <TrendingUp
-              className="text-indigo-600"
-            />
-
-            <h2 className="text-lg font-semibold">
-              Performance individuelle
-            </h2>
-          </div>
-
-          <div className="space-y-4">
-
-            {evaluations.map(
-              (evaluation) => (
-                <div
-                  key={evaluation.id}
-                  className="rounded-lg border p-4"
-                >
-
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-
-                    <div>
-                      <Link
-                        href={`/evaluations/${evaluation.id}`}
-                        className="font-semibold hover:text-indigo-600"
-                      >
-                        {evaluation.subjectName}
-                      </Link>
-
-                      <p className="text-xs text-gray-500">
-                        {evaluation.target} ·{" "}
-                        {evaluation.gridName}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-
-                      <div className="flex items-center gap-1 text-sm text-gray-500">
-                        <Award size={16} />
-                        {evaluation.status}
-                      </div>
-
-                      <p className="text-xl font-bold text-indigo-600">
-                        {evaluation.percentage}%
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  <div className="mt-3 h-2 rounded-full bg-gray-200">
-                    <div
-                      className="h-full rounded-full bg-indigo-500"
-                      style={{
-                        width: `${evaluation.percentage}%`,
-                      }}
-                    />
-                  </div>
-
-                </div>
-              )
-            )}
-
-          </div>
-
-          {!evaluations.length && (
-            <div className="py-10 text-center text-gray-500">
-              Aucun résultat disponible.
-            </div>
-          )}
-
-        </section>
-
-      </div>
-    </main>
-  );
+interface Evaluation {
+  id: number;
+  projectId: number;
+  score: number | null;
+  status: string;
+  project?: { name: string } | null;
 }
 
-function Kpi({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+export default function EvaluationResultsPage() {
+  const [items, setItems] = useState<Evaluation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/evaluations")
+      .then((res) => setItems(res.data?.data ?? []))
+      .catch((err) => setError(errorMessage(err, "Résultats indisponibles.")))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const rows = useMemo(() => {
+    type Row = { name: string; scores: number[]; validated: number; total: number };
+    const map = new Map<number, Row>();
+
+    items.forEach((item) => {
+      const row: Row = map.get(item.projectId) ?? {
+        name: item.project?.name ?? `Projet #${item.projectId}`,
+        scores: [],
+        validated: 0,
+        total: 0,
+      };
+
+      row.total += 1;
+      if (item.status === "VALIDATED") row.validated += 1;
+      if (item.score !== null && item.score !== undefined) row.scores.push(Number(item.score));
+      map.set(item.projectId, row);
+    });
+
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        average: row.scores.length ? row.scores.reduce((a, b) => a + b, 0) / row.scores.length : null,
+      }))
+      .sort((a, b) => (b.average ?? -1) - (a.average ?? -1));
+  }, [items]);
+
+  const all = items.filter((i) => i.score !== null).map((i) => Number(i.score));
+  const globalAverage = all.length ? (all.reduce((a, b) => a + b, 0) / all.length).toFixed(1) : "—";
+
   return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-indigo-600">
-          {icon}
-        </span>
+    <AppLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Résultats des évaluations</h1>
+          <p className="text-sm text-gray-500">Score moyen par projet — {items.length} évaluation(s), moyenne globale {globalAverage}/100.</p>
+        </div>
 
-        <span className="text-2xl font-bold">
-          {value}
-        </span>
+        {loading && <p className="text-gray-500">Chargement...</p>}
+        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+        <div className="space-y-3">
+          {rows.map((row) => (
+            <div key={row.name} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="font-semibold text-gray-900">{row.name}</p>
+                <p className="text-sm text-gray-500">{row.validated}/{row.total} validée(s)</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-400" style={{ width: `${row.average ?? 0}%` }} />
+                </div>
+                <span className="w-16 text-right font-bold text-blue-900">{row.average !== null ? row.average.toFixed(1) : "—"}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-
-      <p className="mt-2 text-sm text-gray-500">
-        {label}
-      </p>
-    </div>
+    </AppLayout>
   );
 }

@@ -47,6 +47,17 @@ router.get("/:kind", async (req: Request, res: Response) => {
       });
     }
 
+    if (kind === "grids") {
+      const rows = await (prisma as unknown as {
+        evaluationGrid: { findMany: (a: object) => Promise<Array<{ id: number; name: string }>> };
+      }).evaluationGrid.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
+
+      return res.json({
+        success: true,
+        data: rows.map((row) => ({ id: row.id, label: row.name })),
+      });
+    }
+
     if (kind === "departments") {
       const rows = await prisma.department.findMany({
         select: { id: true, name: true },

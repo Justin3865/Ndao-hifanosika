@@ -1,0 +1,45 @@
+A AJOUTER MANUELLEMENT dans prisma/schema.prisma, puis lancer :
+    npx prisma migrate deploy      (ou: npx prisma migrate dev)
+    npx prisma generate
+
+model User {
+  ...
+  avatarUrl String?
+}
+
+model Beneficiary {
+  ...
+  latitude         Float?
+  longitude        Float?
+  locationAccuracy Float?
+  lastSeenAt       DateTime?
+  trackingToken    String?   @unique
+  trackingEnabled  Boolean   @default(false)
+  consentAt        DateTime?
+}
+
+model EvaluationGrid {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  criteria    Json     @default("[]")
+  createdById Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EvaluationCampaign {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  gridId      Int?
+  projectId   Int?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String    @default("DRAFT")
+  createdById Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+Dependance backend :  npm install socket.io

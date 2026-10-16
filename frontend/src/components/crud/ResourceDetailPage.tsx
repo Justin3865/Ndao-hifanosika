@@ -108,6 +108,8 @@ export function ResourceDetailPage({
                 </span>
               </div>
             ))}
+
+            {config.extra?.(item)}
           </div>
         )}
       </div>

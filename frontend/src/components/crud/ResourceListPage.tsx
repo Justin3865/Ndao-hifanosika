@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { AppLayout } from "@/components/layout";
 import { getStoredRole } from "@/lib/access";
 import {
   Item,
   ResourceConfig,
   errorMessage,
+  exportCsv,
   listItems,
   removeItem,
 } from "@/lib/crud";
@@ -94,6 +95,18 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
             </p>
           </div>
 
+          <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              exportCsv(`${config.basePath.replace("/", "")}.csv`, config.fields, filtered)
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          >
+            <Download className="h-4 w-4" />
+            Exporter CSV
+          </button>
+
           {canCreate && (
             <Link
               href={createHref}
@@ -103,6 +116,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
               Ajouter
             </Link>
           )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">

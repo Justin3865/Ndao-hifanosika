@@ -34,7 +34,11 @@ const ACCESS_RULES: AccessRule[] = [
   { pattern: /^\/(dashboard|profile|settings|notifications)(\/|$)/, roles: ALL_ROLES },
 
   // ADMIN uniquement
-  { pattern: /^\/(administration|security)(\/|$)/, roles: ["ADMIN"] },
+  { pattern: /^\/administration(\/|$)/, roles: ["ADMIN"] },
+  { pattern: /^\/security(\/|$)/, roles: ["ADMIN", "DSI"] },
+
+  // Suivi terrain en direct (bénéficiaires)
+  { pattern: /^\/tracking(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
 
   // Utilisateurs
   { pattern: /^\/users\/(create|[^/]+\/edit)\/?$/, roles: ["ADMIN"] },
@@ -77,6 +81,9 @@ const ACCESS_RULES: AccessRule[] = [
 
   // Bénéficiaires
   { pattern: /^\/beneficiaries(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"] },
+
+  // Évaluations : grilles et campagnes = pilotage uniquement
+  { pattern: /^\/evaluations\/(grids|campaigns)(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
 
   // Évaluations
   { pattern: /^\/evaluations\/[^/]+\/edit\/?$/, roles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS] },
