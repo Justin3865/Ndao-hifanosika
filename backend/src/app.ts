@@ -19,6 +19,7 @@ import internshipsRoutes from "./routes/internships.routes";
 import reportsRoutes from "./routes/reports.routes";
 import notificationsRoutes from "./routes/notifications.routes";
 import aiRoutes from "./routes/ai.routes";
+import lookupsRoutes from "./routes/lookups.routes";
 
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
@@ -70,6 +71,7 @@ app.use("/api/internships", internshipsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/lookups", lookupsRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({

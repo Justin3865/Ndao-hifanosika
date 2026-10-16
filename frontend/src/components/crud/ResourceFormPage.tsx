@@ -1,0 +1,281 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AppLayout } from "@/components/layout";
+import {
+  FieldDef,
+  LookupItem,
+  LookupKind,
+  ResourceConfig,
+  errorMessage,
+  fetchLookup,
+  getItem,
+  saveItem,
+} from "@/lib/crud";
+
+type Values = Record<string, string | boolean>;
+
+const inputClass =
+  "w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+
+function toFormValue(field: FieldDef, raw: unknown): string | boolean {
+  if (field.type === "checkbox") return Boolean(raw);
+  if (raw === null || raw === undefined) return "";
+  if (field.type === "date") return String(raw).slice(0, 10);
+  return String(raw);
+}
+
+function toPayloadValue(field: FieldDef, value: string | boolean) {
+  if (field.type === "checkbox") return Boolean(value);
+
+  const text = String(value).trim();
+  if (text === "") return undefined;
+
+  if (field.type === "number") return Number(text);
+  if (field.type === "select" && field.lookup) return Number(text);
+
+  return text;
+}
+
+export function ResourceFormPage({
+  config,
+  mode,
+  id,
+}: {
+  config: ResourceConfig;
+  mode: "create" | "edit";
+  id?: string;
+}) {
+  const router = useRouter();
+  const isEdit = mode === "edit";
+
+  const fields = config.fields.filter((field) =>
+    isEdit ? !field.hideOnEdit : !field.hideOnCreate
+  );
+
+  const [values, setValues] = useState<Values>(() =>
+    Object.fromEntries(
+      fields.map((field) => [field.name, field.type === "checkbox" ? false : ""])
+    )
+  );
+  const [lookups, setLookups] = useState<Record<string, LookupItem[] | null>>({});
+  const [loading, setLoading] = useState(isEdit);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // Chargement des listes déroulantes (projets, départements, ...)
+  useEffect(() => {
+    const kinds = Array.from(
+      new Set(fields.map((field) => field.lookup).filter(Boolean))
+    ) as LookupKind[];
+
+    kinds.forEach((kind) => {
+      fetchLookup(kind)
+        .then((data) => setLookups((cur) => ({ ...cur, [kind]: data })))
+        .catch(() => setLookups((cur) => ({ ...cur, [kind]: null })));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
+
+  // Chargement de l'élément à modifier
+  useEffect(() => {
+    if (!isEdit || !id) return;
+
+    getItem(config, id)
+      .then((item) => {
+        setValues(
+          Object.fromEntries(
+            fields.map((field) => [field.name, toFormValue(field, item?.[field.name])])
+          )
+        );
+      })
+      .catch((err) => setError(errorMessage(err, "Élément introuvable.")))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, id, isEdit]);
+
+  const setValue = (name: string, value: string | boolean) =>
+    setValues((cur) => ({ ...cur, [name]: value }));
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+
+    for (const field of fields) {
+      if (field.required && field.type !== "checkbox") {
+        if (String(values[field.name] ?? "").trim() === "") {
+          setError(`Le champ « ${field.label} » est obligatoire.`);
+          return;
+        }
+      }
+    }
+
+    const payload: Record<string, unknown> = {};
+
+    for (const field of fields) {
+      const value = toPayloadValue(field, values[field.name]);
+      if (value !== undefined) payload[field.name] = value;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await saveItem(config, isEdit ? (id as string) : null, payload);
+      router.push(config.basePath);
+    } catch (err) {
+      setError(errorMessage(err, "Enregistrement impossible."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderField = (field: FieldDef) => {
+    const value = values[field.name];
+
+    if (field.type === "checkbox") {
+      return (
+        <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => setValue(field.name, e.target.checked)}
+            className="h-4 w-4"
+          />
+          {field.label}
+        </label>
+      );
+    }
+
+    let control;
+
+    if (field.type === "textarea") {
+      control = (
+        <textarea
+          rows={4}
+          className={inputClass}
+          value={String(value)}
+          onChange={(e) => setValue(field.name, e.target.value)}
+        />
+      );
+    } else if (field.type === "select" && field.lookup) {
+      const list = lookups[field.lookup];
+
+      control =
+        list === null ? (
+          // Liste indisponible pour ce rôle : saisie directe de l'identifiant
+          <input
+            type="number"
+            className={inputClass}
+            placeholder="Identifiant"
+            value={String(value)}
+            onChange={(e) => setValue(field.name, e.target.value)}
+          />
+        ) : (
+          <select
+            className={inputClass}
+            value={String(value)}
+            onChange={(e) => setValue(field.name, e.target.value)}
+          >
+            <option value="">
+              {list === undefined ? "Chargement..." : "Sélectionner"}
+            </option>
+            {(list ?? []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        );
+    } else if (field.type === "select") {
+      control = (
+        <select
+          className={inputClass}
+          value={String(value)}
+          onChange={(e) => setValue(field.name, e.target.value)}
+        >
+          <option value="">Sélectionner</option>
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      );
+    } else {
+      control = (
+        <input
+          type={field.type}
+          min={field.min}
+          max={field.max}
+          className={inputClass}
+          value={String(value)}
+          onChange={(e) => setValue(field.name, e.target.value)}
+        />
+      );
+    }
+
+    return (
+      <label className="block space-y-1 text-sm font-medium text-gray-700">
+        {field.label}
+        {field.required ? " *" : ""}
+        {control}
+      </label>
+    );
+  };
+
+  return (
+    <AppLayout>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {isEdit ? `Modifier ${config.singular}` : `Ajouter ${config.singular}`}
+        </h1>
+
+        {loading ? (
+          <p className="text-gray-500">Chargement...</p>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+          >
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {fields.map((field) => (
+                <div
+                  key={field.name}
+                  className={
+                    field.full || field.type === "textarea" ? "md:col-span-2" : ""
+                  }
+                >
+                  {renderField(field)}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Link
+                href={config.basePath}
+                className="rounded-xl border border-gray-300 px-5 py-3 font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Annuler
+              </Link>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+              >
+                {submitting ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </AppLayout>
+  );
+}

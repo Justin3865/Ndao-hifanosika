@@ -1,0 +1,414 @@
+// src/lib/resources.tsx
+// Configuration de chaque module : colonnes, formulaires, rôles autorisés.
+// Les rôles d'écriture reflètent authorizeRoles() du backend.
+
+import { StatusBadge } from "@/components/crud/StatusBadge";
+import {
+  ResourceConfig,
+  fmtDate,
+  fmtMoney,
+  statusOptions,
+} from "@/lib/crud";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, roleLabel, statusLabel } from "@/lib/roles";
+
+const TUTEURS = ["TUTEUR_L3", "TUTEUR_M2"];
+const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+
+const GENDERS = [
+  { value: "FEMALE", label: "Femme" },
+  { value: "MALE", label: "Homme" },
+];
+
+const genderLabel = (gender?: string) =>
+  gender === "FEMALE" ? "Femme" : gender === "MALE" ? "Homme" : "—";
+
+const personName = (person?: { firstName?: string; lastName?: string } | null) =>
+  person ? `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() : "—";
+
+const period = (start?: string | null, end?: string | null) =>
+  `${fmtDate(start)} → ${fmtDate(end)}`;
+
+const ProgressBar = ({ value }: { value?: number | null }) => (
+  <div className="flex items-center gap-2">
+    <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+      <div
+        className="h-full bg-blue-600"
+        style={{ width: `${Math.min(100, Math.max(0, Number(value ?? 0)))}%` }}
+      />
+    </div>
+    <span className="text-xs text-gray-600">{value ?? 0}%</span>
+  </div>
+);
+
+/* ------------------------------------------------------------------ */
+/* PROJETS                                                              */
+/* ------------------------------------------------------------------ */
+const PROJECT_STATUS = ["DRAFT", "ACTIVE", "COMPLETED", "SUSPENDED"];
+const PROJECT_WRITERS = ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"];
+
+export const projectsConfig: ResourceConfig = {
+  title: "Projets",
+  singular: "un projet",
+  basePath: "/projects",
+  endpoint: "/projects",
+  listKey: "projects",
+  itemKey: "project",
+  columns: [
+    { header: "Code", render: (p) => p.code },
+    { header: "Projet", render: (p) => <span className="font-medium text-gray-900">{p.name}</span> },
+    { header: "Département", render: (p) => p.department?.name ?? "—" },
+    { header: "Période", render: (p) => period(p.startDate, p.endDate) },
+    { header: "Budget", render: (p) => fmtMoney(p.budget) },
+    { header: "Statut", render: (p) => <StatusBadge status={p.status} /> },
+  ],
+  fields: [
+    { name: "name", label: "Nom du projet", type: "text", required: true },
+    { name: "code", label: "Code", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+    { name: "objective", label: "Objectif", type: "textarea" },
+    { name: "startDate", label: "Date de début", type: "date", required: true },
+    { name: "endDate", label: "Date de fin", type: "date", required: true },
+    { name: "status", label: "Statut", type: "select", options: statusOptions(PROJECT_STATUS) },
+    { name: "budget", label: "Budget (Ar)", type: "number", min: 0 },
+    { name: "beneficiaryTarget", label: "Bénéficiaires visés", type: "number", min: 0 },
+    { name: "departmentId", label: "Département", type: "select", lookup: "departments", required: true },
+  ],
+  detail: (p) => [
+    { label: "Code", value: p.code },
+    { label: "Statut", value: <StatusBadge status={p.status} /> },
+    { label: "Département", value: p.department?.name ?? "—" },
+    { label: "Période", value: period(p.startDate, p.endDate) },
+    { label: "Budget", value: fmtMoney(p.budget) },
+    { label: "Bénéficiaires visés", value: p.beneficiaryTarget ?? "—" },
+    { label: "Objectif", value: p.objective || "—" },
+    { label: "Description", value: p.description || "—" },
+  ],
+  titleOf: (p) => p.name,
+  searchOf: (p) => `${p.name} ${p.code} ${p.department?.name ?? ""}`,
+  statusFilter: { field: "status", options: statusOptions(PROJECT_STATUS) },
+  createRoles: PROJECT_WRITERS,
+  editRoles: PROJECT_WRITERS,
+  deleteRoles: ["ADMIN"],
+};
+
+/* ------------------------------------------------------------------ */
+/* ACTIVITÉS                                                            */
+/* ------------------------------------------------------------------ */
+const ACTIVITY_STATUS = ["PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+const ACTIVITY_WRITERS = ["ADMIN", "DIRECTION", "COMMUNICATION", "COORDINATOR", ...TUTEURS];
+
+export const activitiesConfig: ResourceConfig = {
+  title: "Activités",
+  singular: "une activité",
+  basePath: "/activities",
+  endpoint: "/activities",
+  listKey: "activities",
+  itemKey: "activity",
+  columns: [
+    { header: "Activité", render: (a) => <span className="font-medium text-gray-900">{a.title}</span> },
+    { header: "Projet", render: (a) => a.project?.name ?? `#${a.projectId}` },
+    { header: "Lieu", render: (a) => a.location || "—" },
+    { header: "Période", render: (a) => period(a.startDate, a.endDate) },
+    { header: "Budget", render: (a) => fmtMoney(a.budget) },
+    { header: "Statut", render: (a) => <StatusBadge status={a.status} /> },
+  ],
+  fields: [
+    { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true },
+    { name: "title", label: "Titre", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+    { name: "location", label: "Lieu", type: "text" },
+    { name: "startDate", label: "Date de début", type: "date" },
+    { name: "endDate", label: "Date de fin", type: "date" },
+    { name: "status", label: "Statut", type: "select", options: statusOptions(ACTIVITY_STATUS) },
+    { name: "budget", label: "Budget (Ar)", type: "number", min: 0 },
+  ],
+  detail: (a) => [
+    { label: "Projet", value: a.project?.name ?? `#${a.projectId}` },
+    { label: "Statut", value: <StatusBadge status={a.status} /> },
+    { label: "Lieu", value: a.location || "—" },
+    { label: "Période", value: period(a.startDate, a.endDate) },
+    { label: "Budget", value: fmtMoney(a.budget) },
+    { label: "Description", value: a.description || "—" },
+  ],
+  titleOf: (a) => a.title,
+  searchOf: (a) => `${a.title} ${a.project?.name ?? ""} ${a.location ?? ""}`,
+  statusFilter: { field: "status", options: statusOptions(ACTIVITY_STATUS) },
+  createRoles: ACTIVITY_WRITERS,
+  editRoles: ACTIVITY_WRITERS,
+  deleteRoles: ["ADMIN", "DIRECTION", "COORDINATOR"],
+};
+
+/* ------------------------------------------------------------------ */
+/* JALONS                                                               */
+/* ------------------------------------------------------------------ */
+const MILESTONE_WRITERS = ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS];
+
+export const milestonesConfig: ResourceConfig = {
+  title: "Jalons",
+  singular: "un jalon",
+  basePath: "/milestones",
+  endpoint: "/milestones",
+  listKey: "milestones",
+  itemKey: "milestone",
+  columns: [
+    { header: "Jalon", render: (m) => <span className="font-medium text-gray-900">{m.title}</span> },
+    { header: "Projet", render: (m) => m.project?.name ?? `#${m.projectId}` },
+    { header: "Échéance", render: (m) => fmtDate(m.dueDate) },
+    { header: "Progression", render: (m) => <ProgressBar value={m.progress} /> },
+    {
+      header: "Statut",
+      render: (m) => <StatusBadge status={m.completedAt ? "COMPLETED" : "IN_PROGRESS"} />,
+    },
+  ],
+  fields: [
+    { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true, hideOnEdit: true },
+    { name: "title", label: "Titre", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+    { name: "dueDate", label: "Échéance", type: "date", required: true },
+    { name: "progress", label: "Progression (%)", type: "number", min: 0, max: 100 },
+    { name: "completedAt", label: "Date d'achèvement", type: "date", hideOnCreate: true },
+  ],
+  detail: (m) => [
+    { label: "Projet", value: m.project?.name ?? `#${m.projectId}` },
+    { label: "Échéance", value: fmtDate(m.dueDate) },
+    { label: "Progression", value: <ProgressBar value={m.progress} /> },
+    { label: "Terminé le", value: fmtDate(m.completedAt) },
+    { label: "Description", value: m.description || "—" },
+  ],
+  titleOf: (m) => m.title,
+  searchOf: (m) => `${m.title} ${m.project?.name ?? ""}`,
+  createRoles: MILESTONE_WRITERS,
+  editRoles: MILESTONE_WRITERS,
+  deleteRoles: ["ADMIN", "DIRECTION", "COORDINATOR"],
+};
+
+/* ------------------------------------------------------------------ */
+/* BÉNÉFICIAIRES                                                        */
+/* ------------------------------------------------------------------ */
+const BENEFICIARY_WRITERS = ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"];
+
+export const beneficiariesConfig: ResourceConfig = {
+  title: "Bénéficiaires",
+  singular: "un bénéficiaire",
+  basePath: "/beneficiaries",
+  endpoint: "/beneficiaries",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    { header: "Nom", render: (b) => <span className="font-medium text-gray-900">{personName(b)}</span> },
+    { header: "Genre", render: (b) => genderLabel(b.gender) },
+    { header: "Âge", render: (b) => b.age ?? "—" },
+    { header: "Projet", render: (b) => b.project?.name ?? `#${b.projectId}` },
+    { header: "Contact", render: (b) => b.phone || b.email || "—" },
+    {
+      header: "Vulnérable",
+      render: (b) => (
+        <span className={b.vulnerable ? "font-medium text-red-600" : "text-gray-500"}>
+          {b.vulnerable ? "Oui" : "Non"}
+        </span>
+      ),
+    },
+  ],
+  fields: [
+    { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true },
+    { name: "firstName", label: "Prénom", type: "text", required: true },
+    { name: "lastName", label: "Nom", type: "text", required: true },
+    { name: "gender", label: "Genre", type: "select", options: GENDERS },
+    { name: "age", label: "Âge", type: "number", min: 0, max: 120 },
+    { name: "phone", label: "Téléphone", type: "text" },
+    { name: "email", label: "Email", type: "email" },
+    { name: "vulnerable", label: "Personne vulnérable", type: "checkbox" },
+  ],
+  detail: (b) => [
+    { label: "Projet", value: b.project?.name ?? `#${b.projectId}` },
+    { label: "Genre", value: genderLabel(b.gender) },
+    { label: "Âge", value: b.age ?? "—" },
+    { label: "Téléphone", value: b.phone || "—" },
+    { label: "Email", value: b.email || "—" },
+    { label: "Vulnérable", value: b.vulnerable ? "Oui" : "Non" },
+  ],
+  titleOf: (b) => personName(b),
+  searchOf: (b) => `${personName(b)} ${b.project?.name ?? ""} ${b.email ?? ""}`,
+  createRoles: BENEFICIARY_WRITERS,
+  editRoles: BENEFICIARY_WRITERS,
+  deleteRoles: ["ADMIN", "DIRECTION", "COORDINATOR"],
+};
+
+/* ------------------------------------------------------------------ */
+/* ÉVALUATIONS                                                          */
+/* ------------------------------------------------------------------ */
+const EVALUATION_STATUS = ["DRAFT", "SUBMITTED", "VALIDATED"];
+
+export const evaluationsConfig: ResourceConfig = {
+  title: "Évaluations",
+  singular: "une évaluation",
+  basePath: "/evaluations",
+  endpoint: "/evaluations",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    { header: "Évaluation", render: (e) => <span className="font-medium text-gray-900">{e.title}</span> },
+    { header: "Projet", render: (e) => e.project?.name ?? `#${e.projectId}` },
+    { header: "Score", render: (e) => (e.score ?? e.score === 0 ? `${e.score}/100` : "—") },
+    { header: "Date", render: (e) => fmtDate(e.evaluatedAt) },
+    { header: "Évaluateur", render: (e) => personName(e.createdBy) },
+    { header: "Statut", render: (e) => <StatusBadge status={e.status} /> },
+  ],
+  fields: [
+    { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true },
+    { name: "title", label: "Titre", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+    { name: "score", label: "Score (0-100)", type: "number", min: 0, max: 100 },
+    { name: "status", label: "Statut", type: "select", options: statusOptions(EVALUATION_STATUS) },
+    { name: "evaluatedAt", label: "Date d'évaluation", type: "date" },
+  ],
+  detail: (e) => [
+    { label: "Projet", value: e.project?.name ?? `#${e.projectId}` },
+    { label: "Score", value: e.score ?? e.score === 0 ? `${e.score}/100` : "—" },
+    { label: "Statut", value: <StatusBadge status={e.status} /> },
+    { label: "Date", value: fmtDate(e.evaluatedAt) },
+    { label: "Évaluateur", value: personName(e.createdBy) },
+    { label: "Description", value: e.description || "—" },
+  ],
+  titleOf: (e) => e.title,
+  searchOf: (e) => `${e.title} ${e.project?.name ?? ""}`,
+  statusFilter: { field: "status", options: statusOptions(EVALUATION_STATUS) },
+  createRoles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS, ...STAGIAIRES],
+  editRoles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS],
+  deleteRoles: ["ADMIN", "DIRECTION", "COORDINATOR"],
+};
+
+/* ------------------------------------------------------------------ */
+/* STAGES                                                               */
+/* ------------------------------------------------------------------ */
+const INTERNSHIP_STATUS = ["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+const INTERNSHIP_WRITERS = ["ADMIN", "RH", "COORDINATOR", ...TUTEURS];
+
+export const internshipsConfig: ResourceConfig = {
+  title: "Stages",
+  singular: "un stage",
+  basePath: "/internships",
+  endpoint: "/internships",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    { header: "Stage", render: (i) => <span className="font-medium text-gray-900">{i.title}</span> },
+    { header: "Stagiaire", render: (i) => personName(i.student) },
+    { header: "Tuteur", render: (i) => personName(i.supervisor) },
+    { header: "Établissement", render: (i) => i.institution || "—" },
+    { header: "Période", render: (i) => period(i.startDate, i.endDate) },
+    { header: "Statut", render: (i) => <StatusBadge status={i.status} /> },
+  ],
+  fields: [
+    { name: "title", label: "Intitulé du stage", type: "text", required: true },
+    { name: "projectId", label: "Projet", type: "select", lookup: "projects" },
+    { name: "studentId", label: "Stagiaire", type: "select", lookup: "students", required: true },
+    { name: "supervisorId", label: "Tuteur", type: "select", lookup: "tutors" },
+    { name: "institution", label: "Établissement", type: "text" },
+    { name: "startDate", label: "Date de début", type: "date" },
+    { name: "endDate", label: "Date de fin", type: "date" },
+    { name: "status", label: "Statut", type: "select", options: statusOptions(INTERNSHIP_STATUS) },
+    { name: "description", label: "Description", type: "textarea" },
+  ],
+  detail: (i) => [
+    { label: "Stagiaire", value: personName(i.student) },
+    { label: "Tuteur", value: personName(i.supervisor) },
+    { label: "Projet", value: i.project?.name ?? "—" },
+    { label: "Établissement", value: i.institution || "—" },
+    { label: "Période", value: period(i.startDate, i.endDate) },
+    { label: "Statut", value: <StatusBadge status={i.status} /> },
+    { label: "Description", value: i.description || "—" },
+  ],
+  titleOf: (i) => i.title,
+  searchOf: (i) => `${i.title} ${personName(i.student)} ${personName(i.supervisor)} ${i.institution ?? ""}`,
+  statusFilter: { field: "status", options: statusOptions(INTERNSHIP_STATUS) },
+  createRoles: INTERNSHIP_WRITERS,
+  editRoles: INTERNSHIP_WRITERS,
+  deleteRoles: ["ADMIN", "RH"],
+};
+
+/* ------------------------------------------------------------------ */
+/* MEMBRES (comptes utilisateurs du personnel)                          */
+/* ------------------------------------------------------------------ */
+export const membersConfig: ResourceConfig = {
+  title: "Membres",
+  singular: "un membre",
+  basePath: "/members",
+  endpoint: "/members",
+  listKey: "members",
+  itemKey: "member",
+  columns: [
+    { header: "Nom", render: (m) => <span className="font-medium text-gray-900">{personName(m)}</span> },
+    { header: "Email", render: (m) => m.email },
+    { header: "Rôle", render: (m) => roleLabel(m.role) },
+    { header: "Département", render: (m) => m.department?.name ?? "—" },
+    { header: "Statut", render: (m) => <StatusBadge status={m.status} /> },
+  ],
+  fields: [
+    { name: "firstName", label: "Prénom", type: "text", required: true },
+    { name: "lastName", label: "Nom", type: "text", required: true },
+    { name: "email", label: "Email", type: "email", required: true },
+    { name: "phone", label: "Téléphone", type: "text" },
+    { name: "gender", label: "Genre", type: "select", options: GENDERS },
+    {
+      name: "role",
+      label: "Rôle",
+      type: "select",
+      options: ASSIGNABLE_ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] })),
+    },
+    { name: "departmentId", label: "Département", type: "select", lookup: "departments" },
+  ],
+  detail: (m) => [
+    { label: "Email", value: m.email },
+    { label: "Téléphone", value: m.phone || "—" },
+    { label: "Rôle", value: roleLabel(m.role) },
+    { label: "Département", value: m.department?.name ?? "—" },
+    { label: "Statut", value: statusLabel(m.status) },
+    { label: "Fonction", value: m.fonction || "—" },
+    { label: "Matricule", value: m.matricule || "—" },
+    { label: "Localisation", value: m.localisation || "—" },
+  ],
+  titleOf: (m) => personName(m),
+  searchOf: (m) => `${personName(m)} ${m.email} ${roleLabel(m.role)} ${m.department?.name ?? ""}`,
+  statusFilter: {
+    field: "status",
+    options: statusOptions(["ACTIVE", "INACTIVE", "PENDING", "REJECTED"]),
+  },
+  createRoles: ["ADMIN"],
+  createHref: "/users/create",
+  editRoles: ["ADMIN", "RH"],
+  deleteRoles: ["ADMIN", "RH"],
+  deleteMode: "deactivate",
+};
+
+/* ------------------------------------------------------------------ */
+/* DÉPARTEMENTS                                                         */
+/* ------------------------------------------------------------------ */
+export const departementsConfig: ResourceConfig = {
+  title: "Départements",
+  singular: "un département",
+  basePath: "/departements",
+  endpoint: "/departements",
+  listKey: "departments",
+  itemKey: "department",
+  columns: [
+    { header: "Code", render: (d) => d.code },
+    { header: "Nom", render: (d) => <span className="font-medium text-gray-900">{d.name}</span> },
+    { header: "Description", render: (d) => d.description || "—" },
+  ],
+  fields: [
+    { name: "name", label: "Nom", type: "text", required: true },
+    { name: "code", label: "Code", type: "text", required: true },
+    { name: "description", label: "Description", type: "textarea" },
+  ],
+  detail: (d) => [
+    { label: "Code", value: d.code },
+    { label: "Description", value: d.description || "—" },
+    { label: "Créé le", value: fmtDate(d.createdAt) },
+  ],
+  titleOf: (d) => d.name,
+  searchOf: (d) => `${d.name} ${d.code} ${d.description ?? ""}`,
+  createRoles: ["ADMIN", "DSI"],
+  editRoles: ["ADMIN", "DSI"],
+  deleteRoles: ["ADMIN"],
+};

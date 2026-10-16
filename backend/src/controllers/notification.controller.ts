@@ -1,34 +1,48 @@
 import { Request, Response } from "express";
+import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import { getReqUser } from "../utils/dataScope";
 
-type NotificationItem = {
-  id: number;
-  userId: number;
-  title: string;
-  message: string;
-  type: "INFO" | "SUCCESS" | "WARNING" | "ERROR";
-  read: boolean;
-  createdAt: string;
-};
+/**
+ * Notifications persistées en base (table Notification).
+ * Chaque utilisateur ne voit / ne modifie QUE ses propres notifications.
+ */
 
-const notifications: NotificationItem[] = [];
+const NOTIFICATION_TYPES = ["INFO", "SUCCESS", "WARNING", "ERROR"];
 
-let nextNotificationId = 1;
+function unauthorized(res: Response): void {
+  res.status(401).json({
+    success: false,
+    message: "Utilisateur non authentifié",
+  });
+}
+
+function parseId(req: Request, res: Response): number | null {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({
+      success: false,
+      message: "Identifiant notification invalide",
+    });
+    return null;
+  }
+
+  return id;
+}
 
 export async function getNotifications(
   req: Request,
   res: Response,
 ): Promise<void> {
   try {
-    const userId = req.query.userId
-      ? Number(req.query.userId)
-      : undefined;
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
 
-    const data = userId
-      ? notifications.filter(
-          (notification) => notification.userId === userId,
-        )
-      : notifications;
+    const data = await prisma.notification.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    });
 
     res.status(200).json({
       success: true,
@@ -49,19 +63,15 @@ export async function getNotificationById(
   res: Response,
 ): Promise<void> {
   try {
-    const id = Number(req.params.id);
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
 
-    if (Number.isNaN(id)) {
-      res.status(400).json({
-        success: false,
-        message: "Identifiant notification invalide",
-      });
-      return;
-    }
+    const id = parseId(req, res);
+    if (id === null) return;
 
-    const notification = notifications.find(
-      (item) => item.id === id,
-    );
+    const notification = await prisma.notification.findFirst({
+      where: { id, userId: user.id },
+    });
 
     if (!notification) {
       res.status(404).json({
@@ -90,12 +100,7 @@ export async function createNotification(
   res: Response,
 ): Promise<void> {
   try {
-    const {
-      userId,
-      title,
-      message,
-      type,
-    } = req.body;
+    const { userId, title, message, type } = req.body;
 
     if (!userId || !title || !message) {
       res.status(400).json({
@@ -105,17 +110,37 @@ export async function createNotification(
       return;
     }
 
-    const notification: NotificationItem = {
-      id: nextNotificationId++,
-      userId: Number(userId),
-      title,
-      message,
-      type: type ?? "INFO",
-      read: false,
-      createdAt: new Date().toISOString(),
-    };
+    const normalizedType = String(type ?? "INFO").toUpperCase();
 
-    notifications.unshift(notification);
+    if (!NOTIFICATION_TYPES.includes(normalizedType)) {
+      res.status(400).json({
+        success: false,
+        message: "Type de notification invalide",
+      });
+      return;
+    }
+
+    const recipient = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true },
+    });
+
+    if (!recipient) {
+      res.status(404).json({
+        success: false,
+        message: "Destinataire introuvable",
+      });
+      return;
+    }
+
+    const notification = await prisma.notification.create({
+      data: {
+        userId: recipient.id,
+        title: String(title),
+        message: String(message),
+        type: normalizedType as never,
+      },
+    });
 
     res.status(201).json({
       success: true,
@@ -137,21 +162,18 @@ export async function markNotificationAsRead(
   res: Response,
 ): Promise<void> {
   try {
-    const id = Number(req.params.id);
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
 
-    if (Number.isNaN(id)) {
-      res.status(400).json({
-        success: false,
-        message: "Identifiant notification invalide",
-      });
-      return;
-    }
+    const id = parseId(req, res);
+    if (id === null) return;
 
-    const notification = notifications.find(
-      (item) => item.id === id,
-    );
+    const result = await prisma.notification.updateMany({
+      where: { id, userId: user.id },
+      data: { read: true },
+    });
 
-    if (!notification) {
+    if (result.count === 0) {
       res.status(404).json({
         success: false,
         message: "Notification introuvable",
@@ -159,7 +181,9 @@ export async function markNotificationAsRead(
       return;
     }
 
-    notification.read = true;
+    const notification = await prisma.notification.findUnique({
+      where: { id },
+    });
 
     res.status(200).json({
       success: true,
@@ -167,7 +191,7 @@ export async function markNotificationAsRead(
       data: notification,
     });
   } catch (error) {
-    logger.error("Erreur notification lue", error);
+    logger.error("Erreur lecture notification", error);
 
     res.status(500).json({
       success: false,
@@ -181,14 +205,12 @@ export async function markAllNotificationsAsRead(
   res: Response,
 ): Promise<void> {
   try {
-    const userId = req.body.userId
-      ? Number(req.body.userId)
-      : undefined;
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
 
-    notifications.forEach((notification) => {
-      if (!userId || notification.userId === userId) {
-        notification.read = true;
-      }
+    await prisma.notification.updateMany({
+      where: { userId: user.id, read: false },
+      data: { read: true },
     });
 
     res.status(200).json({
@@ -196,7 +218,7 @@ export async function markAllNotificationsAsRead(
       message: "Notifications marquées comme lues",
     });
   } catch (error) {
-    logger.error("Erreur notifications lues", error);
+    logger.error("Erreur lecture notifications", error);
 
     res.status(500).json({
       success: false,
@@ -210,29 +232,23 @@ export async function deleteNotification(
   res: Response,
 ): Promise<void> {
   try {
-    const id = Number(req.params.id);
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
 
-    if (Number.isNaN(id)) {
-      res.status(400).json({
-        success: false,
-        message: "Identifiant notification invalide",
-      });
-      return;
-    }
+    const id = parseId(req, res);
+    if (id === null) return;
 
-    const index = notifications.findIndex(
-      (item) => item.id === id,
-    );
+    const result = await prisma.notification.deleteMany({
+      where: { id, userId: user.id },
+    });
 
-    if (index === -1) {
+    if (result.count === 0) {
       res.status(404).json({
         success: false,
         message: "Notification introuvable",
       });
       return;
     }
-
-    notifications.splice(index, 1);
 
     res.status(200).json({
       success: true,

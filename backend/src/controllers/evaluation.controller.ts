@@ -149,8 +149,10 @@ export async function createEvaluation(
       score,
       status,
       evaluatedAt,
-      createdById,
     } = req.body;
+
+    // Le créateur est toujours l'utilisateur connecté (non falsifiable)
+    const createdById = getReqUser(req)?.id;
 
     if (!projectId || !title || !createdById) {
       res.status(400).json({
@@ -271,7 +273,6 @@ export async function updateEvaluation(
       score,
       status,
       evaluatedAt,
-      createdById,
     } = req.body;
 
     const evaluation = await prisma.evaluation.update({
@@ -292,10 +293,7 @@ export async function updateEvaluation(
               ? new Date(evaluatedAt)
               : null
             : undefined,
-        createdById:
-          createdById !== undefined
-            ? Number(createdById)
-            : undefined,
+        createdById: undefined,
       },
     });
 
