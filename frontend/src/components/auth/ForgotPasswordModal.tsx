@@ -1,12 +1,9 @@
+
 "use client";
 
 import Image from "next/image";
-import {
-  Loader2,
-  Mail,
-  X,
-} from "lucide-react";
 import { FormEvent } from "react";
+import { Loader2, Mail, X } from "lucide-react";
 
 type ForgotPasswordModalProps = {
   forgotEmail: string;
@@ -31,7 +28,8 @@ export default function ForgotPasswordModal({
         type="button"
         onClick={onClose}
         disabled={isLoading}
-        className="absolute right-4 top-4 z-30 rounded-xl bg-white/90 p-2 text-gray-500 shadow hover:text-gray-900"
+        aria-label="Fermer"
+        className="absolute right-4 top-4 z-30 rounded-xl bg-white/90 p-2 text-gray-500 shadow hover:text-gray-900 disabled:opacity-50"
       >
         <X className="h-5 w-5" />
       </button>
@@ -44,6 +42,7 @@ export default function ForgotPasswordModal({
             width={80}
             height={80}
             className="h-20 w-20 rounded-full object-contain"
+            priority
           />
         </div>
 
@@ -52,24 +51,25 @@ export default function ForgotPasswordModal({
         </h2>
 
         <p className="mt-2 text-sm text-blue-50">
-          Recevez un code de vérification par e-mail
+          Recevez un lien sécurisé par e-mail.
         </p>
       </div>
 
-      <form
-        onSubmit={onSubmit}
-        className="space-y-5 p-6 sm:p-8"
-      >
+      <form onSubmit={onSubmit} className="space-y-5 p-6 sm:p-8">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
           <p className="text-sm leading-6 text-blue-700">
-            Entrez l'adresse e-mail associée à votre compte.
-            Un code de vérification à 6 chiffres sera envoyé
-            à cette adresse.
+            Saisissez l’adresse e-mail associée à votre compte.
+            Si un compte existe pour cette adresse, vous recevrez
+            un lien pour créer un nouveau mot de passe.
+            Vérifiez également votre dossier de courriers indésirables.
           </p>
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="forgot-email"
+            className="mb-2 block text-sm font-medium text-gray-700"
+          >
             Adresse e-mail
           </label>
 
@@ -77,6 +77,8 @@ export default function ForgotPasswordModal({
             <Mail className="absolute left-3 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-gray-400" />
 
             <input
+              id="forgot-email"
+              name="email"
               type="email"
               value={forgotEmail}
               onChange={(event) =>
@@ -86,7 +88,7 @@ export default function ForgotPasswordModal({
               autoComplete="email"
               disabled={isLoading}
               required
-              className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-gray-100"
             />
           </div>
         </div>
@@ -94,17 +96,17 @@ export default function ForgotPasswordModal({
         <button
           type="submit"
           disabled={isLoading}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? (
             <>
               <Loader2 className="h-5 w-5 animate-spin" />
-              Envoi du code...
+              Envoi du lien...
             </>
           ) : (
             <>
               <Mail className="h-5 w-5" />
-              Envoyer le code
+              Envoyer le lien
             </>
           )}
         </button>
@@ -114,7 +116,7 @@ export default function ForgotPasswordModal({
             type="button"
             onClick={onLogin}
             disabled={isLoading}
-            className="text-sm font-semibold text-blue-600 hover:underline"
+            className="text-sm font-semibold text-blue-600 hover:underline disabled:opacity-50"
           >
             ← Retour à la connexion
           </button>

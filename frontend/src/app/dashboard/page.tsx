@@ -155,25 +155,25 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-8">
+      <div className="space-y-4">
         {/* ---------- Bandeau d'accueil ---------- */}
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-700 p-8 text-white shadow-xl md:p-10">
+        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-700 p-4 text-white shadow-md sm:p-5">
           <div className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-amber-400/25 blur-3xl" />
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.08]"
             style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "24px 24px" }}
           />
 
-          <div className="relative flex flex-wrap items-end justify-between gap-6">
+          <div className="relative flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm capitalize text-blue-200">{today}</p>
-              <h1 className="mt-1 text-3xl font-bold md:text-4xl">
+              <h1 className="mt-1 text-2xl font-bold md:text-3xl">
                 Bonjour{name ? `, ${name}` : ""} 👋
               </h1>
-              <p className="mt-2 max-w-xl text-blue-100">
+              <p className="mt-1 max-w-xl text-sm text-blue-100">
                 Voici l&apos;impact de Ndao Hifanosika en un coup d&apos;œil — projets, jeunes accompagnés et présence sur le terrain.
               </p>
-              <span className="mt-4 inline-block rounded-full bg-white/15 px-4 py-1.5 text-sm font-medium ring-1 ring-white/20">
+              <span className="mt-2 inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-white/20">
                 {roleLabel(role)}
               </span>
             </div>
@@ -181,7 +181,7 @@ export default function DashboardPage() {
             {canTrack && (
               <Link
                 href="/tracking"
-                className="inline-flex items-center gap-3 rounded-2xl bg-white/10 px-5 py-4 ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
               >
                 <span className="relative flex h-3 w-3">
                   <span className={`absolute inline-flex h-full w-full rounded-full ${connected ? "animate-ping bg-green-400" : "bg-gray-400"} opacity-75`} />
@@ -197,18 +197,56 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {/* ---------- Adresse et carte du siège : visibles par tous les utilisateurs ---------- */}
+        <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
+                <MapPin className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-bold text-gray-900">ONG Ndao Hifanosika</h2>
+                <p className="mt-0.5 text-sm text-gray-600">
+                  Lot 28TB/3609, Talatamaty Ambany, Fianarantsoa 301, Madagascar
+                </p>
+                <p className="text-xs text-gray-500">Siège de l&apos;ONG</p>
+              </div>
+            </div>
+            <a
+              href="https://www.google.com/maps/search/?api=1&query=ONG+Ndao+Hifanosika%2C+Lot+28TB%2F3609%2C+Talatamaty+Ambany%2C+Fianarantsoa+Madagascar"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+            >
+              <MapPin className="h-4 w-4" />
+              Ouvrir dans Google Maps
+            </a>
+          </div>
+
+          <div className="border-t border-gray-100">
+            <iframe
+              title="Localisation du siège de l'ONG Ndao Hifanosika à Fianarantsoa"
+              src="https://maps.google.com/maps?q=ONG%20Ndao%20Hifanosika%2C%20Lot%2028TB%2F3609%2C%20Talatamaty%20Ambany%2C%20Fianarantsoa%20301%2C%20Madagascar&output=embed"
+              className="block h-[260px] w-full sm:h-[320px]"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          </div>
+        </section>
+
         {loading && <p className="text-gray-500">Chargement...</p>}
 
         {/* ---------- Indicateurs ---------- */}
         {data && (
-          <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             {KPIS.map((kpi) => (
               <Link
                 key={kpi.key}
                 href={kpi.href}
-                className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
               >
-                <div className={`mb-4 inline-flex rounded-xl bg-gradient-to-br p-3 text-white shadow-md ${kpi.tone}`}>
+                <div className={`mb-2 inline-flex rounded-lg bg-gradient-to-br p-2 text-white shadow-md ${kpi.tone}`}>
                   <kpi.icon className="h-5 w-5" />
                 </div>
                 <p className="text-3xl font-bold text-gray-900">{data.totals?.[kpi.key] ?? 0}</p>
@@ -220,8 +258,8 @@ export default function DashboardPage() {
 
         {/* ---------- Carte + répartition ---------- */}
         {(zones.length > 0 || canTrack) && (
-          <section className="grid gap-6 xl:grid-cols-[1fr_340px]">
-            <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+          <section className="grid gap-4 xl:grid-cols-[1fr_340px]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-2">
                 <div className="flex items-center gap-3">
                   <div className="rounded-xl bg-blue-100 p-2.5 text-blue-700">
@@ -255,9 +293,9 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4">
               {zones.length > 0 && (
-                <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                   <h3 className="mb-4 font-semibold text-gray-900">Par ville</h3>
                   <div className="space-y-4">
                     {zones.map((zone) => (
@@ -304,7 +342,7 @@ export default function DashboardPage() {
 
         {/* ---------- Stages ---------- */}
         {internships.length > 0 && (
-          <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">
                 {role.startsWith("STAGIAIRE_") ? "Mon stage" : "Stages récents"}
