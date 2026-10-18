@@ -1,74 +1,95 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { MapPin } from "lucide-react";
-import { GoogleMap, MapMarker } from "@/components/maps/GoogleMap";
 
-interface Org {
-  name: string; address: string; latitude: number | null; longitude: number | null;
-  zones: { id: number; name: string; region: string | null; latitude: number; longitude: number; altitude: number | null; beneficiaries: number }[];
-}
+const ORG_NAME = "ONG Ndao Hifanosika";
+const ORG_ADDRESS = "Lot 28TB/3609, Talatamaty Ambany, Fianarantsoa 301, Madagascar";
+const MAPS_QUERY = encodeURIComponent(`${ORG_NAME}, ${ORG_ADDRESS}`);
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-/** Adresse de l'ONG + zones d'intervention (données réelles, publiques, sans données personnelles). */
+interface Zone { id: number; name: string; region: string | null; latitude: number; longitude: number; altitude: number | null }
+
+/**
+ * Même présentation que la carte du tableau de bord (adresse + carte intégrée du siège),
+ * sans clé API ni configuration. Les zones d'intervention (données réelles) s'affichent en dessous.
+ */
 export default function LocationSection() {
-  const [org, setOrg] = useState<Org | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [zones, setZones] = useState<Zone[]>([]);
 
   useEffect(() => {
     fetch(`${API}/public/organization`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => setOrg(j.data))
-      .catch(() => setFailed(true));
+      .then((j) => setZones(j?.data?.zones ?? []))
+      .catch(() => setZones([]));
   }, []);
-
-  const markers = useMemo<MapMarker[]>(() => {
-    if (!org) return [];
-    const list: MapMarker[] = org.zones.map((z) => ({
-      id: `zone-${z.id}`, latitude: z.latitude, longitude: z.longitude, title: z.name, color: "#0d9488",
-      info: `Zone d'intervention${z.altitude != null ? ` — altitude ${z.altitude} m` : ""} — ${z.beneficiaries} bénéficiaire(s)`,
-    }));
-    if (org.latitude != null && org.longitude != null) {
-      list.unshift({ id: "org", latitude: org.latitude, longitude: org.longitude, title: org.name, color: "#1d4ed8", info: org.address || "Siège de l'ONG" });
-    }
-    return list;
-  }, [org]);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-2xl text-center">
         <h2 className="text-3xl font-bold text-gray-900">Où nous trouver</h2>
-        <p className="mt-3 text-gray-600">Notre siège et nos zones d'intervention.</p>
+        <p className="mt-3 text-gray-600">Notre siège et nos zones d&apos;intervention.</p>
       </div>
-      <div className="mt-10 grid gap-6 lg:grid-cols-3">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <MapPin className="mt-0.5 h-5 w-5 text-blue-600" />
-              <div>
-                <p className="font-semibold text-gray-900">{org?.name ?? "Ndao Hifanosika"}</p>
-                <p className="mt-1 text-sm text-gray-600">{org?.address || (failed ? "Adresse indisponible." : "Chargement…")}</p>
-              </div>
+
+      <div className="mt-10 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
+              <MapPin className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-bold text-gray-900">{ORG_NAME}</h3>
+              <p className="mt-0.5 text-sm text-gray-600">{ORG_ADDRESS}</p>
+              <p className="text-xs text-gray-500">Siège de l&apos;ONG</p>
             </div>
           </div>
-          {org && org.zones.length > 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-              <p className="font-semibold text-gray-900">Zones d'intervention</p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-700">
-                {org.zones.map((z) => (
-                  <li key={z.id} className="flex justify-between gap-2">
-                    <span>{z.name}{z.region ? ` · ${z.region}` : ""}</span>
-                    <span className="text-gray-500">{z.altitude != null ? `${z.altitude} m` : ""}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${MAPS_QUERY}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+          >
+            <MapPin className="h-4 w-4" />
+            Ouvrir dans Google Maps
+          </a>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-sm lg:col-span-2">
-          <GoogleMap markers={markers} height={420} />
+
+        <div className="border-t border-gray-100">
+          <iframe
+            title="Localisation du siège de l'ONG Ndao Hifanosika à Fianarantsoa"
+            src={`https://maps.google.com/maps?q=${MAPS_QUERY}&output=embed`}
+            className="block h-[260px] w-full sm:h-[360px]"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
+          />
         </div>
       </div>
+
+      {zones.length > 0 && (
+        <div className="mt-6">
+          <p className="mb-3 text-sm font-semibold text-gray-900">Zones d&apos;intervention</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {zones.map((z) => (
+              <a
+                key={z.id}
+                href={`https://www.google.com/maps/search/?api=1&query=${z.latitude}%2C${z.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+              >
+                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-teal-600" />
+                <span className="text-sm">
+                  <span className="block font-semibold text-gray-900">{z.name}</span>
+                  <span className="text-gray-500">
+                    {[z.region, z.altitude != null ? `${z.altitude} m` : null].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

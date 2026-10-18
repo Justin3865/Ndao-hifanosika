@@ -4,6 +4,7 @@ import { logger } from "../config/logger";
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 
+import { sendError } from "../middlewares/error.middleware";
 const router = Router();
 
 router.use(authenticate);
@@ -43,7 +44,7 @@ router.get("/", authorizeRoles("ADMIN", "DSI"), async (req: Request, res: Respon
     });
   } catch (error) {
     logger.error("Erreur audit", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 

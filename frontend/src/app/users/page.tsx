@@ -29,6 +29,7 @@ import {
   fullName,
   initialsOf,
 } from "@/lib/usersApi";
+import { confirmDialog, toast } from "@/lib/toast";
 
 type UserStatus = "Actif" | "Inactif" | "En attente" | "Rejeté";
 
@@ -154,11 +155,11 @@ export default function UsersPage() {
     if (!user) return;
 
     if (user.roleCode === "ADMIN") {
-      window.alert("Le compte administrateur ne peut pas être supprimé.");
+      toast.warning("Le compte administrateur ne peut pas être supprimé.");
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Voulez-vous vraiment supprimer l'utilisateur "${user.name}" ?`
     );
 
@@ -166,6 +167,7 @@ export default function UsersPage() {
 
     try {
       await deleteUser(id);
+      toast.success("Utilisateur supprimé.");
 
       setUsers((currentUsers) =>
         currentUsers.filter((item) => item.id !== id)
@@ -178,7 +180,7 @@ export default function UsersPage() {
 
       setCurrentPage((page) => Math.min(page, newTotalPages));
     } catch (err) {
-      window.alert(
+      toast.error(
         apiErrorMessage(
           err,
           "Suppression impossible (l'utilisateur est peut-être lié à des projets)."

@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
+import { sendError } from "../middlewares/error.middleware";
 export async function getMembers(
   _req: Request,
   res: Response,
@@ -41,10 +42,7 @@ export async function getMembers(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de récupérer les membres.",
-    });
+    return sendError(res, error, "Impossible de récupérer les membres.");
   }
 }
 
@@ -95,10 +93,7 @@ export async function getMemberById(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -159,10 +154,7 @@ export async function updateMember(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de modifier le membre.",
-    });
+    return sendError(res, error, "Impossible de modifier le membre.");
   }
 }
 
@@ -199,10 +191,7 @@ export async function deactivateMember(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de désactiver le membre.",
-    });
+    return sendError(res, error, "Impossible de désactiver le membre.");
   }
 }
 

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
+import { sendError } from "../middlewares/error.middleware";
 /**
  * Analyses « IA » calculées en direct à partir de la base de données.
  * Méthode : règles + statistiques (moyennes, écart-type). Ce n'est PAS un modèle
@@ -65,8 +66,8 @@ function computePerformance(data: Data) {
       ? (ac.filter((a) => a.status === "COMPLETED").length / ac.length) * 100
       : null;
 
-    const start = new Date(project.startDate).getTime();
-    const end = new Date(project.endDate).getTime();
+    const start = project.startDate ? new Date(project.startDate).getTime() : Number.NaN;
+    const end = project.endDate ? new Date(project.endDate).getTime() : Number.NaN;
     const elapsed = end > start ? clamp(((now - start) / (end - start)) * 100) : 0;
     const scheduleGap =
       milestoneProgress !== null ? round(milestoneProgress - elapsed) : null;
@@ -121,7 +122,7 @@ function computeAnomalies(data: Data) {
   }> = [];
 
   for (const m of data.milestones) {
-    if (!m.completedAt && new Date(m.dueDate).getTime() < now) {
+    if (!m.completedAt && m.dueDate && new Date(m.dueDate).getTime() < now) {
       const days = Math.floor((now - new Date(m.dueDate).getTime()) / DAY);
       anomalies.push({
         type: "OVERDUE_MILESTONE",
@@ -134,7 +135,7 @@ function computeAnomalies(data: Data) {
   }
 
   for (const p of data.projects) {
-    if (p.status === "ACTIVE" && new Date(p.endDate).getTime() < now) {
+    if (p.status === "ACTIVE" && p.endDate && new Date(p.endDate).getTime() < now) {
       anomalies.push({
         type: "PROJECT_OVERDUE",
         severity: "HIGH",
@@ -161,8 +162,8 @@ function computeAnomalies(data: Data) {
 
     const target = Number(p.beneficiaryTarget ?? 0);
     const reached = data.beneficiaries.filter((b) => b.projectId === p.id).length;
-    const start = new Date(p.startDate).getTime();
-    const end = new Date(p.endDate).getTime();
+    const start = p.startDate ? new Date(p.startDate).getTime() : Number.NaN;
+    const end = p.endDate ? new Date(p.endDate).getTime() : Number.NaN;
     const elapsed = end > start ? (now - start) / (end - start) : 0;
 
     if (p.status === "ACTIVE" && target > 0 && elapsed > 0.5 && reached / target < 0.3) {
@@ -249,7 +250,7 @@ function computeDropoutRisk(data: Data) {
       const project = data.projects.find((p) => p.id === b.projectId);
       const perf = performance.find((p) => p.projectId === b.projectId);
       const ms = data.milestones.filter((m) => m.projectId === b.projectId);
-      const overdue = ms.filter((m) => !m.completedAt && new Date(m.dueDate).getTime() < now).length;
+      const overdue = ms.filter((m) => !m.completedAt && m.dueDate && new Date(m.dueDate).getTime() < now).length;
       const overdueRatio = ms.length ? overdue / ms.length : 0;
 
       const factors: string[] = [];
@@ -347,7 +348,7 @@ function handler(compute: (data: Data) => unknown) {
       res.json({ success: true, data: compute(data) });
     } catch (error) {
       logger.error("Erreur analyses IA", error);
-      res.status(500).json({ success: false, message: "Erreur lors du calcul des analyses" });
+      sendError(res, error, "Erreur lors du calcul des analyses");
     }
   };
 }

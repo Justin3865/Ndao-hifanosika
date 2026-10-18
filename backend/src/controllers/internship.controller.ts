@@ -7,6 +7,7 @@ import {
   internshipScope,
 } from "../utils/dataScope";
 
+import { sendError } from "../middlewares/error.middleware";
 export async function getInternships(
   req: Request,
   res: Response,
@@ -76,10 +77,7 @@ export async function getInternships(
   } catch (error) {
     logger.error("Erreur récupération stages", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération des stages",
-    });
+    sendError(res, error, "Erreur lors de la récupération des stages");
   }
 }
 
@@ -149,10 +147,7 @@ export async function getInternshipById(
   } catch (error) {
     logger.error("Erreur récupération stage", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération du stage",
-    });
+    sendError(res, error, "Erreur lors de la récupération du stage");
   }
 }
 
@@ -177,6 +172,14 @@ export async function createInternship(
       res.status(400).json({
         success: false,
         message: "studentId, title et startDate sont obligatoires",
+      });
+      return;
+    }
+
+    if (endDate && new Date(endDate).getTime() < new Date(startDate).getTime()) {
+      res.status(400).json({
+        success: false,
+        message: "La date de fin doit être postérieure à la date de début.",
       });
       return;
     }
@@ -270,10 +273,7 @@ export async function createInternship(
   } catch (error) {
     logger.error("Erreur création stage", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la création du stage",
-    });
+    sendError(res, error, "Erreur lors de la création du stage");
   }
 }
 
@@ -316,6 +316,20 @@ export async function updateInternship(
       description,
     } = req.body;
 
+    {
+      const effectiveStart = startDate ? new Date(startDate) : existing.startDate;
+      const effectiveEnd =
+        endDate !== undefined ? (endDate ? new Date(endDate) : null) : existing.endDate;
+
+      if (effectiveEnd && effectiveStart && effectiveEnd.getTime() < effectiveStart.getTime()) {
+        res.status(400).json({
+          success: false,
+          message: "La date de fin doit être postérieure à la date de début.",
+        });
+        return;
+      }
+    }
+
     const internship = await prisma.internship.update({
       where: { id },
       data: {
@@ -355,10 +369,7 @@ export async function updateInternship(
   } catch (error) {
     logger.error("Erreur modification stage", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la modification du stage",
-    });
+    sendError(res, error, "Erreur lors de la modification du stage");
   }
 }
 
@@ -400,9 +411,6 @@ export async function deleteInternship(
   } catch (error) {
     logger.error("Erreur suppression stage", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la suppression du stage",
-    });
+    sendError(res, error, "Erreur lors de la suppression du stage");
   }
 }

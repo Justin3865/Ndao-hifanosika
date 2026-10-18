@@ -12,6 +12,7 @@ import {
   deleteMilestone as deleteMilestoneService,
 } from "../services/milestone.service";
 
+import { sendError } from "../middlewares/error.middleware";
 /**
  * Récupère l'utilisateur authentifié depuis le JWT.
  */
@@ -122,10 +123,7 @@ export async function getMilestones(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de récupérer les jalons.",
-    });
+    return sendError(res, error, "Impossible de récupérer les jalons.");
   }
 }
 
@@ -190,10 +188,7 @@ export async function getMilestoneById(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -353,10 +348,7 @@ export async function createMilestone(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de créer le jalon.",
-    });
+    return sendError(res, error, "Impossible de créer le jalon.");
   }
 }
 
@@ -558,11 +550,7 @@ export async function updateMilestone(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de modifier le jalon.",
-    });
+    return sendError(res, error, "Impossible de modifier le jalon.");
   }
 }
 
@@ -637,11 +625,7 @@ export async function deleteMilestone(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de supprimer le jalon.",
-    });
+    return sendError(res, error, "Impossible de supprimer le jalon.");
   }
 }
 

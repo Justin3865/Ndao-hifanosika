@@ -1,0 +1,68 @@
+A AJOUTER dans prisma/schema.prisma (puis: npx prisma migrate deploy && npx prisma generate)
+
+model User {
+  ...
+  notifyEmail       Boolean   @default(true)
+  notifySms         Boolean   @default(true)
+  latitude          Float?
+  longitude         Float?
+  altitude          Float?
+  locationUpdatedAt DateTime?
+  sharingLocation   Boolean   @default(false)
+}
+
+model Beneficiary {
+  ...
+  locality       String?
+  zoneId         Int?
+  homeLatitude   Float?
+  homeLongitude  Float?
+  homeAltitude   Float?
+  householdSize  Int?
+  monthlyIncome  Float?
+  childrenUnder5 Int?
+  hasDisability  Boolean @default(false)
+}
+
+model Zone {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
+  region         String?
+  latitude       Float
+  longitude      Float
+  radiusKm       Float?
+  address        String?
+  phone          String?
+  email          String?
+  isHeadquarters Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Certificate {
+  id           Int       @id @default(autoincrement())
+  code         String    @unique
+  type         String
+  holderName   String
+  holderEmail  String?
+  title        String
+  description  String?
+  startDate    DateTime?
+  endDate      DateTime?
+  internshipId Int?
+  userId       Int?
+  issuedById   Int?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+model AiModel {
+  id         Int      @id @default(autoincrement())
+  name       String
+  kind       String
+  sampleSize Int
+  metrics    Json
+  weights    Json
+  trainedAt  DateTime @default(now())
+}

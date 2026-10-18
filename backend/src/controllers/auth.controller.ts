@@ -1,11 +1,13 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { createHash, randomBytes, randomInt } from "node:crypto";
-import { isEmail, normalizePhone, sendEmail, sendSms } from "../services/delivery.service";
 import jwt from "jsonwebtoken";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import { isSmsConfigured, normalizePhone, sendSms } from "../utils/sms";
 
+import { sendError } from "../middlewares/error.middleware";
+import { isValidEmail } from "../validators";
 interface JwtPayload {
   userId: number;
   email: string;
@@ -34,7 +36,7 @@ function generateAccessToken(user: {
   };
 
   return jwt.sign(payload, getJwtSecret(), {
-    expiresIn: "1d",
+    expiresIn: (process.env.JWT_EXPIRES_IN || "1d") as jwt.SignOptions["expiresIn"],
   });
 }
 
@@ -56,7 +58,7 @@ function generateRefreshToken(user: {
   };
 
   return jwt.sign(payload, getRefreshSecret(), {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+    expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || "7d") as jwt.SignOptions["expiresIn"],
   });
 }
 
@@ -181,10 +183,7 @@ export async function login(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -244,6 +243,20 @@ export async function register(
     const normalizedEmail = String(email)
       .trim()
       .toLowerCase();
+
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "L'adresse e-mail est invalide.",
+      });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Le mot de passe doit contenir au moins 8 caractères.",
+      });
+    }
 
     const existingUser =
       await prisma.user.findUnique({
@@ -338,10 +351,7 @@ export async function register(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -516,10 +526,7 @@ export async function me(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -575,112 +582,177 @@ const hashResetToken = (token: string) =>
 const hashRefreshToken = (token: string) =>
   createHash("sha256").update(token).digest("hex");
 
-const hashCode = (userId: number, code: string) =>
-  createHash("sha256")
-    .update(`${userId}:${code}:${process.env.JWT_SECRET ?? ""}`)
-    .digest("hex");
-
-/** Retrouve un compte par e-mail OU numéro de téléphone. */
-async function findUserByIdentifier(identifier: string) {
-  if (isEmail(identifier)) {
-    return prisma.user.findUnique({
-      where: { email: identifier.toLowerCase() },
-      select: { id: true, email: true, phone: true, status: true },
-    });
+async function sendResetEmail(email: string, token: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESET_EMAIL_FROM;
+  if (!apiKey || !from) {
+    throw new Error("RESEND_API_KEY et RESET_EMAIL_FROM doivent être configurés pour l'envoi des e-mails.");
   }
-  const phone = normalizePhone(identifier);
-  if (!phone) return null;
-  const candidates = [phone, `0${phone.slice(4)}`, phone.slice(1)];
-  return prisma.user.findFirst({
-    where: { phone: { in: candidates } },
-    select: { id: true, email: true, phone: true, status: true },
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const link = `${frontendUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject: "Réinitialisation de votre mot de passe — Ndao Hifanosika",
+      text: `Une demande de réinitialisation a été effectuée. Ce lien expire dans 30 minutes : ${link}. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
+    }),
   });
+  if (!response.ok) throw new Error(`Échec de l'envoi du courriel (HTTP ${response.status}).`);
 }
 
-/**
- * POST /api/auth/forgot-password  { identifier, channel?: "email" | "sms" }
- * Envoie un code à 6 chiffres (valable 10 min) par e-mail ou SMS.
- */
+// ============================================================
+// RÉINITIALISATION PAR SMS — code à 6 chiffres (10 min, 5 essais)
+// ============================================================
+
+const hashSmsCode = (userId: number, code: string) =>
+  createHash("sha256").update(`sms:${userId}:${code}`).digest("hex");
+
+async function findActiveUserByPhone(rawPhone: string) {
+  const wanted = normalizePhone(rawPhone);
+  if (!wanted) return null;
+
+  const candidates = await prisma.user.findMany({
+    where: { phone: { not: null }, status: "ACTIVE" },
+    select: { id: true, phone: true },
+  });
+
+  return candidates.find((user) => normalizePhone(user.phone) === wanted) ?? null;
+}
+
+async function forgotPasswordBySms(req: Request, res: Response, generic: object): Promise<Response> {
+  const rawPhone = String(req.body?.phone || "");
+
+  if (!normalizePhone(rawPhone)) {
+    return res.status(400).json({ success: false, message: "Numéro de téléphone invalide." });
+  }
+
+  if (!isSmsConfigured()) {
+    return res.status(503).json({ success: false, code: "SMS_DELIVERY_UNAVAILABLE", message: "L'envoi de SMS n'est pas configuré. Contactez l'administrateur." });
+  }
+
+  const user = await findActiveUserByPhone(rawPhone);
+  // Réponse identique pour ne pas révéler l'existence d'un compte.
+  if (!user) return res.status(200).json(generic);
+
+  const recent = await prisma.passwordResetToken.count({
+    where: { userId: user.id, expiresAt: { gt: new Date(Date.now() - 50 * 60 * 1000) } },
+  });
+  if (recent >= 4) {
+    return res.status(429).json({ success: false, message: "Trop de demandes. Réessayez dans une heure." });
+  }
+
+  const code = String(randomInt(100000, 1000000));
+
+  await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+  await prisma.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashSmsCode(user.id, code),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  });
+
+  const sent = await sendSms(
+    String(user.phone),
+    `Ndao Hifanosika : votre code de verification est ${code}. Il expire dans 10 minutes. Ne le partagez jamais.`,
+  );
+
+  if (!sent) {
+    await prisma.passwordResetToken.deleteMany({ where: { tokenHash: hashSmsCode(user.id, code) } });
+    return res.status(503).json({ success: false, code: "SMS_DELIVERY_UNAVAILABLE", message: "Le SMS n'a pas pu être envoyé. Réessayez plus tard." });
+  }
+
+  return res.status(200).json(generic);
+}
+
+async function verifySmsCode(req: Request, res: Response): Promise<Response> {
+  const invalid = { success: false, message: "Code incorrect ou expiré." };
+  const code = String(req.body?.code || "").trim();
+
+  if (!/^\d{6}$/.test(code)) return res.status(400).json(invalid);
+
+  const user = await findActiveUserByPhone(String(req.body?.phone || ""));
+  if (!user) return res.status(400).json(invalid);
+
+  const record = await prisma.passwordResetToken.findFirst({
+    where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { expiresAt: "desc" },
+  });
+
+  if (!record || record.attempts >= 5) return res.status(400).json(invalid);
+
+  if (record.tokenHash !== hashSmsCode(user.id, code)) {
+    await prisma.passwordResetToken.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+    return res.status(400).json(invalid);
+  }
+
+  // Code valide : on le consomme et on délivre un jeton de réinitialisation (30 min)
+  const rawToken = randomBytes(32).toString("hex");
+
+  await prisma.$transaction([
+    prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+    prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashResetToken(rawToken),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      },
+    }),
+  ]);
+
+  return res.status(200).json({ success: true, token: rawToken, message: "Code vérifié." });
+}
+
 export async function forgotPassword(req: Request, res: Response): Promise<Response> {
-  const generic = {
-    success: true,
-    message: "Si ce compte existe, un code de vérification vient d'être envoyé.",
-  };
+  const generic = { success: true, message: "Si cette adresse correspond à un compte, un lien de réinitialisation sera envoyé." };
   try {
-    const identifier = String(req.body?.identifier ?? req.body?.email ?? "").trim();
-    if (!identifier || identifier.length > 254 || (!isEmail(identifier) && !normalizePhone(identifier))) {
-      return res.status(400).json({ success: false, message: "Adresse e-mail ou numéro de téléphone invalide." });
+    if (req.body?.phone) return await forgotPasswordBySms(req, res, generic);
+
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: "Adresse e-mail invalide." });
     }
-    const user = await findUserByIdentifier(identifier);
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, status: true } });
+    // Réponse identique pour éviter de révéler l'existence d'un compte.
     if (!user || user.status !== "ACTIVE") return res.status(200).json(generic);
-
-    const channel: "email" | "sms" =
-      req.body?.channel === "sms" || (!isEmail(identifier) && req.body?.channel !== "email") ? "sms" : "email";
-    if (channel === "sms" && !user.phone) {
-      return res.status(400).json({ success: false, message: "Aucun numéro de téléphone n'est enregistré pour ce compte." });
-    }
-
-    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const rawToken = randomBytes(32).toString("hex");
     await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
-    await prisma.passwordResetToken.create({
-      data: { userId: user.id, tokenHash: hashCode(user.id, code), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
-    });
-
-    const text = `Votre code de réinitialisation Ndao Hifanosika est ${code}. Il expire dans 10 minutes. Ne le communiquez à personne.`;
+    await prisma.passwordResetToken.create({ data: {
+      userId: user.id,
+      tokenHash: hashResetToken(rawToken),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+    } });
     try {
-      if (channel === "sms") await sendSms(user.phone!, text);
-      else await sendEmail(user.email, "Code de réinitialisation — Ndao Hifanosika", text);
-    } catch (deliveryError) {
-      await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
-      logger.error("Échec d'envoi du code de réinitialisation.", deliveryError);
-      return res.status(503).json({
-        success: false,
-        code: "DELIVERY_UNAVAILABLE",
-        message: "L'envoi du code est indisponible. Contactez l'administrateur.",
-      });
+      await sendResetEmail(user.email, rawToken);
+    } catch (emailError) {
+      await prisma.passwordResetToken.deleteMany({ where: { tokenHash: hashResetToken(rawToken) } });
+      logger.error("Échec d'envoi du courriel de réinitialisation.", emailError);
+      return res.status(503).json({ success: false, code: "EMAIL_DELIVERY_UNAVAILABLE", message: "Le service d'envoi d'e-mail est indisponible. Contactez l'administrateur." });
     }
     return res.status(200).json(generic);
   } catch (error) {
     logger.error("Erreur lors de la demande de réinitialisation.", error);
-    return res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
-/**
- * POST /api/auth/verify-reset-code  { identifier, code }
- * Code correct => renvoie un resetToken à usage unique (30 min)
- * à transmettre à POST /api/auth/reset-password { token, newPassword }.
- */
 export async function verifyResetCode(req: Request, res: Response): Promise<Response> {
-  const invalid = { success: false, message: "Code invalide ou expiré." };
   try {
-    const identifier = String(req.body?.identifier ?? req.body?.email ?? "").trim();
-    const code = String(req.body?.code ?? "").trim();
-    if (!/^\d{6}$/.test(code)) return res.status(400).json(invalid);
-    const user = await findUserByIdentifier(identifier);
-    if (!user || user.status !== "ACTIVE") return res.status(400).json(invalid);
+    if (req.body?.phone && req.body?.code) return await verifySmsCode(req, res);
 
-    const record = await prisma.passwordResetToken.findFirst({
-      where: { userId: user.id, usedAt: null },
-      orderBy: { createdAt: "desc" },
-    });
-    if (!record || record.expiresAt <= new Date() || record.attempts >= 5) return res.status(400).json(invalid);
-    if (record.tokenHash !== hashCode(user.id, code)) {
-      await prisma.passwordResetToken.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
-      return res.status(400).json(invalid);
+    const token = String(req.body?.token || "");
+    if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(400).json({ success: false, message: "Lien de réinitialisation invalide ou expiré." });
+    const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashResetToken(token) } });
+    if (!record || record.usedAt || record.expiresAt <= new Date() || record.attempts >= 5) {
+      return res.status(400).json({ success: false, message: "Lien de réinitialisation invalide ou expiré." });
     }
-
-    const resetToken = randomBytes(32).toString("hex");
-    await prisma.$transaction([
-      prisma.passwordResetToken.delete({ where: { id: record.id } }),
-      prisma.passwordResetToken.create({
-        data: { userId: user.id, tokenHash: hashResetToken(resetToken), expiresAt: new Date(Date.now() + 30 * 60 * 1000) },
-      }),
-    ]);
-    return res.status(200).json({ success: true, message: "Code vérifié.", data: { resetToken } });
+    return res.status(200).json({ success: true, message: "Lien de réinitialisation valide." });
   } catch (error) {
-    logger.error("Erreur lors de la vérification du code.", error);
-    return res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+    logger.error("Erreur lors de la vérification du jeton de réinitialisation.", error);
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -706,6 +778,6 @@ export async function resetPassword(req: Request, res: Response): Promise<Respon
     return res.status(200).json({ success: true, message: "Mot de passe réinitialisé avec succès. Vous pouvez vous connecter." });
   } catch (error) {
     logger.error("Erreur lors de la réinitialisation du mot de passe.", error);
-    return res.status(500).json({ success: false, message: "Erreur interne du serveur." });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }

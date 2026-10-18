@@ -74,6 +74,14 @@ export async function deleteUser(id: string | number): Promise<void> {
   await api.delete(`/users/${id}`);
 }
 
+export async function activateUser(id: string | number): Promise<void> {
+  await api.patch(`/users/${id}/activate`);
+}
+
+export async function rejectUser(id: string | number): Promise<void> {
+  await api.patch(`/users/${id}/reject`);
+}
+
 export function fullName(user: Pick<ApiUser, "firstName" | "lastName">) {
   return `${user.firstName} ${user.lastName}`.trim();
 }

@@ -3,6 +3,7 @@ import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 
+import { sendError } from "../middlewares/error.middleware";
 function getAuthUser(req: Request) {
   return (req as AuthenticatedRequest).user;
 }
@@ -143,10 +144,7 @@ export async function getActivities(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de récupérer les activités.",
-    });
+    return sendError(res, error, "Impossible de récupérer les activités.");
   }
 }
 
@@ -226,10 +224,7 @@ export async function getActivityById(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -443,10 +438,7 @@ export async function createActivity(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de créer l'activité.",
-    });
+    return sendError(res, error, "Impossible de créer l'activité.");
   }
 }
 
@@ -724,10 +716,7 @@ export async function updateActivity(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de modifier l'activité.",
-    });
+    return sendError(res, error, "Impossible de modifier l'activité.");
   }
 }
 
@@ -811,9 +800,6 @@ export async function deleteActivity(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de supprimer l'activité.",
-    });
+    return sendError(res, error, "Impossible de supprimer l'activité.");
   }
 }

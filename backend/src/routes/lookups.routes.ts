@@ -3,7 +3,9 @@ import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { authenticate } from "../middlewares/auth.middleware";
 import { getReqUser } from "../utils/dataScope";
+import { db } from "../utils/db";
 
+import { sendError } from "../middlewares/error.middleware";
 /**
  * GET /api/lookups/:kind
  * Listes légères (id + libellé) pour alimenter les listes déroulantes.
@@ -44,6 +46,21 @@ router.get("/:kind", async (req: Request, res: Response) => {
           id: row.id,
           label: `${row.code} — ${row.name}`,
         })),
+      });
+    }
+
+    if (kind === "zones") {
+      if (isStudent) return forbidden();
+
+      const rows = (await db.zone.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      })) as Array<{ id: number; name: string }>;
+
+      return res.json({
+        success: true,
+        data: rows.map((row) => ({ id: row.id, label: row.name })),
       });
     }
 
@@ -108,10 +125,7 @@ router.get("/:kind", async (req: Request, res: Response) => {
   } catch (error) {
     logger.error("Erreur lookups", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur lors du chargement de la liste.",
-    });
+    return sendError(res, error, "Erreur lors du chargement de la liste.");
   }
 });
 

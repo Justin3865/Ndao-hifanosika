@@ -123,8 +123,16 @@ router.delete(
   "/:id",
   authorizeRoles(
     "ADMIN",
+    "DIRECTION",
     "DSI",
+    "DAF",
     "RH",
+    "COMMUNICATION",
+    "COORDINATOR",
+    "TUTEUR_L3",
+    "TUTEUR_M2",
+    "STAGIAIRE_L3",
+    "STAGIAIRE_M2",
   ),
   deleteNotification,
 );

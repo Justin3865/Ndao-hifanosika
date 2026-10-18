@@ -14,11 +14,37 @@ import {
   getItem,
   saveItem,
 } from "@/lib/crud";
+import { confirmDialog, toast } from "@/lib/toast";
+import { GeoPicker } from "@/components/maps/GeoPicker";
 
 type Values = Record<string, string | boolean>;
 
 const inputClass =
   "w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+
+const geoKeys = (field: FieldDef) => ({
+  lat: field.geoNames?.lat ?? `${field.name}Latitude`,
+  lng: field.geoNames?.lng ?? `${field.name}Longitude`,
+  alt: field.geoNames?.alt ?? `${field.name}Altitude`,
+});
+
+function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
+  if (field.type === "geo") {
+    const k = geoKeys(field);
+    return [[k.lat, ""], [k.lng, ""], [k.alt, ""]];
+  }
+
+  return [[field.name, field.defaultValue ?? (field.type === "checkbox" ? false : "")]];
+}
+
+function loadedEntries(field: FieldDef, item: Record<string, unknown>): Array<[string, string | boolean]> {
+  if (field.type === "geo") {
+    const k = geoKeys(field);
+    return [k.lat, k.lng, k.alt].map((key) => [key, item?.[key] === null || item?.[key] === undefined ? "" : String(item[key])]);
+  }
+
+  return [[field.name, toFormValue(field, item?.[field.name])]];
+}
 
 function toFormValue(field: FieldDef, raw: unknown): string | boolean {
   if (field.type === "checkbox") return Boolean(raw);
@@ -56,9 +82,7 @@ export function ResourceFormPage({
   );
 
   const [values, setValues] = useState<Values>(() =>
-    Object.fromEntries(
-      fields.map((field) => [field.name, field.type === "checkbox" ? false : ""])
-    )
+    Object.fromEntries(fields.flatMap(initialEntries))
   );
   const [lookups, setLookups] = useState<Record<string, LookupItem[] | null>>({});
   const [loading, setLoading] = useState(isEdit);
@@ -86,9 +110,7 @@ export function ResourceFormPage({
     getItem(config, id)
       .then((item) => {
         setValues(
-          Object.fromEntries(
-            fields.map((field) => [field.name, toFormValue(field, item?.[field.name])])
-          )
+          Object.fromEntries(fields.flatMap((field) => loadedEntries(field, item)))
         );
       })
       .catch((err) => setError(errorMessage(err, "Élément introuvable.")))
@@ -115,6 +137,17 @@ export function ResourceFormPage({
     const payload: Record<string, unknown> = {};
 
     for (const field of fields) {
+      if (field.type === "geo") {
+        const k = geoKeys(field);
+
+        [k.lat, k.lng, k.alt].forEach((key) => {
+          const text = String(values[key] ?? "").trim();
+          if (text !== "" && Number.isFinite(Number(text))) payload[key] = Number(text);
+        });
+
+        continue;
+      }
+
       const value = toPayloadValue(field, values[field.name]);
       if (value !== undefined) payload[field.name] = value;
     }
@@ -123,6 +156,7 @@ export function ResourceFormPage({
 
     try {
       await saveItem(config, isEdit ? (id as string) : null, payload);
+      toast.success(isEdit ? "Modification enregistrée." : "Élément créé avec succès.");
       router.push(config.basePath);
     } catch (err) {
       setError(errorMessage(err, "Enregistrement impossible."));
@@ -133,6 +167,27 @@ export function ResourceFormPage({
 
   const renderField = (field: FieldDef) => {
     const value = values[field.name];
+
+    if (field.type === "geo") {
+      const k = geoKeys(field);
+
+      return (
+        <div className="space-y-1 text-sm font-medium text-gray-700">
+          {field.label}
+          <GeoPicker
+            value={{
+              latitude: String(values[k.lat] ?? ""),
+              longitude: String(values[k.lng] ?? ""),
+              altitude: String(values[k.alt] ?? ""),
+            }}
+            withAltitude={Boolean(field.geoNames?.alt) || !field.geoNames}
+            onChange={(next) =>
+              setValues((cur) => ({ ...cur, [k.lat]: next.latitude, [k.lng]: next.longitude, [k.alt]: next.altitude }))
+            }
+          />
+        </div>
+      );
+    }
 
     if (field.type === "checkbox") {
       return (
@@ -250,7 +305,7 @@ export function ResourceFormPage({
                 <div
                   key={field.name}
                   className={
-                    field.full || field.type === "textarea" ? "md:col-span-2" : ""
+                    field.full || field.type === "textarea" || field.type === "geo" ? "md:col-span-2" : ""
                   }
                 >
                   {renderField(field)}

@@ -1,6 +1,7 @@
 import http from "http";
 import app from "./app";
 import { initSocket } from "./realtime/socket";
+import { ensureDefaultZones } from "./routes/zones.routes";
 import { env } from "./config/env";
 import {
   connectDatabase,
@@ -14,6 +15,7 @@ async function startServer() {
 
     const server = http.createServer(app);
     initSocket(server);
+    void ensureDefaultZones();
 
     server.listen(env.PORT, () => {
       logger.success(

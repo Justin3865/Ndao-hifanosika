@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
+import { sendError } from "../middlewares/error.middleware";
 export async function getDashboardReport(
   req: Request,
   res: Response,
@@ -73,10 +74,7 @@ export async function getDashboardReport(
   } catch (error) {
     logger.error("Erreur rapport dashboard", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la génération du rapport dashboard",
-    });
+    sendError(res, error, "Erreur lors de la génération du rapport dashboard");
   }
 }
 
@@ -162,10 +160,7 @@ export async function getProjectReport(
   } catch (error) {
     logger.error("Erreur rapport projet", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la génération du rapport projet",
-    });
+    sendError(res, error, "Erreur lors de la génération du rapport projet");
   }
 }
 
@@ -227,10 +222,7 @@ export async function getEvaluationReport(
   } catch (error) {
     logger.error("Erreur rapport évaluations", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la génération du rapport des évaluations",
-    });
+    sendError(res, error, "Erreur lors de la génération du rapport des évaluations");
   }
 }
 
@@ -285,9 +277,6 @@ export async function getBeneficiaryReport(
   } catch (error) {
     logger.error("Erreur rapport bénéficiaires", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la génération du rapport des bénéficiaires",
-    });
+    sendError(res, error, "Erreur lors de la génération du rapport des bénéficiaires");
   }
 }

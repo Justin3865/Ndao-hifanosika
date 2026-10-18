@@ -200,6 +200,7 @@ export const beneficiariesConfig: ResourceConfig = {
     { header: "Genre", render: (b) => genderLabel(b.gender) },
     { header: "Âge", render: (b) => b.age ?? "—" },
     { header: "Projet", render: (b) => b.project?.name ?? `#${b.projectId}` },
+    { header: "Localité", render: (b) => b.locality || "—" },
     { header: "Contact", render: (b) => b.phone || b.email || "—" },
     {
       header: "Vulnérable",
@@ -219,6 +220,13 @@ export const beneficiariesConfig: ResourceConfig = {
     { name: "phone", label: "Téléphone", type: "text" },
     { name: "email", label: "Email", type: "email" },
     { name: "vulnerable", label: "Personne vulnérable", type: "checkbox" },
+    { name: "locality", label: "Localité / fokontany (ex. Ankalamavony)", type: "text" },
+    { name: "zoneId", label: "Zone d'intervention", type: "select", lookup: "zones" },
+    { name: "householdSize", label: "Taille du ménage (personnes)", type: "number", min: 1, max: 40 },
+    { name: "monthlyIncome", label: "Revenu mensuel du ménage (Ar)", type: "number", min: 0 },
+    { name: "childrenUnder5", label: "Enfants de moins de 5 ans", type: "number", min: 0, max: 20 },
+    { name: "hasDisability", label: "Personne en situation de handicap dans le ménage", type: "checkbox" },
+    { name: "home", label: "Domicile du ménage (carte)", type: "geo", full: true },
   ],
   detail: (b) => [
     { label: "Projet", value: b.project?.name ?? `#${b.projectId}` },
@@ -227,6 +235,18 @@ export const beneficiariesConfig: ResourceConfig = {
     { label: "Téléphone", value: b.phone || "—" },
     { label: "Email", value: b.email || "—" },
     { label: "Vulnérable", value: b.vulnerable ? "Oui" : "Non" },
+    { label: "Localité", value: b.locality || "—" },
+    { label: "Taille du ménage", value: b.householdSize ?? "—" },
+    { label: "Revenu mensuel", value: fmtMoney(b.monthlyIncome) },
+    { label: "Enfants < 5 ans", value: b.childrenUnder5 ?? "—" },
+    { label: "Handicap", value: b.hasDisability ? "Oui" : "Non" },
+    {
+      label: "Domicile (GPS)",
+      value:
+        b.homeLatitude !== null && b.homeLatitude !== undefined
+          ? `${Number(b.homeLatitude).toFixed(5)}, ${Number(b.homeLongitude).toFixed(5)} · ${b.homeAltitude ?? "?"} m`
+          : "Non renseigné",
+    },
   ],
   titleOf: (b) => personName(b),
   extra: (b) => <TrackingPanel beneficiaryId={b.id} />,
@@ -505,4 +525,100 @@ export const campaignsConfig: ResourceConfig = {
   createRoles: EVAL_CONFIG_ROLES,
   editRoles: EVAL_CONFIG_ROLES,
   deleteRoles: ["ADMIN", "DIRECTION"],
+};
+
+/* ------------------------------------------------------------------ */
+/* ZONES D'INTERVENTION                                                 */
+/* ------------------------------------------------------------------ */
+export const zonesConfig: ResourceConfig = {
+  title: "Zones d'intervention",
+  subtitle: "Villes et régions où l'ONG intervient — affichées sur la carte et la page d'accueil.",
+  singular: "une zone",
+  basePath: "/zones",
+  endpoint: "/zones",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    {
+      header: "Zone",
+      render: (z) => (
+        <span className="font-medium text-gray-900">
+          {z.name}
+          {z.isHeadquarters && (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Siège</span>
+          )}
+        </span>
+      ),
+    },
+    { header: "Région", render: (z) => z.region || "—" },
+    { header: "Adresse", render: (z) => z.address || "—" },
+    { header: "Coordonnées", render: (z) => `${Number(z.latitude).toFixed(4)}, ${Number(z.longitude).toFixed(4)}` },
+    { header: "Statut", render: (z) => <StatusBadge status={z.isActive ? "ACTIVE" : "INACTIVE"} /> },
+  ],
+  fields: [
+    { name: "name", label: "Nom de la zone (ex. Toamasina)", type: "text", required: true },
+    { name: "region", label: "Région", type: "text" },
+    { name: "address", label: "Adresse postale", type: "text", full: true },
+    { name: "phone", label: "Téléphone", type: "text" },
+    { name: "email", label: "Email", type: "email" },
+    { name: "radiusKm", label: "Rayon d'intervention (km)", type: "number", min: 0 },
+    { name: "center", label: "Position (cliquez sur la carte)", type: "geo", geoNames: { lat: "latitude", lng: "longitude" }, full: true },
+    { name: "isHeadquarters", label: "Siège de l'ONG (affiché sur la page d'accueil)", type: "checkbox" },
+    { name: "isActive", label: "Zone active", type: "checkbox", defaultValue: true },
+  ],
+  detail: (z) => [
+    { label: "Région", value: z.region || "—" },
+    { label: "Adresse", value: z.address || "—" },
+    { label: "Téléphone", value: z.phone || "—" },
+    { label: "Email", value: z.email || "—" },
+    { label: "Coordonnées", value: `${Number(z.latitude).toFixed(5)}, ${Number(z.longitude).toFixed(5)}` },
+    { label: "Rayon", value: z.radiusKm ? `${z.radiusKm} km` : "—" },
+    { label: "Siège", value: z.isHeadquarters ? "Oui" : "Non" },
+  ],
+  titleOf: (z) => z.name,
+  searchOf: (z) => `${z.name} ${z.region ?? ""} ${z.address ?? ""}`,
+  createRoles: ["ADMIN", "DIRECTION"],
+  editRoles: ["ADMIN", "DIRECTION"],
+  deleteRoles: ["ADMIN"],
+};
+
+/* ------------------------------------------------------------------ */
+/* CERTIFICATS (création via une page dédiée)                           */
+/* ------------------------------------------------------------------ */
+const CERT_TYPES: Record<string, string> = {
+  INTERNSHIP: "Stage",
+  VOLUNTEER: "Bénévolat",
+  STAFF: "Mission / emploi",
+  TRAINING: "Formation",
+};
+
+export const certificatesConfig: ResourceConfig = {
+  title: "Certificats",
+  subtitle: "Certificats vérifiables par QR code.",
+  singular: "un certificat",
+  basePath: "/certificates",
+  endpoint: "/certificates",
+  listKey: "data",
+  itemKey: "data",
+  columns: [
+    { header: "Code", render: (c) => <span className="font-mono text-xs font-semibold text-blue-900">{c.code}</span> },
+    { header: "Titulaire", render: (c) => <span className="font-medium text-gray-900">{c.holderName}</span> },
+    { header: "Type", render: (c) => CERT_TYPES[c.type] ?? c.type },
+    { header: "Intitulé", render: (c) => c.title },
+    { header: "Délivré le", render: (c) => fmtDate(c.createdAt) },
+    { header: "Statut", render: (c) => <StatusBadge status={c.revokedAt ? "REVOKED" : "VALID"} /> },
+  ],
+  fields: [
+    { name: "code", label: "Code", type: "text" },
+    { name: "holderName", label: "Titulaire", type: "text" },
+    { name: "title", label: "Intitulé", type: "text" },
+    { name: "type", label: "Type", type: "text" },
+  ],
+  detail: () => [],
+  titleOf: (c) => c.holderName,
+  searchOf: (c) => `${c.code} ${c.holderName} ${c.title}`,
+  createRoles: ["ADMIN", "DIRECTION", "RH"],
+  editRoles: [],
+  deleteRoles: ["ADMIN", "DIRECTION"],
+  deleteLabel: "Révoquer",
 };

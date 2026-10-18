@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
+import { sendError } from "../middlewares/error.middleware";
 export async function getBeneficiaries(
   req: Request,
   res: Response,
@@ -34,10 +35,7 @@ export async function getBeneficiaries(
   } catch (error) {
     logger.error("Erreur récupération bénéficiaires", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération des bénéficiaires",
-    });
+    sendError(res, error, "Erreur lors de la récupération des bénéficiaires");
   }
 }
 
@@ -85,12 +83,73 @@ export async function getBeneficiaryById(
   } catch (error) {
     logger.error("Erreur récupération bénéficiaire", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération du bénéficiaire",
-    });
+    sendError(res, error, "Erreur lors de la récupération du bénéficiaire");
   }
 }
+
+type ParsedBody =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; message: string };
+
+/**
+ * Valide et normalise les champs numériques / ménage d'un bénéficiaire.
+ * Valeur vide ("" ou null) = effacer le champ ; absente = inchangé.
+ */
+function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
+  const specs: Array<[string, string, number, number, boolean]> = [
+    ["age", "L'âge", 0, 130, true],
+    ["altitude", "L'altitude", -500, 9000, false],
+    ["latitude", "La latitude", -90, 90, false],
+    ["longitude", "La longitude", -180, 180, false],
+    ["homeLatitude", "La latitude du domicile", -90, 90, false],
+    ["homeLongitude", "La longitude du domicile", -180, 180, false],
+    ["homeAltitude", "L'altitude du domicile", -500, 9000, false],
+    ["householdSize", "La taille du ménage", 1, 40, true],
+    ["monthlyIncome", "Le revenu mensuel", 0, 1_000_000_000_000, false],
+    ["childrenUnder5", "Le nombre d'enfants de moins de 5 ans", 0, 20, true],
+    ["zoneId", "La zone", 1, 2_147_483_647, true],
+  ];
+
+  const data: Record<string, unknown> = {};
+
+  for (const [key, label, min, max, integer] of specs) {
+    const raw = body[key];
+
+    if (raw === undefined) continue;
+
+    if (raw === null || raw === "") {
+      data[key] = null;
+      continue;
+    }
+
+    const value = Number(raw);
+
+    if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+      return { ok: false, message: `${label} est invalide.` };
+    }
+
+    data[key] = value;
+  }
+
+  if (body.locality !== undefined) {
+    data.locality = body.locality ? String(body.locality).trim() || null : null;
+  }
+
+  if (body.hasDisability !== undefined) {
+    data.hasDisability = body.hasDisability === true || body.hasDisability === "true";
+  }
+
+  return { ok: true, data };
+}
+
+async function zoneExists(zoneId: unknown): Promise<boolean> {
+  if (typeof zoneId !== "number") return true;
+
+  return (await prisma.zone.findUnique({ where: { id: zoneId }, select: { id: true } })) !== null;
+}
+
+const numOrUndef = (v: unknown) =>
+  v === undefined || v === null || v === "" ? undefined : Number(v);
 
 export async function createBeneficiary(
   req: Request,
@@ -106,6 +165,10 @@ export async function createBeneficiary(
       phone,
       email,
       vulnerable,
+      altitude,
+      zoneId,
+      latitude,
+      longitude,
     } = req.body;
 
     if (!projectId || !firstName || !lastName) {
@@ -113,6 +176,18 @@ export async function createBeneficiary(
         success: false,
         message: "projectId, firstName et lastName sont obligatoires",
       });
+      return;
+    }
+
+    const parsed = parseBeneficiaryBody(req.body);
+
+    if (!parsed.ok) {
+      res.status(400).json({ success: false, message: parsed.message });
+      return;
+    }
+
+    if (!(await zoneExists(parsed.data.zoneId))) {
+      res.status(400).json({ success: false, message: "Zone introuvable." });
       return;
     }
 
@@ -136,10 +211,10 @@ export async function createBeneficiary(
         firstName,
         lastName,
         gender,
-        age: age !== undefined && age !== null ? Number(age) : undefined,
         phone,
         email,
         vulnerable: vulnerable ?? false,
+        ...parsed.data,
       },
       include: {
         project: {
@@ -162,10 +237,7 @@ export async function createBeneficiary(
   } catch (error) {
     logger.error("Erreur création bénéficiaire", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la création du bénéficiaire",
-    });
+    sendError(res, error, "Erreur lors de la création du bénéficiaire");
   }
 }
 
@@ -205,6 +277,10 @@ export async function updateBeneficiary(
       phone,
       email,
       vulnerable,
+      altitude,
+      zoneId,
+      latitude,
+      longitude,
     } = req.body;
 
     if (projectId !== undefined) {
@@ -223,6 +299,18 @@ export async function updateBeneficiary(
       }
     }
 
+    const parsed = parseBeneficiaryBody(req.body);
+
+    if (!parsed.ok) {
+      res.status(400).json({ success: false, message: parsed.message });
+      return;
+    }
+
+    if (!(await zoneExists(parsed.data.zoneId))) {
+      res.status(400).json({ success: false, message: "Zone introuvable." });
+      return;
+    }
+
     const beneficiary = await prisma.beneficiary.update({
       where: { id },
       data: {
@@ -231,10 +319,10 @@ export async function updateBeneficiary(
         firstName,
         lastName,
         gender,
-        age: age !== undefined ? Number(age) : undefined,
         phone,
         email,
         vulnerable,
+        ...parsed.data,
       },
       include: {
         project: {
@@ -255,10 +343,7 @@ export async function updateBeneficiary(
   } catch (error) {
     logger.error("Erreur modification bénéficiaire", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la modification du bénéficiaire",
-    });
+    sendError(res, error, "Erreur lors de la modification du bénéficiaire");
   }
 }
 
@@ -300,9 +385,6 @@ export async function deleteBeneficiary(
   } catch (error) {
     logger.error("Erreur suppression bénéficiaire", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la suppression du bénéficiaire",
-    });
+    sendError(res, error, "Erreur lors de la suppression du bénéficiaire");
   }
 }

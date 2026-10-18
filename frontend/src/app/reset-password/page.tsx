@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import authService from "@/services/auth.service";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const params = useSearchParams();
   const token = params.get("token") || "";
   const [password, setPassword] = useState("");
@@ -54,5 +54,14 @@ export default function ResetPasswordPage() {
         <p className="mt-5 text-sm"><Link href="/login" className="font-medium text-blue-700 hover:underline">Retour à la connexion</Link></p>
       </section>
     </main>
+  );
+}
+
+export default function ResetPasswordPage() {
+  // useSearchParams() exige une frontière Suspense pour que la page puisse être pré-rendue au build.
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

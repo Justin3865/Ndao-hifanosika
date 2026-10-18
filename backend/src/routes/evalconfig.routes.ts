@@ -5,12 +5,25 @@ import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import { getReqUser } from "../utils/dataScope";
 
+import { sendError } from "../middlewares/error.middleware";
 /** CRUD des grilles et campagnes d'évaluation (ADMIN, DIRECTION, COORDINATOR). */
 
 const ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"] as const;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
+
+/** Message d'erreur si la date de fin précède la date de début. */
+function invalidDateRange(start: unknown, end: unknown): string | null {
+  if (!start || !end) return null;
+
+  const a = new Date(String(start)).getTime();
+  const b = new Date(String(end)).getTime();
+
+  if (Number.isNaN(a) || Number.isNaN(b)) return "Date invalide.";
+
+  return b < a ? "La date de fin doit être postérieure à la date de début." : null;
+}
 
 function parseCriteria(text: string): Array<{ label: string; weight: number }> {
   return text
@@ -50,7 +63,7 @@ function buildRouter(
       res.json({ success: true, data: rows.map(present) });
     } catch (error) {
       logger.error(`Erreur liste ${model}`, error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   });
 
@@ -61,7 +74,7 @@ function buildRouter(
       res.json({ success: true, data: present(row) });
     } catch (error) {
       logger.error(`Erreur lecture ${model}`, error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   });
 
@@ -71,13 +84,16 @@ function buildRouter(
         return res.status(400).json({ success: false, message: "Le nom est obligatoire" });
       }
 
+      const badRange = invalidDateRange(req.body?.startDate, req.body?.endDate);
+      if (badRange) return res.status(400).json({ success: false, message: badRange });
+
       const row = await delegate.create({
         data: { ...toData(req.body), createdById: getReqUser(req)?.id ?? null },
       });
       res.status(201).json({ success: true, data: present(row) });
     } catch (error) {
       logger.error(`Erreur création ${model}`, error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   });
 
@@ -87,11 +103,17 @@ function buildRouter(
       const exists = await delegate.findUnique({ where: { id } });
       if (!exists) return res.status(404).json({ success: false, message: "Introuvable" });
 
+      const badRange = invalidDateRange(
+        req.body?.startDate ?? exists.startDate,
+        req.body?.endDate ?? exists.endDate,
+      );
+      if (badRange) return res.status(400).json({ success: false, message: badRange });
+
       const row = await delegate.update({ where: { id }, data: toData(req.body) });
       res.json({ success: true, data: present(row) });
     } catch (error) {
       logger.error(`Erreur mise à jour ${model}`, error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   });
 

@@ -47,12 +47,6 @@ export async function recordLocation(
     return { ok: false, reason: "coordonnees_invalides" };
   }
 
-  const now = Date.now();
-  if (now - (lastPing.get(token) ?? 0) < 2500) {
-    return { ok: false, reason: "trop_frequent" };
-  }
-  lastPing.set(token, now);
-
   const target = await prisma.beneficiary.findFirst({
     where: { trackingToken: token, trackingEnabled: true },
     select: { id: true, consentAt: true },
@@ -60,6 +54,19 @@ export async function recordLocation(
 
   if (!target || !target.consentAt) {
     return { ok: false, reason: "suivi_non_autorise" };
+  }
+
+  // Limitation de fréquence : uniquement pour un lien valide et consenti
+  const now = Date.now();
+  if (now - (lastPing.get(token) ?? 0) < 2500) {
+    return { ok: false, reason: "trop_frequent" };
+  }
+  lastPing.set(token, now);
+
+  if (lastPing.size > 5000) {
+    for (const [key, at] of lastPing) {
+      if (now - at > 60_000) lastPing.delete(key);
+    }
   }
 
   const updated = await prisma.beneficiary.update({
@@ -126,6 +133,76 @@ export function initSocket(server: HttpServer): Server {
 
     if (TRACKING_ROLES.includes(socket.data.role)) {
       socket.join("tracking");
+    }
+
+    // ---- Mission : l'agent partage SA position avec son accord ----
+    if (!String(socket.data.role).startsWith("STAGIAIRE_")) {
+      const userId: number = socket.data.userId;
+      let lastStaffPing = 0;
+
+      socket.on("mission:start", async (ack?: (r: { ok: boolean }) => void) => {
+        await prisma.user.update({ where: { id: userId }, data: { sharingLocation: true } });
+        ack?.({ ok: true });
+      });
+
+      socket.on(
+        "mission:location",
+        async (
+          p: { latitude: number; longitude: number; altitude?: number | null },
+          ack?: (r: { ok: boolean }) => void,
+        ) => {
+          const latitude = Number(p?.latitude);
+          const longitude = Number(p?.longitude);
+
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+            return ack?.({ ok: false });
+          }
+
+          if (Date.now() - lastStaffPing < 2000) return ack?.({ ok: false });
+          lastStaffPing = Date.now();
+
+          const altitude = p?.altitude !== undefined && p.altitude !== null ? Number(p.altitude) : null;
+
+          const user = await prisma.user.update({
+            where: { id: userId },
+            data: { latitude, longitude, altitude, locationUpdatedAt: new Date(), sharingLocation: true },
+            select: { id: true, firstName: true, lastName: true, role: true },
+          });
+
+          emitToTracking("staff:location", {
+            id: user.id,
+            name: `${user.firstName} ${user.lastName}`,
+            role: user.role,
+            latitude,
+            longitude,
+            altitude,
+            updatedAt: new Date().toISOString(),
+          });
+
+          ack?.({ ok: true });
+        },
+      );
+
+      const stop = async () => {
+        await prisma.user
+          .update({
+            where: { id: userId },
+            data: { sharingLocation: false, latitude: null, longitude: null, altitude: null },
+          })
+          .catch(() => undefined);
+
+        emitToTracking("staff:offline", { id: userId });
+      };
+
+      socket.on("mission:stop", async (ack?: (r: { ok: boolean }) => void) => {
+        await stop();
+        ack?.({ ok: true });
+      });
+
+      // La position n'est plus partagée dès que l'agent se déconnecte
+      socket.on("disconnect", () => {
+        void stop();
+      });
     }
   });
 

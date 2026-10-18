@@ -99,3 +99,93 @@ export const PRESENCE_LABEL: Record<Presence, string> = {
   recent: "Vu récemment",
   offline: "Hors ligne",
 };
+
+/* ------------------------------------------------------------------ */
+/* Agents en mission (GPS en direct) et ménages vulnérables             */
+/* ------------------------------------------------------------------ */
+
+export interface StaffPosition {
+  id: number;
+  name: string;
+  role?: string;
+  latitude: number;
+  longitude: number;
+  altitude: number | null;
+  updatedAt: string;
+}
+
+export function useLiveStaff(enabled: boolean) {
+  const [staff, setStaff] = useState<StaffPosition[]>([]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    api
+      .get("/tracking/staff")
+      .then((res) => setStaff(res.data?.data ?? []))
+      .catch(() => setStaff([]));
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onLocation = (position: StaffPosition) =>
+      setStaff((cur) => [position, ...cur.filter((s) => s.id !== position.id)]);
+
+    const onOffline = ({ id }: { id: number }) => setStaff((cur) => cur.filter((s) => s.id !== id));
+
+    socket.on("staff:location", onLocation);
+    socket.on("staff:offline", onOffline);
+
+    return () => {
+      socket.off("staff:location", onLocation);
+      socket.off("staff:offline", onOffline);
+    };
+  }, [enabled]);
+
+  return staff;
+}
+
+export interface HouseholdPoint {
+  id: number;
+  name: string;
+  age: number | null;
+  locality: string | null;
+  zoneName: string | null;
+  projectName: string;
+  vulnerable: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
+  householdSize: number | null;
+  monthlyIncome: number | null;
+  remoteKm: number | null;
+  score: number;
+  scoreSgd: number | null;
+  scoreMlp: number | null;
+  method: "ML" | "HEURISTIQUE";
+  suspected: boolean;
+  nearestStaff: { id: number; name: string; distanceKm: number } | null;
+}
+
+export function useHouseholds(enabled: boolean) {
+  const [households, setHouseholds] = useState<HouseholdPoint[]>([]);
+  const [loading, setLoading] = useState(enabled);
+
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+
+    api
+      .get("/ai/households")
+      .then((res) => setHouseholds(res.data?.data ?? []))
+      .catch(() => setHouseholds([]))
+      .finally(() => setLoading(false));
+  }, [enabled]);
+
+  return { households, loading };
+}
+
+export const scoreColor = (score: number) =>
+  score >= 70 ? "#dc2626" : score >= 50 ? "#f97316" : score >= 30 ? "#eab308" : "#6b7280";

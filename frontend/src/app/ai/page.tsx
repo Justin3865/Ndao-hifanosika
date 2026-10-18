@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, BarChart3, FileText, Lightbulb, ShieldAlert } from "lucide-react";
+import { AlertTriangle, BarChart3, BrainCircuit, FileText, Lightbulb, MapPinned, MessageSquare, ShieldAlert } from "lucide-react";
 import { AppLayout } from "@/components/layout";
 import { METHOD_NOTE, State, useInsight } from "@/components/insights/parts";
 
@@ -23,6 +23,9 @@ const CARDS = [
   { href: "/ai/performance", title: "Performance des projets", text: "Score par projet : jalons, activités, évaluations.", icon: BarChart3, tone: "from-emerald-500 to-teal-700" },
   { href: "/ai/anomaly", title: "Détection d'anomalies", text: "Retards, budgets dépassés, scores atypiques.", icon: AlertTriangle, tone: "from-amber-400 to-orange-600" },
   { href: "/ai/dropout-risk", title: "Risque d'abandon", text: "Bénéficiaires à accompagner en priorité.", icon: ShieldAlert, tone: "from-rose-500 to-red-700" },
+  { href: "/ai/chat", title: "Assistant (chatbot)", text: "Comparer des zones, trouver les ménages vulnérables et l'agent le plus proche.", icon: MessageSquare, tone: "from-indigo-500 to-blue-800" },
+  { href: "/ai/vulnerability", title: "Carte de vulnérabilité", text: "Ménages notés par SGD + réseau de neurones, avec altitude et GPS.", icon: MapPinned, tone: "from-fuchsia-500 to-purple-800" },
+  { href: "/ai/models", title: "Modèles d'apprentissage", text: "Entraînement, validation croisée et fiabilité.", icon: BrainCircuit, tone: "from-slate-500 to-slate-800" },
 ];
 
 export default function AiHubPage() {

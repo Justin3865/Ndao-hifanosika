@@ -5,6 +5,7 @@ import { logger } from "../config/logger";
 import { authenticate } from "../middlewares/auth.middleware";
 import { getReqUser } from "../utils/dataScope";
 
+import { sendError } from "../middlewares/error.middleware";
 /** Profil de l'utilisateur CONNECTÉ (jamais d'id dans l'URL). */
 const router = Router();
 
@@ -16,6 +17,8 @@ const profileSelect = {
   lastName: true,
   email: true,
   phone: true,
+  notifyEmail: true,
+  notifySms: true,
   gender: true,
   role: true,
   status: true,
@@ -41,7 +44,7 @@ router.get("/", async (req: Request, res: Response) => {
     res.json({ success: true, data: user });
   } catch (error) {
     logger.error("Erreur profil", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -67,7 +70,27 @@ router.put("/", async (req: Request, res: Response) => {
     res.json({ success: true, data: user });
   } catch (error) {
     logger.error("Erreur mise à jour profil", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+router.put("/preferences", async (req: Request, res: Response) => {
+  try {
+    const me = getReqUser(req);
+
+    const user = await prisma.user.update({
+      where: { id: me!.id },
+      data: {
+        notifyEmail: Boolean(req.body?.notifyEmail),
+        notifySms: Boolean(req.body?.notifySms),
+      },
+      select: profileSelect,
+    });
+
+    res.json({ success: true, data: user });
+  } catch (error) {
+    logger.error("Erreur préférences", error);
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -76,10 +99,10 @@ router.put("/password", async (req: Request, res: Response) => {
     const me = getReqUser(req);
     const { currentPassword, newPassword } = req.body ?? {};
 
-    if (!currentPassword || !newPassword || String(newPassword).length < 8) {
+    if (!currentPassword || !newPassword || String(newPassword).length < 12) {
       return res.status(400).json({
         success: false,
-        message: "Mot de passe actuel requis et nouveau mot de passe de 8 caractères minimum",
+        message: "Mot de passe actuel requis et nouveau mot de passe de 12 caractères minimum",
       });
     }
 
@@ -103,7 +126,7 @@ router.put("/password", async (req: Request, res: Response) => {
     res.json({ success: true, message: "Mot de passe modifié" });
   } catch (error) {
     logger.error("Erreur changement mot de passe", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -130,7 +153,7 @@ router.put("/avatar", async (req: Request, res: Response) => {
     res.json({ success: true, data: user });
   } catch (error) {
     logger.error("Erreur avatar", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -146,7 +169,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     logger.error("Erreur suppression avatar", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 

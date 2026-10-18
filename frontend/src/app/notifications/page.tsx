@@ -11,6 +11,7 @@ import {
   fetchLookup,
   fmtDateTime,
 } from "@/lib/crud";
+import { confirmDialog, toast } from "@/lib/toast";
 
 interface NotificationItem {
   id: number;
@@ -82,10 +83,11 @@ export default function NotificationsPage() {
   };
 
   const remove = async (item: NotificationItem) => {
-    if (!window.confirm("Supprimer cette notification ?")) return;
+    if (!(await confirmDialog("Supprimer cette notification ?", { title: "Supprimer", confirmLabel: "Supprimer" }))) return;
 
     try {
       await api.delete(`/notifications/${item.id}`);
+      toast.success("Notification supprimée.");
       setItems((cur) => cur.filter((n) => n.id !== item.id));
     } catch (err) {
       setError(errorMessage(err, "Suppression impossible."));
@@ -105,6 +107,7 @@ export default function NotificationsPage() {
       await api.post("/notifications", { ...form, userId: Number(form.userId) });
       setForm({ userId: "", title: "", message: "", type: "INFO" });
       setShowForm(false);
+      toast.success("Notification envoyée.");
       load();
     } catch (err) {
       setFormError(errorMessage(err, "Envoi impossible."));

@@ -22,12 +22,11 @@ import aiRoutes from "./routes/ai.routes";
 import lookupsRoutes from "./routes/lookups.routes";
 import profileRoutes from "./routes/profile.routes";
 import auditRoutes from "./routes/audit.routes";
+import zonesRoutes, { publicOrganizationRouter } from "./routes/zones.routes";
+import certificatesRoutes, { publicCertificateRouter } from "./routes/certificates.routes";
 import { campaignsRouter, gridsRouter } from "./routes/evalconfig.routes";
 import { trackingRouter, publicTrackingRouter } from "./routes/tracking.routes";
-import { certificatesRouter, publicCertificatesRouter } from "./routes/certificates.routes";
-import { zonesRouter, publicOrgRouter } from "./routes/zones.routes";
 import { vulnerabilityRouter, serviceRouter } from "./routes/vulnerability.routes";
-import { chatRouter } from "./routes/chat.routes";
 import { eventNotifier } from "./middlewares/eventNotifier.middleware";
 
 import { errorMiddleware } from "./middlewares/error.middleware";
@@ -84,17 +83,16 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/lookups", lookupsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/zones", zonesRoutes);
+app.use("/api/certificates", certificatesRoutes);
+app.use("/api/public/organization", publicOrganizationRouter);
+app.use("/api/public/certificates", publicCertificateRouter);
 app.use("/api/evaluation-grids", gridsRouter);
 app.use("/api/evaluation-campaigns", campaignsRouter);
 app.use("/api/tracking", trackingRouter);
 app.use("/api/public/tracking", publicTrackingRouter);
-app.use("/api/certificates", certificatesRouter);
-app.use("/api/public/certificates", publicCertificatesRouter);
-app.use("/api/zones", zonesRouter);
 app.use("/api/vulnerability", vulnerabilityRouter);
 app.use("/api/service", serviceRouter);
-app.use("/api/ai", chatRouter);
-app.use("/api/public/organization", publicOrgRouter);
 
 app.use((_req, res) => {
   res.status(404).json({

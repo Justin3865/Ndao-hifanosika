@@ -26,8 +26,14 @@ export default function ChatBot({ onZones }: { onZones?: (zoneIds: number[]) => 
     setBusy(true);
     try {
       const res = await api.post("/ai/chat", { message });
-      setMessages((m) => [...m, { role: "bot", text: res.data?.data?.answer ?? "Aucune réponse." }]);
-      onZones?.((res.data?.data?.zones ?? []).map((z: { id: number }) => z.id));
+      const data = res.data?.data;
+      const rows = (data?.table?.rows ?? [])
+        .slice(0, 5)
+        .map((row: Array<string | number>) => `• ${row.join(" · ")}`)
+        .join("\n");
+
+      setMessages((m) => [...m, { role: "bot", text: [data?.reply, rows].filter(Boolean).join("\n\n") || "Aucune réponse." }]);
+      onZones?.(Array.isArray(data?.zoneIds) ? data.zoneIds : []);
     } catch (err) {
       setMessages((m) => [...m, { role: "bot", text: errorMessage(err, "Service indisponible.") }]);
     } finally {
@@ -42,7 +48,7 @@ export default function ChatBot({ onZones }: { onZones?: (zoneIds: number[]) => 
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.map((m, i) => (
-          <div key={i} className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === "user" ? "ml-auto bg-blue-600 text-white" : "bg-gray-100 text-gray-800"}`}>
+          <div key={i} className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-6 whitespace-pre-line ${m.role === "user" ? "ml-auto bg-blue-600 text-white" : "bg-gray-100 text-gray-800"}`}>
             {m.text}
           </div>
         ))}

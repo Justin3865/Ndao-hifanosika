@@ -24,6 +24,9 @@ import {
   PRESENCE_COLOR,
   PRESENCE_LABEL,
   presenceOf,
+  scoreColor,
+  useHouseholds,
+  useLiveStaff,
   useLiveTargets,
 } from "@/lib/useLiveTargets";
 
@@ -110,6 +113,8 @@ export default function DashboardPage() {
 
   const canTrack = ready && TRACKING_ROLES.includes(role);
   const { targets, connected } = useLiveTargets(canTrack);
+  const staff = useLiveStaff(canTrack);
+  const { households } = useHouseholds(canTrack);
 
   const markers: MapMarker[] = useMemo(() => {
     const zoneMarkers: MapMarker[] = zones.map((zone) => ({
@@ -137,8 +142,35 @@ export default function DashboardPage() {
             }))
         : [];
 
-    return [...zoneMarkers, ...targetMarkers];
-  }, [zones, targets, canTrack, showTargets]);
+    const staffMarkers: MapMarker[] = canTrack
+      ? staff.map((s) => ({
+          id: `staff-${s.id}`,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          title: `Agent : ${s.name}`,
+          color: "#1d4ed8",
+          shape: "square" as const,
+          radius: 9,
+          info: `Altitude ${s.altitude !== null ? Math.round(s.altitude) : "?"} m`,
+        }))
+      : [];
+
+    const householdMarkers: MapMarker[] = canTrack
+      ? households
+          .filter((h) => h.latitude !== null && h.longitude !== null && (h.vulnerable || h.score >= 50))
+          .map((h) => ({
+            id: `home-${h.id}`,
+            latitude: h.latitude as number,
+            longitude: h.longitude as number,
+            title: h.name,
+            color: scoreColor(h.score),
+            radius: 7,
+            info: `${h.locality ?? ""} — score ${h.score}/100 · altitude ${h.altitude ?? "?"} m`,
+          }))
+      : [];
+
+    return [...zoneMarkers, ...householdMarkers, ...staffMarkers, ...targetMarkers];
+  }, [zones, targets, staff, households, canTrack, showTargets]);
 
   const online = targets.filter((t) => presenceOf(t.lastSeenAt) === "online").length;
   const today = new Date().toLocaleDateString("fr-FR", {
@@ -285,6 +317,8 @@ export default function DashboardPage() {
                 <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-blue-700" /> Zone d&apos;intervention</span>
                 {canTrack && (
                   <>
+                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-red-600" /> Ménage vulnérable</span>
+                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-blue-700" /> Agent en mission</span>
                     <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-green-600" /> En ligne</span>
                     <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-amber-500" /> Vu récemment</span>
                     <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-gray-400" /> Hors ligne</span>

@@ -37,6 +37,22 @@ const ACCESS_RULES: AccessRule[] = [
   { pattern: /^\/administration(\/|$)/, roles: ["ADMIN"] },
   { pattern: /^\/security(\/|$)/, roles: ["ADMIN", "DSI"] },
 
+  // Zones d'intervention (administration)
+  { pattern: /^\/zones(\/|$)/, roles: ["ADMIN", "DIRECTION"] },
+
+  // Certificats : liste filtrée côté serveur (chacun voit les siens)
+  { pattern: /^\/certificates\/create\/?$/, roles: ["ADMIN", "DIRECTION", "RH"] },
+  { pattern: /^\/certificates(\/|$)/, roles: ALL_ROLES },
+
+  // Mission terrain (partage de position de l'agent) : tout le personnel sauf stagiaires
+  {
+    pattern: /^\/mission(\/|$)/,
+    roles: ["ADMIN", "DIRECTION", "DSI", "DAF", "RH", "COMMUNICATION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"],
+  },
+
+  // Chatbot + carte des ménages vulnérables : données personnelles
+  { pattern: /^\/ai\/(chat|vulnerability|models)(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+
   // Suivi terrain en direct (bénéficiaires)
   { pattern: /^\/tracking(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
 

@@ -1,27 +1,30 @@
 import { Request, Response } from "express";
 import { logger } from "../config/logger";
 
+import { sendError } from "../middlewares/error.middleware";
+import { probeAiServices } from "../services/pyservices.service";
 export async function aiHealth(
   req: Request,
   res: Response,
 ): Promise<void> {
   try {
+    const services = await probeAiServices();
+
     res.status(200).json({
       success: true,
       data: {
         service: "Ndao Hifanosika AI",
+        // Le backend lui-même répond : les modèles natifs (scoring, chatbot) sont toujours disponibles.
         status: "online",
-        provider: "FastAPI",
+        provider: "Express (modèles natifs) + FastAPI (optionnel)",
+        services,
         timestamp: new Date().toISOString(),
       },
     });
   } catch (error) {
     logger.error("Erreur AI health", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Service IA indisponible",
-    });
+    sendError(res, error, "Service IA indisponible");
   }
 }
 
@@ -120,9 +123,6 @@ export async function scoreDropoutRisk(
   } catch (error) {
     logger.error("Erreur score risque abandon", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors du calcul du risque d'abandon",
-    });
+    sendError(res, error, "Erreur lors du calcul du risque d'abandon");
   }
 }

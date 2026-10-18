@@ -13,7 +13,8 @@ export type FieldType =
   | "number"
   | "date"
   | "select"
-  | "checkbox";
+  | "checkbox"
+  | "geo";
 
 export interface Option {
   value: string;
@@ -26,7 +27,8 @@ export type LookupKind =
   | "students"
   | "tutors"
   | "users"
-  | "grids";
+  | "grids"
+  | "zones";
 
 export interface FieldDef {
   name: string;
@@ -35,6 +37,10 @@ export interface FieldDef {
   required?: boolean;
   options?: Option[];
   lookup?: LookupKind;
+  /** Valeur par défaut à la création */
+  defaultValue?: string | boolean;
+  /** type "geo" : noms des champs API (défaut : <name>Latitude / <name>Longitude / <name>Altitude) */
+  geoNames?: { lat: string; lng: string; alt?: string };
   hideOnEdit?: boolean;
   hideOnCreate?: boolean;
   min?: number;
@@ -73,6 +79,8 @@ export interface ResourceConfig {
   editRoles: string[];
   deleteRoles: string[];
   deleteMode?: "delete" | "deactivate";
+  /** Libellé du bouton de suppression (ex. « Révoquer ») */
+  deleteLabel?: string;
   createHref?: string;
   /** Bloc supplémentaire affiché sous la fiche détail */
   extra?: (item: Item) => ReactNode;
@@ -171,6 +179,8 @@ export const STATUS_LABELS: Record<string, string> = {
   INACTIVE: "Inactif",
   REJECTED: "Rejeté",
   CLOSED: "Clôturée",
+  VALID: "Valide",
+  REVOKED: "Révoqué",
 };
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -187,6 +197,8 @@ export const STATUS_COLORS: Record<string, string> = {
   SUSPENDED: "bg-red-100 text-red-700",
   REJECTED: "bg-red-100 text-red-700",
   CLOSED: "bg-gray-200 text-gray-700",
+  VALID: "bg-green-100 text-green-700",
+  REVOKED: "bg-red-100 text-red-700",
 };
 
 export const statusOptions = (values: string[]): Option[] =>

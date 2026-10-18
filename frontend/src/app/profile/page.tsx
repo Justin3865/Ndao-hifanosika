@@ -6,6 +6,7 @@ import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { errorMessage, fmtDateTime } from "@/lib/crud";
 import { roleLabel, statusLabel } from "@/lib/roles";
+import { toast } from "@/lib/toast";
 
 interface Profile {
   id: number;
@@ -13,6 +14,8 @@ interface Profile {
   lastName: string;
   email: string;
   phone?: string | null;
+  notifyEmail?: boolean;
+  notifySms?: boolean;
   role: string;
   status: string;
   avatarUrl?: string | null;
@@ -84,8 +87,8 @@ export default function ProfilePage() {
   }, []);
 
   const flash = (type: "ok" | "err", text: string) => {
-    setMessage({ type, text });
-    window.setTimeout(() => setMessage(null), 5000);
+    if (type === "ok") toast.success(text);
+    else toast.error(text);
   };
 
   const saveInfo = async (event: FormEvent) => {
@@ -122,6 +125,20 @@ export default function ProfilePage() {
       flash("ok", "Mot de passe modifié.");
     } catch (err) {
       flash("err", errorMessage(err, "Modification impossible."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const savePrefs = async (next: { notifyEmail: boolean; notifySms: boolean }) => {
+    setBusy("prefs");
+
+    try {
+      const res = await api.put("/profile/preferences", next);
+      sync(res.data.data);
+      flash("ok", "Préférences de notification enregistrées.");
+    } catch (err) {
+      flash("err", errorMessage(err, "Enregistrement impossible."));
     } finally {
       setBusy("");
     }
@@ -306,6 +323,35 @@ export default function ProfilePage() {
                 </div>
               </form>
 
+              <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-gray-900">Notifications automatiques</h3>
+                <p className="text-sm text-gray-500">
+                  En plus de la cloche de la plateforme, recevez les messages qui vous concernent par e-mail
+                  {profile.phone ? " et par SMS" : " (ajoutez un téléphone ci-dessus pour recevoir aussi des SMS)"}.
+                </p>
+
+                {([
+                  ["notifyEmail", "Recevoir les notifications par e-mail"],
+                  ["notifySms", "Recevoir les messages importants par SMS"],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="flex cursor-pointer items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm">
+                    <span className="font-medium text-gray-800">{label}</span>
+                    <input
+                      type="checkbox"
+                      disabled={busy === "prefs" || (key === "notifySms" && !profile.phone)}
+                      checked={Boolean(profile[key])}
+                      onChange={(e) =>
+                        void savePrefs({
+                          notifyEmail: key === "notifyEmail" ? e.target.checked : Boolean(profile.notifyEmail),
+                          notifySms: key === "notifySms" ? e.target.checked : Boolean(profile.notifySms),
+                        })
+                      }
+                      className="h-5 w-5"
+                    />
+                  </label>
+                ))}
+              </section>
+
               <form onSubmit={savePassword} className="space-y-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900">Changer le mot de passe</h3>
 
@@ -315,7 +361,7 @@ export default function ProfilePage() {
                     <input type="password" className={inputClass} value={pwd.currentPassword} onChange={(e) => setPwd({ ...pwd, currentPassword: e.target.value })} />
                   </label>
                   <label className="space-y-1 text-sm font-medium text-gray-700">
-                    Nouveau (8 car. min.)
+                    Nouveau (12 car. min.)
                     <input type="password" className={inputClass} value={pwd.newPassword} onChange={(e) => setPwd({ ...pwd, newPassword: e.target.value })} />
                   </label>
                   <label className="space-y-1 text-sm font-medium text-gray-700">

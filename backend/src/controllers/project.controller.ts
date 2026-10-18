@@ -3,6 +3,7 @@ import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 
+import { sendError } from "../middlewares/error.middleware";
 function getAuthUser(req: Request) {
   return (req as AuthenticatedRequest).user;
 }
@@ -139,10 +140,7 @@ export async function getProjects(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de récupérer les projets.",
-    });
+    return sendError(res, error, "Impossible de récupérer les projets.");
   }
 }
 
@@ -226,10 +224,7 @@ export async function getProjectById(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -341,6 +336,13 @@ export async function createProject(
       return res.status(400).json({
         success: false,
         message: "Le budget est invalide.",
+      });
+    }
+
+    if (parsedBudget != null && parsedBudget < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Le budget ne peut pas être négatif.",
       });
     }
 
@@ -498,10 +500,7 @@ export async function createProject(
       });
     }
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de créer le projet.",
-    });
+    return sendError(res, error, "Impossible de créer le projet.");
   }
 }
 
@@ -711,6 +710,13 @@ export async function updateProject(
         });
       }
 
+      if (parsedBudget != null && parsedBudget < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Le budget ne peut pas être négatif.",
+        });
+      }
+
       data.budget = parsedBudget;
     }
 
@@ -825,10 +831,7 @@ export async function updateProject(
       });
     }
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de modifier le projet.",
-    });
+    return sendError(res, error, "Impossible de modifier le projet.");
   }
 }
 
@@ -898,9 +901,6 @@ export async function deleteProject(
       });
     }
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de supprimer le projet.",
-    });
+    return sendError(res, error, "Impossible de supprimer le projet.");
   }
 }

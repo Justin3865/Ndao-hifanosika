@@ -13,6 +13,7 @@ import {
   getItem,
   removeItem,
 } from "@/lib/crud";
+import { confirmDialog, toast } from "@/lib/toast";
 
 export function ResourceDetailPage({
   config,
@@ -39,17 +40,19 @@ export function ResourceDetailPage({
   const canEdit = config.editRoles.includes(role);
   const canDelete = config.deleteRoles.includes(role);
   const deleteLabel =
-    config.deleteMode === "deactivate" ? "Désactiver" : "Supprimer";
+    config.deleteLabel ?? (config.deleteMode === "deactivate" ? "Désactiver" : "Supprimer");
 
   const handleDelete = async () => {
-    if (!item || !window.confirm(`${deleteLabel} « ${config.titleOf(item)} » ?`))
-      return;
+    if (!item) return;
+
+    if (!(await confirmDialog(`${deleteLabel} « ${config.titleOf(item)} » ?`))) return;
 
     try {
       await removeItem(config, id);
+      toast.success("Opération effectuée.");
       router.push(config.basePath);
     } catch (err) {
-      window.alert(errorMessage(err, "Action impossible."));
+      toast.error(errorMessage(err, "Action impossible."));
     }
   };
 

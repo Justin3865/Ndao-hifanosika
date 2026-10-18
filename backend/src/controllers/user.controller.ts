@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 
+import { notifyUsers } from "../utils/notify";
+import { deliverToUser } from "../services/delivery.service";
 import { logger } from "../config/logger";
 
 import {
@@ -14,6 +16,9 @@ import {
   isValidUserStatus,
 } from "../services/user.service";
 
+import { sendError } from "../middlewares/error.middleware";
+import { getReqUser } from "../utils/dataScope";
+import { prisma } from "../config/database";
 function sanitizeUser(user: any) {
   if (!user) {
     return user;
@@ -30,6 +35,22 @@ function sanitizeUser(user: any) {
 /**
  * GET /api/users
  */
+/** Vrai si supprimer / rétrograder / désactiver cet utilisateur laisserait le système sans administrateur actif. */
+async function isLastActiveAdmin(userId: number): Promise<boolean> {
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, status: true },
+  });
+
+  if (!target || target.role !== "ADMIN" || target.status !== "ACTIVE") return false;
+
+  const others = await prisma.user.count({
+    where: { role: "ADMIN", status: "ACTIVE", id: { not: userId } },
+  });
+
+  return others === 0;
+}
+
 export async function getUsers(
   _req: Request,
   res: Response,
@@ -51,11 +72,7 @@ export async function getUsers(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de récupérer les utilisateurs.",
-    });
+    return sendError(res, error, "Impossible de récupérer les utilisateurs.");
   }
 }
 
@@ -103,11 +120,7 @@ export async function getUserById(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -304,11 +317,7 @@ export async function createUser(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de créer l'utilisateur.",
-    });
+    return sendError(res, error, "Impossible de créer l'utilisateur.");
   }
 }
 
@@ -348,6 +357,24 @@ export async function updateUser(
       status,
       departmentId,
     } = req.body;
+
+    const requester = getReqUser(req);
+    const demotes = role !== undefined && String(role).trim().toUpperCase() !== "ADMIN";
+    const deactivates = status !== undefined && String(status).trim().toUpperCase() !== "ACTIVE";
+
+    if (requester?.id === id && (demotes || deactivates)) {
+      return res.status(400).json({
+        success: false,
+        message: "Vous ne pouvez pas modifier votre propre rôle ou statut.",
+      });
+    }
+
+    if ((demotes || deactivates) && (await isLastActiveAdmin(id))) {
+      return res.status(409).json({
+        success: false,
+        message: "Impossible de rétrograder ou désactiver le dernier administrateur actif.",
+      });
+    }
 
     if (
       role !== undefined &&
@@ -553,11 +580,7 @@ export async function updateUser(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de modifier l'utilisateur.",
-    });
+    return sendError(res, error, "Impossible de modifier l'utilisateur.");
   }
 }
 
@@ -586,6 +609,20 @@ export async function deleteUser(
       });
     }
 
+    if (getReqUser(req)?.id === id) {
+      return res.status(400).json({
+        success: false,
+        message: "Vous ne pouvez pas supprimer votre propre compte.",
+      });
+    }
+
+    if (await isLastActiveAdmin(id)) {
+      return res.status(409).json({
+        success: false,
+        message: "Impossible de supprimer le dernier administrateur actif.",
+      });
+    }
+
     await deleteUserService(id);
 
     return res.status(200).json({
@@ -611,11 +648,7 @@ export async function deleteUser(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de supprimer l'utilisateur.",
-    });
+    return sendError(res, error, "Impossible de supprimer l'utilisateur.");
   }
 }
 
@@ -653,6 +686,12 @@ export async function activateUser(
       `Compte utilisateur activé : ${user.email}`,
     );
 
+    await notifyUsers([user.id], {
+      title: "Inscription acceptée",
+      message: "Votre compte Ndao Hifanosika a été validé par un administrateur. Vous pouvez maintenant vous connecter.",
+      type: "SUCCESS",
+    });
+
     return res.status(200).json({
       success: true,
       message:
@@ -689,11 +728,7 @@ export async function activateUser(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible d'activer le compte utilisateur.",
-    });
+    return sendError(res, error, "Impossible d'activer le compte utilisateur.");
   }
 }
 
@@ -729,6 +764,13 @@ export async function rejectUser(
 
     logger.info(
       `Compte utilisateur rejeté : ${user.email}`,
+    );
+
+    // Compte REJECTED : pas de notification interne, mais la personne est prévenue par e-mail/SMS.
+    void deliverToUser(
+      { email: user.email, phone: user.phone },
+      "Inscription refusée",
+      "Votre demande d'inscription à Ndao Hifanosika n'a pas été acceptée. Contactez l'administration pour plus d'informations.",
     );
 
     return res.status(200).json({
@@ -767,10 +809,6 @@ export async function rejectUser(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Impossible de rejeter le compte utilisateur.",
-    });
+    return sendError(res, error, "Impossible de rejeter le compte utilisateur.");
   }
 }

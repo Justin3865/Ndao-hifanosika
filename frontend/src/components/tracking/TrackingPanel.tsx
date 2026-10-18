@@ -5,6 +5,7 @@ import { Copy, Link2, MapPin, ShieldCheck, Trash2 } from "lucide-react";
 import api from "@/lib/axios";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage, fmtDateTime } from "@/lib/crud";
+import { confirmDialog, toast } from "@/lib/toast";
 
 interface State {
   hasLink: boolean;
@@ -42,12 +43,19 @@ export function TrackingPanel({ beneficiaryId }: { beneficiaryId: number }) {
   const generate = async () => {
     setError("");
 
-    if (state.hasLink && !window.confirm("Un nouveau lien invalidera l'ancien et effacera la position actuelle. Continuer ?")) {
+    if (
+      state.hasLink &&
+      !(await confirmDialog("Un nouveau lien invalidera l'ancien et effacera la position actuelle. Continuer ?", {
+        title: "Régénérer le lien",
+        confirmLabel: "Régénérer",
+      }))
+    ) {
       return;
     }
 
     try {
       await api.post(`/tracking/beneficiaries/${beneficiaryId}/link`);
+      toast.success("Lien de suivi généré.");
       await load();
     } catch (err) {
       setError(errorMessage(err, "Génération impossible."));
@@ -55,10 +63,11 @@ export function TrackingPanel({ beneficiaryId }: { beneficiaryId: number }) {
   };
 
   const revoke = async () => {
-    if (!window.confirm("Révoquer le suivi et effacer la position de ce bénéficiaire ?")) return;
+    if (!(await confirmDialog("Révoquer le suivi et effacer la position de ce bénéficiaire ?", { title: "Révoquer le suivi", confirmLabel: "Révoquer" }))) return;
 
     try {
       await api.delete(`/tracking/beneficiaries/${beneficiaryId}`);
+      toast.success("Suivi révoqué, position effacée.");
       await load();
     } catch (err) {
       setError(errorMessage(err, "Révocation impossible."));
@@ -67,6 +76,7 @@ export function TrackingPanel({ beneficiaryId }: { beneficiaryId: number }) {
 
   const copy = async () => {
     await navigator.clipboard.writeText(fullUrl);
+    toast.success("Lien copié dans le presse-papiers.");
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };

@@ -3,6 +3,7 @@ import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { getReqUser } from "../utils/dataScope";
 
+import { sendError } from "../middlewares/error.middleware";
 /**
  * Notifications persistées en base (table Notification).
  * Chaque utilisateur ne voit / ne modifie QUE ses propres notifications.
@@ -51,10 +52,7 @@ export async function getNotifications(
   } catch (error) {
     logger.error("Erreur récupération notifications", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération des notifications",
-    });
+    sendError(res, error, "Erreur lors de la récupération des notifications");
   }
 }
 
@@ -88,10 +86,7 @@ export async function getNotificationById(
   } catch (error) {
     logger.error("Erreur récupération notification", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération de la notification",
-    });
+    sendError(res, error, "Erreur lors de la récupération de la notification");
   }
 }
 
@@ -150,10 +145,7 @@ export async function createNotification(
   } catch (error) {
     logger.error("Erreur création notification", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la création de la notification",
-    });
+    sendError(res, error, "Erreur lors de la création de la notification");
   }
 }
 
@@ -193,10 +185,7 @@ export async function markNotificationAsRead(
   } catch (error) {
     logger.error("Erreur lecture notification", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la mise à jour de la notification",
-    });
+    sendError(res, error, "Erreur lors de la mise à jour de la notification");
   }
 }
 
@@ -220,10 +209,7 @@ export async function markAllNotificationsAsRead(
   } catch (error) {
     logger.error("Erreur lecture notifications", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la mise à jour des notifications",
-    });
+    sendError(res, error, "Erreur lors de la mise à jour des notifications");
   }
 }
 
@@ -257,9 +243,6 @@ export async function deleteNotification(
   } catch (error) {
     logger.error("Erreur suppression notification", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la suppression de la notification",
-    });
+    sendError(res, error, "Erreur lors de la suppression de la notification");
   }
 }

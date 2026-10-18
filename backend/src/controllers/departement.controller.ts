@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
+import { sendError } from "../middlewares/error.middleware";
 export async function getDepartments(
   _req: Request,
   res: Response,
@@ -33,10 +34,7 @@ export async function getDepartments(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de récupérer les départements.",
-    });
+    return sendError(res, error, "Impossible de récupérer les départements.");
   }
 }
 
@@ -69,10 +67,7 @@ export async function getDepartmentById(
   } catch (error) {
     logger.error("Erreur lors de la récupération du département.", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Erreur interne du serveur.",
-    });
+    return sendError(res, error, "Erreur interne du serveur.");
   }
 }
 
@@ -106,10 +101,7 @@ export async function createDepartment(
   } catch (error) {
     logger.error("Erreur lors de la création du département.", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de créer le département.",
-    });
+    return sendError(res, error, "Impossible de créer le département.");
   }
 }
 
@@ -142,10 +134,7 @@ export async function updateDepartment(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de modifier le département.",
-    });
+    return sendError(res, error, "Impossible de modifier le département.");
   }
 }
 
@@ -190,10 +179,7 @@ export async function deleteDepartment(
       error,
     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Impossible de supprimer le département.",
-    });
+    return sendError(res, error, "Impossible de supprimer le département.");
   }
 }
 

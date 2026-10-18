@@ -13,6 +13,7 @@ import {
   listItems,
   removeItem,
 } from "@/lib/crud";
+import { confirmDialog, toast } from "@/lib/toast";
 
 const PAGE_SIZE = 10;
 
@@ -61,10 +62,10 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
   const canDelete = config.deleteRoles.includes(role);
   const createHref = config.createHref ?? `${config.basePath}/create`;
   const deleteLabel =
-    config.deleteMode === "deactivate" ? "Désactiver" : "Supprimer";
+    config.deleteLabel ?? (config.deleteMode === "deactivate" ? "Désactiver" : "Supprimer");
 
   const handleDelete = async (item: Item) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `${deleteLabel} « ${config.titleOf(item)} » ?`
     );
 
@@ -72,6 +73,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
 
     try {
       await removeItem(config, item.id);
+      toast.success(config.deleteMode === "deactivate" ? "Désactivation effectuée." : "Suppression effectuée.");
 
       if (config.deleteMode === "deactivate") {
         const refreshed = await listItems(config);
@@ -80,7 +82,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
         setItems((current) => current.filter((row) => row.id !== item.id));
       }
     } catch (err) {
-      window.alert(errorMessage(err, "Action impossible."));
+      toast.error(errorMessage(err, "Action impossible."));
     }
   };
 

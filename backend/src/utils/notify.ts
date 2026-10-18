@@ -1,7 +1,8 @@
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { emitToUser } from "../realtime/socket";
-import { deliverToUser } from "../services/delivery.service";
+import { isEmailConfigured, sendEmail } from "./mailer";
+import { isSmsConfigured, sendSms } from "./sms";
 
 export type NotificationKind = "INFO" | "SUCCESS" | "WARNING" | "ERROR";
 
@@ -11,7 +12,38 @@ interface Payload {
   type?: NotificationKind;
 }
 
-/** Crée la notification en base, la pousse en temps réel et l'envoie par e-mail/SMS. */
+// SMS : par défaut seulement les messages importants (coût). SMS_NOTIFY_LEVEL=all pour tout envoyer.
+const SMS_ALL = process.env.SMS_NOTIFY_LEVEL === "all";
+
+/** E-mail et/ou SMS selon les préférences du destinataire. */
+async function deliverExternal(userId: number, payload: Payload): Promise<void> {
+  if (!isEmailConfigured() && !isSmsConfigured()) return;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, phone: true, notifyEmail: true, notifySms: true, firstName: true },
+  });
+
+  if (!user) return;
+
+  const type = payload.type ?? "INFO";
+
+  if (user.notifyEmail && user.email) {
+    await sendEmail(
+      user.email,
+      `${payload.title} — Ndao Hifanosika`,
+      `Bonjour ${user.firstName},\n\n${payload.message}\n\nConnectez-vous à la plateforme pour plus de détails.\n— Ndao Hifanosika`,
+    );
+  }
+
+  const important = type !== "INFO";
+
+  if (user.notifySms && user.phone && (SMS_ALL || important)) {
+    await sendSms(user.phone, `Ndao Hifanosika : ${payload.title}. ${payload.message}`);
+  }
+}
+
+/** Crée la notification en base, la pousse en temps réel puis l'envoie par e-mail/SMS. */
 export async function notifyUsers(
   userIds: Array<number | null | undefined>,
   payload: Payload,
@@ -38,14 +70,10 @@ export async function notifyUsers(
 
       emitToUser(userId, "notification:new", row);
 
-      // Envoi externe (e-mail + SMS), non bloquant.
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { email: true, phone: true, status: true },
-      });
-      if (user && user.status === "ACTIVE") {
-        void deliverToUser(user, payload.title, payload.message);
-      }
+      // L'envoi externe ne bloque jamais la requête
+      deliverExternal(userId, payload).catch((error) =>
+        logger.error("Erreur envoi externe notification", error),
+      );
     } catch (error) {
       logger.error("Erreur création notification", error);
     }

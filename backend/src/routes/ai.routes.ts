@@ -7,6 +7,7 @@ import {
 
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
+import { chat, getHouseholds, getModels, trainModels } from "../controllers/ml.controller";
 import {
   getAnomalies,
   getDropoutRiskList,
@@ -52,5 +53,13 @@ router.get("/summary", authorizeRoles(...AI_ROLES), getSummary);
 router.get("/performance", authorizeRoles(...AI_ROLES), getPerformance);
 router.get("/anomalies", authorizeRoles(...AI_ROLES), getAnomalies);
 router.get("/dropout-risk", authorizeRoles(...AI_ROLES), getDropoutRiskList);
+
+router.post("/train", authorizeRoles("ADMIN", "DSI"), trainModels);
+router.get("/models", authorizeRoles(...AI_ROLES), getModels);
+
+// Données personnelles de ménages : ADMIN, DIRECTION, COORDINATOR uniquement
+const FIELD_ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"] as const;
+router.get("/households", authorizeRoles(...FIELD_ROLES), getHouseholds);
+router.post("/chat", authorizeRoles(...FIELD_ROLES), chat);
 
 export default router;

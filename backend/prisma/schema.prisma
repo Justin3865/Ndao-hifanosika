@@ -56,6 +56,13 @@ enum InternshipStatus {
   CANCELLED
 }
 
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
 enum Gender {
   MALE
   FEMALE
@@ -76,6 +83,18 @@ model User {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
   lastLoginAt        DateTime?
+  avatarUrl          String?
+
+  // Préférences de notification
+  notifyEmail        Boolean    @default(true)
+  notifySms          Boolean    @default(true)
+
+  // Position partagée par les agents (mission terrain)
+  latitude           Float?
+  longitude          Float?
+  altitude           Float?
+  locationUpdatedAt  DateTime?
+  sharingLocation    Boolean    @default(false)
 
   department         Department? @relation(fields: [departmentId], references: [id])
 
@@ -88,6 +107,7 @@ model User {
 
   auditLogs           AuditLog[]
   passwordResetTokens PasswordResetToken[]
+  notifications       Notification[]
 
   @@index([departmentId])
   @@index([role])
@@ -186,13 +206,39 @@ model Beneficiary {
   phone       String?
   email       String?
   vulnerable  Boolean  @default(false)
+
+  // Suivi terrain (position partagée avec consentement)
+  latitude         Float?
+  longitude        Float?
+  locationAccuracy Float?
+  lastSeenAt       DateTime?
+  trackingToken    String?   @unique
+  trackingEnabled  Boolean   @default(false)
+  consentAt        DateTime?
+
+  // Zone d'intervention
+  altitude    Float?
+  zoneId      Int?
+
+  // Domicile du ménage et indicateurs de vulnérabilité
+  locality       String?
+  homeLatitude   Float?
+  homeLongitude  Float?
+  homeAltitude   Float?
+  householdSize  Int?
+  monthlyIncome  Float?
+  childrenUnder5 Int?
+  hasDisability  Boolean @default(false)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  zone        Zone?    @relation(fields: [zoneId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([gender])
+  @@index([zoneId])
 }
 
 model Evaluation {
@@ -279,4 +325,94 @@ model RevokedRefreshToken {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+
+model Zone {
+  id             Int           @id @default(autoincrement())
+  name           String        @unique
+  region         String?
+  latitude       Float
+  longitude      Float
+  radiusKm       Float?
+  address        String?
+  phone          String?
+  email          String?
+  isHeadquarters Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  beneficiaries  Beneficiary[]
+}
+
+
+model Certificate {
+  id           Int       @id @default(autoincrement())
+  code         String    @unique
+  type         String
+  holderName   String
+  holderEmail  String?
+  title        String
+  description  String?
+  startDate    DateTime?
+  endDate      DateTime?
+  internshipId Int?
+  userId       Int?
+  issuedById   Int?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+
+model AiModel {
+  id         Int      @id @default(autoincrement())
+  name       String
+  kind       String
+  sampleSize Int
+  metrics    Json
+  weights    Json
+  trainedAt  DateTime @default(now())
+}
+
+
+model EvaluationGrid {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  criteria    Json     @default("[]")
+  createdById Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+
+model EvaluationCampaign {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  gridId      Int?
+  projectId   Int?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String    @default("DRAFT")
+  createdById Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

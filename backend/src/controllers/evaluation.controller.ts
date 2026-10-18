@@ -8,6 +8,7 @@ import {
   isScopedRole,
 } from "../utils/dataScope";
 
+import { sendError } from "../middlewares/error.middleware";
 export async function getEvaluations(
   req: Request,
   res: Response,
@@ -62,10 +63,7 @@ export async function getEvaluations(
   } catch (error) {
     logger.error("Erreur récupération évaluations", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération des évaluations",
-    });
+    sendError(res, error, "Erreur lors de la récupération des évaluations");
   }
 }
 
@@ -130,11 +128,18 @@ export async function getEvaluationById(
   } catch (error) {
     logger.error("Erreur récupération évaluation", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la récupération de l'évaluation",
-    });
+    sendError(res, error, "Erreur lors de la récupération de l'évaluation");
   }
+}
+
+/** Score d'évaluation : nombre entre 0 et 100 (undefined = non fourni, null = effacé). */
+function parseScore(raw: unknown): number | null | undefined | "invalid" {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === "") return null;
+
+  const value = Number(raw);
+
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : "invalid";
 }
 
 export async function createEvaluation(
@@ -158,6 +163,16 @@ export async function createEvaluation(
       res.status(400).json({
         success: false,
         message: "projectId, title et createdById sont obligatoires",
+      });
+      return;
+    }
+
+    const parsedScore = parseScore(score);
+
+    if (parsedScore === "invalid") {
+      res.status(400).json({
+        success: false,
+        message: "Le score doit être un nombre compris entre 0 et 100.",
       });
       return;
     }
@@ -195,10 +210,7 @@ export async function createEvaluation(
         projectId: Number(projectId),
         title,
         description,
-        score:
-          score !== undefined && score !== null
-            ? Number(score)
-            : undefined,
+        score: parsedScore ?? undefined,
         status: status ?? "DRAFT",
         evaluatedAt: evaluatedAt
           ? new Date(evaluatedAt)
@@ -232,10 +244,7 @@ export async function createEvaluation(
   } catch (error) {
     logger.error("Erreur création évaluation", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la création de l'évaluation",
-    });
+    sendError(res, error, "Erreur lors de la création de l'évaluation");
   }
 }
 
@@ -275,6 +284,16 @@ export async function updateEvaluation(
       evaluatedAt,
     } = req.body;
 
+    const parsedScore = parseScore(score);
+
+    if (parsedScore === "invalid") {
+      res.status(400).json({
+        success: false,
+        message: "Le score doit être un nombre compris entre 0 et 100.",
+      });
+      return;
+    }
+
     const evaluation = await prisma.evaluation.update({
       where: { id },
       data: {
@@ -282,10 +301,7 @@ export async function updateEvaluation(
           projectId !== undefined ? Number(projectId) : undefined,
         title,
         description,
-        score:
-          score !== undefined && score !== null
-            ? Number(score)
-            : undefined,
+        score: parsedScore,
         status,
         evaluatedAt:
           evaluatedAt !== undefined
@@ -305,10 +321,7 @@ export async function updateEvaluation(
   } catch (error) {
     logger.error("Erreur modification évaluation", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la modification de l'évaluation",
-    });
+    sendError(res, error, "Erreur lors de la modification de l'évaluation");
   }
 }
 
@@ -350,9 +363,6 @@ export async function deleteEvaluation(
   } catch (error) {
     logger.error("Erreur suppression évaluation", error);
 
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de la suppression de l'évaluation",
-    });
+    sendError(res, error, "Erreur lors de la suppression de l'évaluation");
   }
 }

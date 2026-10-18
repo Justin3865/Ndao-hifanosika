@@ -11,6 +11,7 @@ import {
   fetchUser,
   updateUser,
 } from "@/lib/usersApi";
+import { confirmDialog, toast } from "@/lib/toast";
 
 export default function EditUserPage() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function EditUserPage() {
 
     try {
       await updateUser(id, payload);
+      toast.success("Utilisateur modifié.");
       router.push(`/users/${id}`);
     } catch (err) {
       setError(apiErrorMessage(err, "Impossible de modifier l'utilisateur."));

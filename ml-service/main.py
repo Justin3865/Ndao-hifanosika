@@ -48,12 +48,12 @@ def fetch_dataset() -> pd.DataFrame:
 
 
 def candidates() -> dict:
-    prep = lambda clf: Pipeline([("imp", SimpleImputer(strategy="median")), ("sc", StandardScaler()), ("clf", clf)])
+    prep = lambda clf: Pipeline([("imp", SimpleImputer(strategy="median", keep_empty_features=True)), ("sc", StandardScaler()), ("clf", clf)])
     return {
         "sgd_log_loss": prep(SGDClassifier(loss="log_loss", penalty="l2", alpha=1e-3, max_iter=2000, random_state=42)),
-        "random_forest": Pipeline([("imp", SimpleImputer(strategy="median")),
+        "random_forest": Pipeline([("imp", SimpleImputer(strategy="median", keep_empty_features=True)),
                                    ("clf", RandomForestClassifier(n_estimators=300, min_samples_leaf=2, random_state=42))]),
-        "gradient_boosting": Pipeline([("imp", SimpleImputer(strategy="median")),
+        "gradient_boosting": Pipeline([("imp", SimpleImputer(strategy="median", keep_empty_features=True)),
                                        ("clf", GradientBoostingClassifier(random_state=42))]),
         "mlp_deep": prep(MLPClassifier(hidden_layer_sizes=(64, 32, 16), early_stopping=True, max_iter=800, random_state=42)),
     }

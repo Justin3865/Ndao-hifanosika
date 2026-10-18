@@ -2,45 +2,71 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { BadgeCheck, ShieldX } from "lucide-react";
+import { BadgeCheck, Loader2, ShieldAlert, ShieldX } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
+import { fmtDate } from "@/lib/crud";
+import { API_URL } from "@/lib/socket";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR") : "—");
+interface Result {
+  status: "VALID" | "REVOKED" | "NOT_FOUND";
+  data?: {
+    code: string;
+    holderName: string;
+    title: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    issuedAt: string;
+  };
+}
 
-/** Page PUBLIQUE ouverte par le scan du QR code du certificat. */
-export default function VerificationPage() {
-  const { code } = useParams<{ code: string }>();
-  const [state, setState] = useState<"loading" | "valid" | "invalid">("loading");
-  const [data, setData] = useState<any>(null);
+export default function VerifyCertificatePage() {
+  const params = useParams<{ code: string }>();
+  const [result, setResult] = useState<Result | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/public/certificates/${encodeURIComponent(code)}`)
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (r.ok && j.valid) { setData(j.data); setState("valid"); } else setState("invalid");
+    fetch(`${API_URL}/public/certificates/${encodeURIComponent(params.code)}`)
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        setResult({ status: json.status ?? "NOT_FOUND", data: json.data });
       })
-      .catch(() => setState("invalid"));
-  }, [code]);
+      .catch(() => setResult({ status: "NOT_FOUND" }));
+  }, [params.code]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-xl">
-        {state === "loading" && <p className="text-gray-500">Vérification en cours…</p>}
-        {state === "valid" && data && (
+    <main className="flex min-h-screen flex-col items-center bg-gradient-to-b from-blue-950 via-blue-900 to-blue-700 px-4 py-12">
+      <Logo light size={48} />
+
+      <div className="mt-10 w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl">
+        {!result && <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-700" />}
+
+        {result?.status === "VALID" && result.data && (
           <>
             <BadgeCheck className="mx-auto h-16 w-16 text-green-600" />
-            <h1 className="mt-4 text-2xl font-bold text-gray-900">Certificat authentique</h1>
-            <p className="mt-6 text-xl font-semibold">{data.internName}</p>
-            <p className="mt-2 text-gray-600">{data.project}</p>
-            <p className="mt-2 text-sm text-gray-500">Du {fmt(data.startDate)} au {fmt(data.endDate)}</p>
-            <p className="mt-6 text-xs text-gray-400">Code : {data.code} — délivré par Ndao Hifanosika</p>
+            <h1 className="mt-3 text-2xl font-bold text-green-700">Certificat authentique</h1>
+            <p className="mt-6 text-sm text-gray-500">Délivré à</p>
+            <p className="text-2xl font-bold text-gray-900">{result.data.holderName}</p>
+            <p className="mt-3 text-gray-700">« {result.data.title} »</p>
+            <p className="mt-2 text-sm text-gray-500">
+              {result.data.startDate || result.data.endDate ? `${fmtDate(result.data.startDate)} → ${fmtDate(result.data.endDate)} · ` : ""}
+              délivré le {fmtDate(result.data.issuedAt)}
+            </p>
+            <p className="mt-5 font-mono text-xs text-blue-900">{result.data.code}</p>
           </>
         )}
-        {state === "invalid" && (
+
+        {result?.status === "REVOKED" && (
           <>
-            <ShieldX className="mx-auto h-16 w-16 text-red-600" />
-            <h1 className="mt-4 text-2xl font-bold text-gray-900">Certificat non reconnu</h1>
-            <p className="mt-3 text-gray-600">Ce code ne correspond à aucun certificat délivré par Ndao Hifanosika.</p>
+            <ShieldAlert className="mx-auto h-16 w-16 text-amber-500" />
+            <h1 className="mt-3 text-2xl font-bold text-amber-700">Certificat révoqué</h1>
+            <p className="mt-3 text-sm text-gray-600">Ce certificat a été annulé par Ndao Hifanosika et n&apos;est plus valable.</p>
+          </>
+        )}
+
+        {result?.status === "NOT_FOUND" && (
+          <>
+            <ShieldX className="mx-auto h-16 w-16 text-red-500" />
+            <h1 className="mt-3 text-2xl font-bold text-red-700">Certificat introuvable</h1>
+            <p className="mt-3 text-sm text-gray-600">Ce code ne correspond à aucun certificat délivré par Ndao Hifanosika.</p>
           </>
         )}
       </div>

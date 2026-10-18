@@ -6,7 +6,9 @@ import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import { emitToTracking, recordLocation } from "../realtime/socket";
 import { getReqUser } from "../utils/dataScope";
+import { db } from "../utils/db";
 
+import { sendError } from "../middlewares/error.middleware";
 /* ===================================================================
  * SUIVI TERRAIN — position partagée par le bénéficiaire LUI-MÊME,
  * après consentement, avec possibilité d'arrêter à tout moment.
@@ -18,15 +20,6 @@ export const publicTrackingRouter = Router();
 
 /* ---------- Zones d'intervention (villes) ---------- */
 
-const CITIES: Record<string, { latitude: number; longitude: number }> = {
-  antananarivo: { latitude: -18.8792, longitude: 47.5079 },
-  fianarantsoa: { latitude: -21.4536, longitude: 47.0857 },
-  toamasina: { latitude: -18.1443, longitude: 49.3958 },
-  mahajanga: { latitude: -15.7167, longitude: 46.3167 },
-  toliara: { latitude: -23.35, longitude: 43.6667 },
-  antsiranana: { latitude: -12.2787, longitude: 49.2917 },
-  antsirabe: { latitude: -19.8659, longitude: 47.0333 },
-};
 
 const targetSelect = {
   id: true,
@@ -87,64 +80,91 @@ trackingRouter.get(
       });
     } catch (error) {
       logger.error("Erreur tracking targets", error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   },
 );
 
-/** GET /api/tracking/zones — répartition par ville (dashboard) */
+/** GET /api/tracking/zones — zones d'intervention (table Zone) avec chiffres */
 trackingRouter.get(
   "/zones",
   authorizeRoles("ADMIN", "DIRECTION", "DAF", "COMMUNICATION", "COORDINATOR"),
   async (_req: Request, res: Response) => {
     try {
-      const [activities, beneficiaries] = await Promise.all([
-        prisma.activity.findMany({
-          select: { projectId: true, location: true },
-        }),
-        prisma.beneficiary.groupBy({
-          by: ["projectId"],
-          _count: { _all: true },
-        }),
+      const norm = (value: string) =>
+        value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+      const [zones, activities, beneficiaries] = await Promise.all([
+        db.zone.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+        prisma.activity.findMany({ select: { projectId: true, location: true } }),
+        prisma.beneficiary.findMany({ select: { id: true, projectId: true, zoneId: true } as never }),
       ]);
 
-      const perProject = new Map(
-        beneficiaries.map((row) => [row.projectId, row._count._all]),
-      );
-
-      const zones = new Map<
-        string,
-        { activities: number; projects: Set<number> }
-      >();
-
-      for (const activity of activities) {
-        const city = Object.keys(CITIES).find((name) =>
-          (activity.location ?? "").toLowerCase().includes(name),
-        );
-        if (!city) continue;
-
-        const zone = zones.get(city) ?? { activities: 0, projects: new Set() };
-        zone.activities += 1;
-        zone.projects.add(activity.projectId);
-        zones.set(city, zone);
-      }
+      type Row = { id: number; projectId: number; zoneId?: number | null };
 
       res.json({
         success: true,
-        data: Array.from(zones.entries()).map(([city, zone]) => ({
-          city: city.charAt(0).toUpperCase() + city.slice(1),
-          ...CITIES[city],
-          activities: zone.activities,
-          projects: zone.projects.size,
-          beneficiaries: Array.from(zone.projects).reduce(
-            (sum, id) => sum + (perProject.get(id) ?? 0),
-            0,
-          ),
-        })),
+        data: (zones as Array<{ id: number; name: string; latitude: number; longitude: number; radiusKm: number | null; isHeadquarters: boolean }>).map((zone) => {
+          const key = norm(zone.name);
+          const inZone = activities.filter((a) => norm(a.location ?? "").includes(key));
+          const projectIds = new Set(inZone.map((a) => a.projectId));
+
+          const people = new Set(
+            (beneficiaries as unknown as Row[])
+              .filter((b) => b.zoneId === zone.id || projectIds.has(b.projectId))
+              .map((b) => b.id),
+          );
+
+          return {
+            id: zone.id,
+            city: zone.name,
+            latitude: zone.latitude,
+            longitude: zone.longitude,
+            radiusKm: zone.radiusKm,
+            isHeadquarters: zone.isHeadquarters,
+            activities: inZone.length,
+            projects: projectIds.size,
+            beneficiaries: people.size,
+          };
+        }),
       });
     } catch (error) {
       logger.error("Erreur tracking zones", error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
+    }
+  },
+);
+
+/** GET /api/tracking/staff — agents qui partagent leur position (mission en cours) */
+trackingRouter.get(
+  "/staff",
+  authorizeRoles("ADMIN", "DIRECTION", "COORDINATOR"),
+  async (_req: Request, res: Response) => {
+    try {
+      const rows = await prisma.user.findMany({
+        where: { sharingLocation: true, latitude: { not: null }, longitude: { not: null } },
+        select: { id: true, firstName: true, lastName: true, role: true, latitude: true, longitude: true, altitude: true, locationUpdatedAt: true },
+      });
+
+      const limit = Date.now() - 6 * 3600 * 1000;
+
+      res.json({
+        success: true,
+        data: rows
+          .filter((r) => r.locationUpdatedAt && r.locationUpdatedAt.getTime() > limit)
+          .map((r) => ({
+            id: r.id,
+            name: `${r.firstName} ${r.lastName}`,
+            role: r.role,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            altitude: r.altitude,
+            updatedAt: r.locationUpdatedAt,
+          })),
+      });
+    } catch (error) {
+      logger.error("Erreur tracking staff", error);
+      sendError(res, error, "Erreur serveur");
     }
   },
 );
@@ -178,7 +198,7 @@ trackingRouter.get(
       });
     } catch (error) {
       logger.error("Erreur tracking state", error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   },
 );
@@ -219,7 +239,7 @@ trackingRouter.post(
       res.json({ success: true, data: { path: `/suivi/${token}` } });
     } catch (error) {
       logger.error("Erreur tracking link", error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   },
 );
@@ -258,7 +278,7 @@ trackingRouter.delete(
       res.json({ success: true, message: "Suivi révoqué" });
     } catch (error) {
       logger.error("Erreur tracking revoke", error);
-      res.status(500).json({ success: false, message: "Erreur serveur" });
+      sendError(res, error, "Erreur serveur");
     }
   },
 );
@@ -302,7 +322,7 @@ publicTrackingRouter.get("/:token", async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error("Erreur public tracking", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -332,7 +352,7 @@ publicTrackingRouter.post("/:token/consent", async (req: Request, res: Response)
     res.json({ success: true });
   } catch (error) {
     logger.error("Erreur consentement tracking", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -349,7 +369,7 @@ publicTrackingRouter.post("/:token/location", async (req: Request, res: Response
     res.status(result.ok ? 200 : 400).json({ success: result.ok, reason: result.reason });
   } catch (error) {
     logger.error("Erreur public location", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
 
@@ -378,6 +398,6 @@ publicTrackingRouter.post("/:token/stop", async (req: Request, res: Response) =>
     res.json({ success: true });
   } catch (error) {
     logger.error("Erreur stop tracking", error);
-    res.status(500).json({ success: false, message: "Erreur serveur" });
+    sendError(res, error, "Erreur serveur");
   }
 });
