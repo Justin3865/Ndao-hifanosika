@@ -103,6 +103,24 @@ function checkUserAccess(
   return hasRequiredRole && hasRequiredPermissions;
 }
 
+// Une fois la session vérifiée, les pages suivantes sont évaluées tout de suite
+// (sans écran « Vérification des accès... ») : plus de clignotement entre deux pages.
+let hasChecked = false;
+
+function evaluate(requiredRoles: string[], requiredPermissions: string[], pathname: string) {
+  const user = getStoredUser();
+
+  if (!user) return { authenticated: false, access: false };
+
+  const access = checkUserAccess(user, requiredRoles, requiredPermissions);
+  const pathAllowed =
+    requiredRoles.length > 0 ||
+    requiredPermissions.length > 0 ||
+    canAccessPath(user.role, pathname);
+
+  return { authenticated: true, access: access && pathAllowed };
+}
+
 export function ProtectedRoute({
   children,
   requiredRoles = [],
@@ -113,9 +131,14 @@ export function ProtectedRoute({
   const router = useRouter();
   const pathname = usePathname();
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [hasAccess, setHasAccess] = useState(false);
+  const initial =
+    hasChecked && typeof window !== "undefined"
+      ? evaluate(requiredRoles as string[], requiredPermissions as string[], pathname)
+      : null;
+
+  const [isLoading, setIsLoading] = useState(initial === null);
+  const [isAuthenticated, setIsAuthenticated] = useState(initial?.authenticated ?? false);
+  const [hasAccess, setHasAccess] = useState(initial?.access ?? false);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -156,6 +179,7 @@ export function ProtectedRoute({
     };
 
     checkAuth();
+    hasChecked = true;
   }, [requiredRoles, requiredPermissions, pathname]);
 
   /**

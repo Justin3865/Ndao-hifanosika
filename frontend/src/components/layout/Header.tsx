@@ -22,6 +22,9 @@ interface Me {
   avatarUrl?: string | null;
 }
 
+// Profil gardé en mémoire : pas de clignotement de la photo à chaque page
+let cachedMe: Me | null = null;
+
 function Avatar({ me, size = 40 }: { me: Me | null; size?: number }) {
   const initials = me
     ? `${me.firstName?.[0] ?? ""}${me.lastName?.[0] ?? ""}`.toUpperCase()
@@ -53,7 +56,7 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const [me, setMe] = useState<Me | null>(null);
+  const [me, setMe] = useState<Me | null>(cachedMe);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -63,7 +66,10 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
       .get("/profile")
       .then((res) => {
         const data = res.data?.data;
-        if (data) setMe(data);
+        if (data) {
+          cachedMe = data;
+          setMe(data);
+        }
       })
       .catch(() => {
         try {

@@ -79,12 +79,17 @@ const groups = [
   },
 ];
 
+// Mémorisés entre deux pages pour que le menu ne « saute » pas à chaque clic
+let cachedRole = "";
+let cachedScroll = 0;
+
 export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
   const pathname = usePathname();
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState(cachedRole);
 
   useEffect(() => {
-    setRole(getStoredRole());
+    cachedRole = getStoredRole();
+    setRole(cachedRole);
   }, []);
 
   const visibleGroups = groups
@@ -108,7 +113,15 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
         </button>
       </div>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-6">
+      <nav
+        ref={(element) => {
+          if (element) element.scrollTop = cachedScroll;
+        }}
+        onScroll={(event) => {
+          cachedScroll = event.currentTarget.scrollTop;
+        }}
+        className="flex-1 space-y-6 overflow-y-auto px-3 pb-6"
+      >
         {visibleGroups.map((group) => (
           <div key={group.title}>
             <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-blue-300/70">

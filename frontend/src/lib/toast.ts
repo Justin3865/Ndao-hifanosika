@@ -16,8 +16,21 @@ export interface ConfirmEventDetail {
   resolve: (value: boolean) => void;
 }
 
+declare global {
+  interface Window {
+    __nhHost?: boolean;
+  }
+}
+
 function emit(kind: ToastKind, message: string) {
   if (typeof window === "undefined") return;
+
+  // Aucun ToastHost monté : on ne perd jamais un message d'erreur
+  if (!window.__nhHost) {
+    if (kind === "error" || kind === "warning") window.alert(message);
+    return;
+  }
+
   window.dispatchEvent(new CustomEvent<ToastEventDetail>("nh:toast", { detail: { kind, message } }));
 }
 
@@ -33,6 +46,9 @@ export function confirmDialog(
   options: { title?: string; confirmLabel?: string; danger?: boolean } = {}
 ): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
+
+  // Sans ToastHost, la fenêtre native garantit que le bouton fonctionne quand même
+  if (!window.__nhHost) return Promise.resolve(window.confirm(message));
 
   return new Promise((resolve) => {
     window.dispatchEvent(

@@ -19,8 +19,15 @@ const STYLE: Record<ToastKind, { icon: typeof Info; ring: string; text: string }
 export function ToastHost() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirm, setConfirm] = useState<ConfirmEventDetail | null>(null);
+  const [active, setActive] = useState(false);
 
   useEffect(() => {
+    // Une seule instance écoute les évènements (layout racine ET AppLayout peuvent la monter)
+    if (window.__nhHost) return;
+
+    window.__nhHost = true;
+    setActive(true);
+
     let counter = 0;
 
     const onToast = (event: Event) => {
@@ -42,6 +49,7 @@ export function ToastHost() {
     window.addEventListener("nh:confirm", onConfirm);
 
     return () => {
+      window.__nhHost = false;
       window.removeEventListener("nh:toast", onToast);
       window.removeEventListener("nh:confirm", onConfirm);
     };
@@ -51,6 +59,8 @@ export function ToastHost() {
     confirm?.resolve(value);
     setConfirm(null);
   };
+
+  if (!active) return null;
 
   return (
     <>

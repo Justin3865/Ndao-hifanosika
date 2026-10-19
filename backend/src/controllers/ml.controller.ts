@@ -4,18 +4,15 @@ import { logger } from "../config/logger";
 import { answerQuestion } from "../ml/chatbot";
 import { haversineKm } from "../ml/geo";
 import { listModels, scoreHouseholds, trainVulnerabilityModels } from "../ml/vulnerability";
+import { getReqUser } from "../utils/dataScope";
 
-import { sendError } from "../middlewares/error.middleware";
-import { trainExternalMl } from "../services/pyservices.service";
 export async function trainModels(_req: Request, res: Response) {
   try {
     const report = await trainVulnerabilityModels();
-    const mlService = await trainExternalMl();
-
-    res.json({ success: true, data: report, ...(mlService ? { mlService } : {}) });
+    res.json({ success: true, data: report });
   } catch (error) {
     logger.error("Erreur entraînement", error);
-    sendError(res, error, "Erreur lors de l'entraînement");
+    res.status(500).json({ success: false, message: "Erreur lors de l'entraînement" });
   }
 }
 
@@ -24,7 +21,7 @@ export async function getModels(_req: Request, res: Response) {
     res.json({ success: true, data: await listModels() });
   } catch (error) {
     logger.error("Erreur modèles", error);
-    sendError(res, error, "Erreur serveur");
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 }
 
@@ -64,7 +61,7 @@ export async function getHouseholds(_req: Request, res: Response) {
     res.json({ success: true, data });
   } catch (error) {
     logger.error("Erreur ménages", error);
-    sendError(res, error, "Erreur serveur");
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 }
 
@@ -76,9 +73,9 @@ export async function chat(req: Request, res: Response) {
       return res.status(400).json({ success: false, message: "Message vide ou trop long" });
     }
 
-    res.json({ success: true, data: await answerQuestion(message) });
+    res.json({ success: true, data: await answerQuestion(message, getReqUser(req)?.role) });
   } catch (error) {
     logger.error("Erreur chatbot", error);
-    sendError(res, error, "Erreur du chatbot");
+    res.status(500).json({ success: false, message: "Erreur du chatbot" });
   }
 }

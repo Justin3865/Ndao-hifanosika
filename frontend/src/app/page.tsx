@@ -1486,7 +1486,7 @@ export default function HomePage() {
                     onClick={() => switchAuth(t)}
                     className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${
                       authModal === t
-                        ? "bg-red-600 text-white shadow-lg shadow-red-900/40"
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
@@ -1562,7 +1562,7 @@ export default function HomePage() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/40 transition hover:bg-red-700 disabled:opacity-60"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60"
                   >
                     <LogIn className="h-4 w-4" />
                     {isLoading ? "Connexion..." : "Se connecter"}
@@ -1677,7 +1677,7 @@ export default function HomePage() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/40 transition hover:bg-red-700 disabled:opacity-60"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60"
                   >
                     <ShieldCheck className="h-4 w-4" />
                     {isLoading ? "Création..." : "Créer mon compte"}
@@ -1693,7 +1693,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       onClick={() => switchAuth("register")}
-                      className="font-semibold text-red-500 hover:text-red-400"
+                      className="font-semibold text-green-500 hover:text-green-400"
                     >
                       S'inscrire
                     </button>
@@ -1704,7 +1704,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       onClick={() => switchAuth("login")}
-                      className="font-semibold text-red-500 hover:text-red-400"
+                      className="font-semibold text-blue-500 hover:text-blue-400"
                     >
                       Se connecter
                     </button>

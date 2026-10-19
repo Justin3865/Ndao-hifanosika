@@ -1,7 +1,7 @@
 import { prisma } from "../config/database";
 import { db } from "../utils/db";
 import { haversineKm, normalizeText } from "./geo";
-import { ScoredHousehold, listModels, scoreHouseholds } from "./vulnerability";
+import { ScoredHousehold, listModels, scoreHouseholds, trainVulnerabilityModels } from "./vulnerability";
 
 /* Assistant conversationnel : comprend FR + malgache, interroge les vraies données
    et répond avec tableau + carte. Règles d'intention (pas de LLM externe). */
@@ -19,8 +19,6 @@ export interface MapPoint {
 
 export interface ChatAnswer {
   reply: string;
-  /** Identifiants des zones citées dans la question (surbrillance sur la carte) */
-  zoneIds?: number[];
   table?: { columns: string[]; rows: Array<Array<string | number>> };
   map?: { points: MapPoint[]; lines: Array<{ from: string; to: string; label: string }> };
   suggestions: string[];
@@ -72,7 +70,7 @@ function nearestStaff(h: ScoredHousehold, staff: Staff[]) {
   return ranked[0] ?? null;
 }
 
-async function answerInner(message: string): Promise<ChatAnswer> {
+export async function answerQuestion(message: string, role?: string): Promise<ChatAnswer> {
   const raw = message.trim();
   const text = normalizeText(raw);
   const mg = /\b(ny|ao|aiza|firy|izay|mpiasa|tena|marefo|mahantra|ampitaha|fampitahana|haavo|akaiky|halavirana)\b/.test(text);
@@ -105,6 +103,69 @@ async function answerInner(message: string): Promise<ChatAnswer> {
     L("Quelle est la fiabilité du modèle ?", "Tsara ve ny modely?"),
   ];
 
+  /* ---- commande : entraîner les modèles ---- */
+  if (
+    has(text, /^(entrain|train|ampiofan)/) ||
+    has(text, /(lance|lancer|relance|refais|fais|faire|atombohy|ampiofano).*(entrain|train|apprentissage|modele|ampiofan)/)
+  ) {
+    if (role !== "ADMIN") {
+      return {
+        reply: L(
+          "Seul l'administrateur peut lancer l'entraînement des modèles (menu Analyses IA › Modèles).",
+          "Ny administratera ihany no afaka manomboka ny fampiofanana ny modely.",
+        ),
+        suggestions,
+      };
+    }
+
+    const report = await trainVulnerabilityModels();
+
+    if (!report.trained) {
+      return {
+        reply: L(
+          `Entraînement impossible : ${report.reason ?? "données insuffisantes"}`,
+          `Tsy afaka ny fampiofanana: ${report.reason ?? "tsy ampy ny angon-drakitra"}`,
+        ),
+        suggestions,
+      };
+    }
+
+    return {
+      reply: L(
+        `Entraînement terminé sur ${report.sampleSize} ménages (${report.positives} vulnérables, validation croisée ${report.folds} plis). Fiabilité : ${report.reliability.toLowerCase()}.`,
+        `Vita ny fampiofanana tamin'ny tokantrano ${report.sampleSize} (marefo ${report.positives}). Fahatokisana: ${report.reliability.toLowerCase()}.`,
+      ),
+      table: {
+        columns: ["Modèle", "Exactitude", "Précision", "Rappel", "F1", "AUC"],
+        rows: [
+          ["Référence (majorité)", `${Math.round(report.baseline.accuracy * 100)} %`, "—", "—", "—", "—"],
+          ...report.models.map((m) => [
+            m.name,
+            `${Math.round(m.metrics.accuracy * 100)} %`,
+            `${Math.round(m.metrics.precision * 100)} %`,
+            `${Math.round(m.metrics.recall * 100)} %`,
+            m.metrics.f1.toFixed(2),
+            m.metrics.auc.toFixed(2),
+          ]),
+        ],
+      },
+      suggestions,
+    };
+  }
+
+  /* ---- salutations / aide ---- */
+  const greeting = has(text, /^(bonjour|bonsoir|salut|coucou|hello|hi\b|salama|manao ahoana|akory|aide|help|que sais|inona no azonao)/);
+
+  if (greeting) {
+    return {
+      reply: L(
+        "Bonjour ! Posez-moi par exemple : « Quels sont les ménages les plus vulnérables à Fianarantsoa ? », « Compare Ankalamavony et Andraindrato », « Quel agent est le plus proche ? », « Quelle est l'altitude des ménages ? » ou « Entraîne les modèles ».",
+        "Salama! Azonao fanontaniana ohatra: « Iza avy ny tokantrano marefo indrindra ao Fianarantsoa? », « Ampitaho Ankalamavony sy Andraindrato », « Iza no mpiasa akaiky indrindra? ».",
+      ),
+      suggestions,
+    };
+  }
+
   /* ---- fiabilité du modèle ---- */
   if (has(text, /modele|model|precision|fiabil|sgd|gradient|reseau|neurone|deep|apprentissage|entrain/)) {
     const models = await listModels();
@@ -120,8 +181,16 @@ async function answerInner(message: string): Promise<ChatAnswer> {
 
     return {
       reply: L(
-        `Derniers entraînements (validation croisée) — régression logistique SGD et réseau de neurones profond. Plus il y a de ménages renseignés, plus ils deviennent fiables.`,
-        `Fampiofanana farany (validation croisée): régression logistique SGD sy réseau de neurones. Arakaraka ny habetsaky ny tokantrano voasoratra no hitombo ny fahatokisana.`,
+        `Dernier entraînement : ${models[0].sampleSize} ménage(s). ${
+          models[0].sampleSize >= 300
+            ? "Volume correct : les scores sont raisonnablement fiables."
+            : models[0].sampleSize >= 100
+              ? "Volume moyen : scores utiles pour prioriser, à confirmer sur le terrain."
+              : "Volume faible : scores indicatifs seulement. Il faut plusieurs centaines de ménages renseignés (domicile, revenu, taille du foyer) pour des prédictions fiables."
+        } Dites « entraîne les modèles » (administrateur) après chaque saisie importante.`,
+        `Fampiofana farany: tokantrano ${models[0].sampleSize}. ${
+          models[0].sampleSize >= 100 ? "Azo ampiasaina ho fanoloran-tena." : "Vitsy ny angon-drakitra: isa manondro fotsiny. Mila tokantrano an-jatony vao azo atokisana."
+        }`,
       ),
       table: {
         columns: ["Modèle", "Échantillon", "Exactitude", "F1", "AUC"],
@@ -255,11 +324,30 @@ async function answerInner(message: string): Promise<ChatAnswer> {
     };
   }
 
-  /* ---- classement des plus vulnérables (défaut) ---- */
+  const wantsRanking = has(text, /vulnerab|prioritaire|marefo|mahantra|ahiahy|pauvre|urgent|classement|\btop\b|liste|menage|tokantrano|besoin|fragile|famille/);
+
+  if (!wantsRanking) {
+    return {
+      reply: L(
+        "Je n'ai pas compris cette demande. Je peux classer les ménages vulnérables, comparer des zones, trouver l'agent le plus proche, donner l'altitude, ou entraîner les modèles.",
+        "Tsy azoko tsara ity fangatahana ity. Afaka mandrafitra ny tokantrano marefo, mampitaha faritra, mitady ny mpiasa akaiky ary manome ny haavo aho.",
+      ),
+      suggestions,
+    };
+  }
+
+  /* ---- classement des plus vulnérables ---- */
   let pool = [...households];
   if (places.length) pool = pool.filter((h) => places.some((p) => inPlace(h, p)));
   pool.sort((a, b) => b.score - a.score);
   const top = pool.slice(0, 5);
+
+  const gpsHint = top.length && top.every((h) => h.latitude === null)
+    ? L(
+        " Aucun de ces ménages n'a de domicile géolocalisé : renseignez-le sur la fiche du bénéficiaire (clic sur la carte) pour les voir ici avec l'altitude.",
+        " Tsy mbola misy toerana voasoratra: fenoy ao amin'ny fiche-n'ny mpandray anjara (clic amin'ny carte).",
+      )
+    : "";
 
   if (!top.length) {
     return { reply: L("Aucun ménage ne correspond à votre demande.", "Tsy misy tokantrano mifanaraka."), suggestions };
@@ -269,8 +357,8 @@ async function answerInner(message: string): Promise<ChatAnswer> {
 
   return {
     reply: L(
-      `Voici les ${top.length} ménages les plus vulnérables${places.length ? ` à ${places.join(", ")}` : ""} (score = moyenne SGD + réseau de neurones). ${top[0].name} est prioritaire (${top[0].score}/100).`,
-      `Ireto ny tokantrano ${top.length} marefo indrindra${places.length ? ` ao ${places.join(", ")}` : ""}. ${top[0].name} no laharam-pahamehana (${top[0].score}/100).`,
+      `Voici les ${top.length} ménages les plus vulnérables${places.length ? ` à ${places.join(", ")}` : ""} (score = moyenne SGD + réseau de neurones). ${top[0].name} est prioritaire (${top[0].score}/100).${gpsHint}`,
+      `Ireto ny tokantrano ${top.length} marefo indrindra${places.length ? ` ao ${places.join(", ")}` : ""}. ${top[0].name} no laharam-pahamehana (${top[0].score}/100).${gpsHint}`,
     ),
     table: {
       columns: [L("Ménage", "Tokantrano"), L("Localité", "Toerana"), "Score", "SGD", "MLP", "Altitude (m)", L("Agent le plus proche", "Mpiasa akaiky")],
@@ -291,24 +379,4 @@ async function answerInner(message: string): Promise<ChatAnswer> {
     },
     suggestions,
   };
-}
-
-
-/** Réponse du chatbot + zones citées dans la question. */
-export async function answerQuestion(message: string): Promise<ChatAnswer> {
-  const answer = await answerInner(message);
-
-  try {
-    const text = normalizeText(message);
-    const zones = (await db.zone.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-    })) as Array<{ id: number; name: string }>;
-
-    answer.zoneIds = zones.filter((z) => text.includes(normalizeText(z.name))).map((z) => z.id);
-  } catch {
-    answer.zoneIds = [];
-  }
-
-  return answer;
 }
