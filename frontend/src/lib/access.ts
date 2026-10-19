@@ -31,7 +31,8 @@ interface AccessRule {
  */
 const ACCESS_RULES: AccessRule[] = [
   // Pages communes à tous les utilisateurs connectés
-  { pattern: /^\/(dashboard|profile|settings|notifications)(\/|$)/, roles: ALL_ROLES },
+  // ("*" = tout utilisateur connecté, quel que soit son rôle : jamais de boucle 403 sur ces pages)
+  { pattern: /^\/(dashboard|profile|settings|notifications)(\/|$)/, roles: ["*"] },
 
   // ADMIN uniquement
   { pattern: /^\/administration(\/|$)/, roles: ["ADMIN"] },
@@ -51,7 +52,8 @@ const ACCESS_RULES: AccessRule[] = [
   },
 
   // Chatbot + carte des ménages vulnérables : données personnelles
-  { pattern: /^\/ai\/(chat|vulnerability|models)(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+  { pattern: /^\/ai\/models(\/|$)/, roles: ["ADMIN", "DIRECTION", "DSI", "COORDINATOR"] },
+  { pattern: /^\/ai\/(chat|vulnerability)(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
 
   // Suivi terrain en direct (bénéficiaires)
   { pattern: /^\/tracking(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
@@ -154,5 +156,11 @@ export function canAccessPath(role: string | null | undefined, pathname: string)
   const rule = ACCESS_RULES.find((r) => r.pattern.test(path));
 
   if (!rule) return false;
-  return rule.roles.includes(normalized);
+  return rule.roles.includes("*") || rule.roles.includes(normalized);
+}
+
+/** Première page réellement accessible à ce rôle (destination du bouton « Retour » de la page 403). */
+export function homePathFor(role: string | null | undefined): string {
+  const candidates = ["/dashboard", "/internships", "/activities", "/notifications", "/profile"];
+  return candidates.find((p) => canAccessPath(role, p)) ?? "/login";
 }

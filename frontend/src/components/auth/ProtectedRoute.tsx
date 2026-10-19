@@ -103,23 +103,12 @@ function checkUserAccess(
   return hasRequiredRole && hasRequiredPermissions;
 }
 
-// Une fois la session vérifiée, les pages suivantes sont évaluées tout de suite
-// (sans écran « Vérification des accès... ») : plus de clignotement entre deux pages.
-let hasChecked = false;
-
-function evaluate(requiredRoles: string[], requiredPermissions: string[], pathname: string) {
-  const user = getStoredUser();
-
-  if (!user) return { authenticated: false, access: false };
-
-  const access = checkUserAccess(user, requiredRoles, requiredPermissions);
-  const pathAllowed =
-    requiredRoles.length > 0 ||
-    requiredPermissions.length > 0 ||
-    canAccessPath(user.role, pathname);
-
-  return { authenticated: true, access: access && pathAllowed };
-}
+/**
+ * Mémoire du dernier utilisateur vérifié. Chaque page remonte son propre <AppLayout>,
+ * donc ce composant est recréé à chaque navigation : sans cette mémoire il repassait
+ * par l'écran « Vérification des accès... » et toute la page (menu + en-tête) clignotait.
+ */
+let lastVerifiedUser: AuthUser | null = null;
 
 export function ProtectedRoute({
   children,
@@ -131,14 +120,18 @@ export function ProtectedRoute({
   const router = useRouter();
   const pathname = usePathname();
 
-  const initial =
-    hasChecked && typeof window !== "undefined"
-      ? evaluate(requiredRoles as string[], requiredPermissions as string[], pathname)
-      : null;
+  // Navigation côté client : on réutilise le dernier utilisateur vérifié (pas d'écran de chargement).
+  // Au tout premier chargement la mémoire est vide -> même rendu que le serveur (pas d'erreur d'hydratation).
+  // On relit le localStorage (jamais le cache seul) : après une déconnexion / changement de compte, rien de périmé.
+  const remembered = lastVerifiedUser ? getStoredUser() : null;
+  const rememberedAccess =
+    remembered !== null &&
+    checkUserAccess(remembered, requiredRoles, requiredPermissions) &&
+    (requiredRoles.length > 0 || requiredPermissions.length > 0 || canAccessPath(remembered.role, pathname));
 
-  const [isLoading, setIsLoading] = useState(initial === null);
-  const [isAuthenticated, setIsAuthenticated] = useState(initial?.authenticated ?? false);
-  const [hasAccess, setHasAccess] = useState(initial?.access ?? false);
+  const [isLoading, setIsLoading] = useState(remembered === null);
+  const [isAuthenticated, setIsAuthenticated] = useState(remembered !== null);
+  const [hasAccess, setHasAccess] = useState(rememberedAccess);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -146,12 +139,14 @@ export function ProtectedRoute({
 
       // Tsy connecté
       if (!user) {
+        lastVerifiedUser = null;
         setIsAuthenticated(false);
         setHasAccess(false);
         setIsLoading(false);
         return;
       }
 
+      lastVerifiedUser = user;
       setIsAuthenticated(true);
 
       /**
@@ -179,7 +174,6 @@ export function ProtectedRoute({
     };
 
     checkAuth();
-    hasChecked = true;
   }, [requiredRoles, requiredPermissions, pathname]);
 
   /**
@@ -210,9 +204,9 @@ export function ProtectedRoute({
    */
   useEffect(() => {
     if (!isLoading && isAuthenticated && !hasAccess) {
-      router.replace("/403");
+      router.replace(`/403?from=${encodeURIComponent(pathname)}`);
     }
-  }, [isLoading, isAuthenticated, hasAccess, router]);
+  }, [isLoading, isAuthenticated, hasAccess, router, pathname]);
 
   /**
    * Loading

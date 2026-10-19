@@ -61,7 +61,7 @@ export default function ChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "bot",
-      text: "Bonjour ! Je peux classer les ménages les plus vulnérables, comparer des zones (ex. Ankalamavony et Andraindrato), trouver l'agent le plus proche et vous donner l'altitude. Je comprends le français et le malgache.",
+      text: "Bonjour ! Je peux classer les ménages les plus vulnérables, comparer des zones (ex. Ankalamavony et Andrainjato), trouver l'agent le plus proche et vous donner l'altitude. Je comprends le français et le malgache.",
       answer: {
         reply: "",
         suggestions: [
