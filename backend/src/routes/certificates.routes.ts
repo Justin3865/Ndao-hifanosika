@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { Request, Response, Router } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
@@ -9,26 +8,34 @@ import { getReqUser } from "../utils/dataScope";
 import { sendEmail } from "../utils/mailer";
 import { notifyUsers } from "../utils/notify";
 
-import { sendError } from "../middlewares/error.middleware";
-/* Certificats vérifiables : code unique + QR code pointant vers /verify/<code>. */
+/* Certificats vérifiables : code unique + QR code pointant vers /verification/<code>. */
 
 const router = Router();
 export const publicCertificateRouter = Router();
 
 const TYPES = ["INTERNSHIP", "VOLUNTEER", "STAFF", "TRAINING"];
 const ISSUERS = ["ADMIN", "DIRECTION", "RH"] as const;
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus
+// Numéro automatique : NH-<année>-<catégorie>-<n° d'ordre>, ex. NH-2026-STG-0001
+// Chaque catégorie a sa propre numérotation, remise à 1 chaque année.
+const CATEGORY_CODE: Record<string, string> = {
+  INTERNSHIP: "STG", // stage
+  VOLUNTEER: "BEN", // bénévolat
+  STAFF: "TRV", // certificat de travail
+  TRAINING: "FOR", // formation
+};
 
-async function newCode(): Promise<string> {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const bytes = crypto.randomBytes(8);
-    const suffix = Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
-    const code = `NH-${new Date().getFullYear()}-${suffix}`;
+/** Prochain numéro libre pour (catégorie, année) : plus grand numéro existant + 1. */
+async function nextCode(type: string): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `NH-${year}-${CATEGORY_CODE[type] ?? "GEN"}-`;
 
-    if (!(await db.certificate.findUnique({ where: { code } }))) return code;
-  }
+  const rows: Array<{ code: string }> = await db.certificate.findMany({
+    where: { code: { startsWith: prefix } },
+    select: { code: true },
+  });
 
-  throw new Error("Impossible de générer un code unique");
+  const max = rows.reduce((m, r) => Math.max(m, Number(r.code.slice(prefix.length)) || 0), 0);
+  return `${prefix}${String(max + 1).padStart(4, "0")}`;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,7 +57,7 @@ router.get("/", async (req: Request, res: Response) => {
     res.json({ success: true, data: rows });
   } catch (error) {
     logger.error("Erreur liste certificats", error);
-    sendError(res, error, "Erreur serveur");
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
 
@@ -67,7 +74,7 @@ router.get("/:id", async (req: Request, res: Response) => {
     res.json({ success: true, data: row });
   } catch (error) {
     logger.error("Erreur lecture certificat", error);
-    sendError(res, error, "Erreur serveur");
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
 
@@ -86,7 +93,22 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     let title = String(body.title ?? "").trim();
     let startDate: Date | null = body.startDate ? new Date(body.startDate) : null;
     let endDate: Date | null = body.endDate ? new Date(body.endDate) : null;
+    let expiresAt: Date | null = body.expiresAt ? new Date(body.expiresAt) : null;
     const internshipId = body.internshipId ? Number(body.internshipId) : null;
+
+    const invalid = (d: Date | null) => d !== null && Number.isNaN(d.getTime());
+
+    if (invalid(startDate) || invalid(endDate) || invalid(expiresAt)) {
+      return res.status(400).json({ success: false, message: "Date invalide" });
+    }
+
+    if (body.internshipId && (!Number.isInteger(internshipId) || (internshipId as number) <= 0)) {
+      return res.status(400).json({ success: false, message: "Stage invalide" });
+    }
+
+    if (holderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(holderEmail)) {
+      return res.status(400).json({ success: false, message: "Adresse e-mail invalide" });
+    }
 
     // Certificat de stage : informations lues dans le stage (qui doit être TERMINÉ)
     if (type === "INTERNSHIP") {
@@ -119,21 +141,44 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: "Nom du titulaire et intitulé obligatoires" });
     }
 
-    const row = await db.certificate.create({
-      data: {
-        code: await newCode(),
-        type,
-        holderName,
-        holderEmail,
-        title,
-        description: body.description ? String(body.description) : null,
-        startDate,
-        endDate,
-        internshipId,
-        userId,
-        issuedById: getReqUser(req)?.id ?? null,
-      },
-    });
+    if (startDate && endDate && endDate < startDate) {
+      return res.status(400).json({ success: false, message: "La date de fin précède la date de début" });
+    }
+
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      return res.status(400).json({ success: false, message: "La date d'expiration doit être dans le futur" });
+    }
+
+    // Deux émissions simultanées peuvent viser le même numéro : la contrainte d'unicité
+    // refuse la seconde (P2002) et on recalcule le numéro suivant.
+    let row: Awaited<ReturnType<typeof db.certificate.create>> | null = null;
+
+    for (let attempt = 0; attempt < 5 && !row; attempt++) {
+      try {
+        row = await db.certificate.create({
+          data: {
+            code: await nextCode(type),
+            type,
+            holderName,
+            holderEmail,
+            title,
+            description: body.description ? String(body.description) : null,
+            startDate,
+            endDate,
+            expiresAt,
+            internshipId,
+            userId,
+            issuedById: getReqUser(req)?.id ?? null,
+          },
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code !== "P2002") throw error;
+      }
+    }
+
+    if (!row) {
+      return res.status(503).json({ success: false, message: "Numérotation indisponible, réessayez." });
+    }
 
     // Prévenir le titulaire (notification + e-mail avec lien de vérification)
     const base = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -148,24 +193,32 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       await sendEmail(
         holderEmail,
         "Votre certificat — Ndao Hifanosika",
-        `Bonjour ${holderName},\n\nVotre certificat « ${title} » a été délivré. Code : ${row.code}\nVérification : ${base}/verify/${row.code}\n\n— Ndao Hifanosika`,
+        `Bonjour ${holderName},\n\nVotre certificat « ${title} » a été délivré. Code : ${row.code}\nVérification : ${base}/verification/${row.code}\n\n— Ndao Hifanosika`,
       );
     }
 
     res.status(201).json({ success: true, data: row });
   } catch (error) {
     logger.error("Erreur délivrance certificat", error);
-    sendError(res, error, "Erreur serveur");
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
 
 /** Révocation (le certificat reste visible comme « révoqué » à la vérification). */
 router.delete("/:id", authorizeRoles("ADMIN", "DIRECTION"), async (req: Request, res: Response) => {
   try {
-    await db.certificate.update({ where: { id: Number(req.params.id) }, data: { revokedAt: new Date() } });
+    const id = Number(req.params.id);
+    const existing = Number.isInteger(id) ? await db.certificate.findUnique({ where: { id } }) : null;
+
+    if (!existing) return res.status(404).json({ success: false, message: "Certificat introuvable" });
+
+    // Idempotent : une seconde révocation conserve la date d'origine
+    if (!existing.revokedAt) await db.certificate.update({ where: { id }, data: { revokedAt: new Date() } });
+
     res.json({ success: true });
-  } catch {
-    res.status(404).json({ success: false, message: "Certificat introuvable" });
+  } catch (error) {
+    logger.error("Erreur révocation certificat", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
 
@@ -175,7 +228,7 @@ publicCertificateRouter.get("/:code", async (req: Request, res: Response) => {
   try {
     const code = String(req.params.code).toUpperCase();
 
-    if (!/^NH-\d{4}-[A-Z0-9]{8}$/.test(code)) {
+    if (!/^NH-\d{4}-(?:[A-Z]{3}-\d{4,}|[A-Z0-9]{8})$/.test(code)) {
       return res.status(404).json({ success: false, status: "NOT_FOUND" });
     }
 
@@ -185,7 +238,7 @@ publicCertificateRouter.get("/:code", async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      status: row.revokedAt ? "REVOKED" : "VALID",
+      status: row.revokedAt ? "REVOKED" : row.expiresAt && row.expiresAt.getTime() <= Date.now() ? "EXPIRED" : "VALID",
       data: {
         code: row.code,
         type: row.type,
@@ -193,12 +246,13 @@ publicCertificateRouter.get("/:code", async (req: Request, res: Response) => {
         title: row.title,
         startDate: row.startDate,
         endDate: row.endDate,
+        expiresAt: row.expiresAt,
         issuedAt: row.createdAt,
       },
     });
   } catch (error) {
     logger.error("Erreur vérification certificat", error);
-    sendError(res, error, "Erreur serveur");
+    res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
 

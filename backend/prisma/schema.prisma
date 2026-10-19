@@ -377,6 +377,7 @@ model Certificate {
   userId       Int?
   issuedById   Int?
   revokedAt    DateTime?
+  expiresAt    DateTime?
   createdAt    DateTime  @default(now())
 }
 
