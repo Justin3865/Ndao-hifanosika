@@ -32,7 +32,6 @@ import {
   XCircle,
 } from "lucide-react";
 import { FormEvent, useState } from "react";
-import PlatformCategories from "@/components/home/PlatformCategories";
 import LocationSection from "@/components/home/LocationSection";
 import {
   ForgotPasswordModal,
@@ -96,6 +95,7 @@ type ApiResponse = {
 
 /* =========================================================
    MODULES
+   (Loko manga daholo, fa ny animation no samy hafa)
 ========================================================= */
 
 const modules = [
@@ -104,125 +104,86 @@ const modules = [
     description: "Vue globale des activités et indicateurs",
     href: "/dashboard",
     icon: LayoutDashboard,
-    color: "blue",
+    animation: "dashboard-pulse",
   },
   {
     title: "Utilisateurs",
     description: "Gestion des utilisateurs et des accès",
     href: "/users",
     icon: Users,
-    color: "indigo",
+    animation: "users-bounce-right",
   },
   {
     title: "Départements",
     description: "Gestion des départements de l'organisation",
     href: "/departements",
     icon: Building2,
-    color: "blue",
+    animation: "building-sway",
   },
   {
     title: "Activités",
     description: "Suivi des activités des projets",
     href: "/activities",
     icon: Activity,
-    color: "cyan",
+    animation: "activity-wave",
   },
   {
     title: "Jalons",
     description: "Suivi des étapes importantes",
     href: "/milestones",
     icon: Target,
-    color: "blue",
+    animation: "target-spin",
   },
   {
     title: "Membres",
     description: "Gestion et suivi des membres",
     href: "/members",
     icon: Users,
-    color: "indigo",
+    animation: "users-bounce-left",
   },
   {
     title: "Bénéficiaires",
     description: "Suivi des bénéficiaires",
     href: "/beneficiaries",
     icon: UserRound,
-    color: "sky",
+    animation: "user-float",
   },
   {
     title: "Évaluations",
     description: "Évaluation des projets et bénéficiaires",
     href: "/evaluations",
     icon: ClipboardCheck,
-    color: "blue",
+    animation: "clipboard-tilt",
   },
   {
     title: "Stages",
     description: "Gestion des stagiaires et des stages",
     href: "/internships",
     icon: GraduationCap,
-    color: "cyan",
+    animation: "cap-lift",
   },
   {
     title: "Notifications",
     description: "Notifications et rappels",
     href: "/notifications",
     icon: Bell,
-    color: "sky",
+    animation: "bell-ring",
   },
   {
     title: "IA & Analytics",
     description: "Analyse intelligente et prédictions",
     href: "/ai",
     icon: Sparkles,
-    color: "blue",
+    animation: "sparkle-spin",
   },
   {
     title: "Paramètres",
     description: "Configuration de la plateforme",
     href: "/settings",
     icon: ShieldCheck,
-    color: "indigo",
+    animation: "shield-pop",
   },
 ];
-
-/* =========================================================
-   BLUE THEME
-========================================================= */
-
-const colorClasses: Record<
-  string,
-  {
-    bg: string;
-    icon: string;
-    border: string;
-    hover: string;
-  }
-> = {
-  blue: {
-    bg: "bg-blue-50",
-    icon: "text-blue-600",
-    border: "border-blue-100",
-    hover: "hover:border-blue-300",
-  },
-  indigo: {
-    bg: "bg-indigo-50",
-    icon: "text-indigo-600",
-    border: "border-indigo-100",
-    hover: "hover:border-indigo-300",
-  },
-  sky: {
-    bg: "bg-sky-50",
-    icon: "text-sky-600",
-    border: "border-sky-100",
-    hover: "hover:border-sky-300",
-  },
-  cyan: {
-    bg: "bg-cyan-50",
-    icon: "text-cyan-600",
-    border: "border-cyan-100",
-    hover: "hover:border-cyan-300",
-  },
-};
 
 /* =========================================================
    AUTH DARK STYLES
@@ -273,8 +234,6 @@ export default function HomePage() {
 
   /* =========================================================
      API URL
-     IMPORTANT :
-     NEXT_PUBLIC_API_URL = http://localhost:4000/api
   ========================================================= */
 
   const getApiUrl = () =>
@@ -327,182 +286,76 @@ export default function HomePage() {
     const email = loginEmail.trim().toLowerCase();
 
     if (!email) {
-      openResult(
-        "error",
-        "Veuillez saisir votre adresse e-mail."
-      );
+      openResult("error", "Veuillez saisir votre adresse e-mail.");
       return;
     }
 
     if (!loginPassword) {
-      openResult(
-        "error",
-        "Veuillez saisir votre mot de passe."
-      );
+      openResult("error", "Veuillez saisir votre mot de passe.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      /*
-       * IMPORTANT :
-       * getApiUrl() = http://localhost:4000/api
-       *
-       * Donc on utilise :
-       * /auth/login
-       *
-       * et NON :
-       * /api/auth/login
-       */
       const response = await fetch(
         `${getApiUrl()}/auth/login`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            email,
-            password: loginPassword,
-            rememberMe,
-          }),
+          body: JSON.stringify({ email, password: loginPassword, rememberMe }),
         }
       );
 
       let data: ApiResponse = {};
+      try { data = await response.json(); } catch { data = {}; }
 
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
-
-      /*
-       * Le backend actuel peut retourner :
-       *
-       * data.user
-       *
-       * ou :
-       *
-       * data.data.user
-       */
       const user = data.data?.user ?? data.user;
 
-      if (
-        response.status === 403 &&
-        user?.status === "PENDING"
-      ) {
+      if (response.status === 403 && user?.status === "PENDING") {
         setAuthModal(null);
-
-        openResult(
-          "pending",
-          data.message ||
-            "Votre inscription est en attente de validation par un administrateur."
-        );
-
+        openResult("pending", data.message || "Votre inscription est en attente de validation par un administrateur.");
         return;
       }
 
-      if (
-        response.status === 403 &&
-        user?.status === "REJECTED"
-      ) {
+      if (response.status === 403 && user?.status === "REJECTED") {
         setAuthModal(null);
-
-        openResult(
-          "rejected",
-          data.message ||
-            "Votre demande d'inscription a été refusée."
-        );
-
+        openResult("rejected", data.message || "Votre demande d'inscription a été refusée.");
         return;
       }
 
-      if (
-        response.status === 403 &&
-        user?.status === "INACTIVE"
-      ) {
+      if (response.status === 403 && user?.status === "INACTIVE") {
         setAuthModal(null);
-
-        openResult(
-          "inactive",
-          data.message ||
-            "Votre compte est actuellement désactivé."
-        );
-
+        openResult("inactive", data.message || "Votre compte est actuellement désactivé.");
         return;
       }
 
       if (response.status === 401) {
-        openResult(
-          "error",
-          "L'adresse e-mail ou le mot de passe est incorrect."
-        );
-
+        openResult("error", "L'adresse e-mail ou le mot de passe est incorrect.");
         return;
       }
 
       if (!response.ok) {
-        openResult(
-          "error",
-          data.message ||
-            "Une erreur est survenue pendant la connexion."
-        );
-
+        openResult("error", data.message || "Une erreur est survenue pendant la connexion.");
         return;
       }
 
-      /*
-       * Vérification du compte actif
-       */
       if (!user || user.status !== "ACTIVE") {
         setAuthModal(null);
-
-        openResult(
-          "pending",
-          "Votre compte n'est pas encore actif."
-        );
-
+        openResult("pending", "Votre compte n'est pas encore actif.");
         return;
       }
 
-      /*
-       * Sauvegarde locale des tokens si le backend
-       * retourne les JWT.
-       *
-       * Cela permet au frontend de rester compatible
-       * avec le auth.service.ts actuel.
-       */
       const accessToken = data.data?.accessToken;
       const refreshToken = data.data?.refreshToken;
 
-      if (accessToken) {
-        localStorage.setItem(
-          "accessToken",
-          accessToken
-        );
-      }
-
-      if (refreshToken) {
-        localStorage.setItem(
-          "refreshToken",
-          refreshToken
-        );
-      }
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify(user)
-      );
+      if (accessToken) localStorage.setItem("accessToken", accessToken);
+      if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+      localStorage.setItem("user", JSON.stringify(user));
 
       setAuthModal(null);
-
-      openResult(
-        "success",
-        "Connexion réussie. Vous allez être redirigé vers votre espace."
-      );
+      openResult("success", "Connexion réussie. Vous allez être redirigé vers votre espace.");
 
       window.setTimeout(() => {
         router.push("/dashboard");
@@ -510,11 +363,7 @@ export default function HomePage() {
       }, 1200);
     } catch (error) {
       console.error("Erreur login:", error);
-
-      openResult(
-        "error",
-        "Impossible de contacter le serveur. Vérifiez que le backend est démarré."
-      );
+      openResult("error", "Impossible de contacter le serveur. Vérifiez que le backend est démarré.");
     } finally {
       setIsLoading(false);
     }
@@ -534,114 +383,57 @@ export default function HomePage() {
     const email = registerEmail.trim().toLowerCase();
 
     if (!nom || !prenom) {
-      openResult(
-        "error",
-        "Veuillez renseigner votre nom et votre prénom."
-      );
-
+      openResult("error", "Veuillez renseigner votre nom et votre prénom.");
       return;
     }
 
     if (!email) {
-      openResult(
-        "error",
-        "Veuillez saisir votre adresse e-mail."
-      );
-
+      openResult("error", "Veuillez saisir votre adresse e-mail.");
       return;
     }
 
     if (registerPassword.length < 8) {
-      openResult(
-        "error",
-        "Le mot de passe doit contenir au moins 8 caractères."
-      );
-
+      openResult("error", "Le mot de passe doit contenir au moins 8 caractères.");
       return;
     }
 
-    if (
-      registerPassword !==
-      registerConfirmPassword
-    ) {
-      openResult(
-        "error",
-        "Les deux mots de passe ne correspondent pas."
-      );
-
+    if (registerPassword !== registerConfirmPassword) {
+      openResult("error", "Les deux mots de passe ne correspondent pas.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      /*
-       * IMPORTANT :
-       * Le backend / Prisma utilise :
-       *
-       * firstName
-       * lastName
-       *
-       * et NON :
-       *
-       * nom
-       * prenom
-       */
       const response = await fetch(
         `${getApiUrl()}/auth/register`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            firstName: prenom,
-            lastName: nom,
-            email,
-            password: registerPassword,
-          }),
+          body: JSON.stringify({ firstName: prenom, lastName: nom, email, password: registerPassword }),
         }
       );
 
       let data: ApiResponse = {};
-
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
+      try { data = await response.json(); } catch { data = {}; }
 
       if (!response.ok) {
-        openResult(
-          "error",
-          data.message ||
-            "Impossible de créer votre compte."
-        );
-
+        openResult("error", data.message || "Impossible de créer votre compte.");
         return;
       }
 
       setAuthModal(null);
-
       setRegisterNom("");
       setRegisterPrenom("");
       setRegisterEmail("");
       setRegisterPassword("");
       setRegisterConfirmPassword("");
 
-      openResult(
-        "pending",
-        data.message ||
-          "Votre compte a été créé. Il est maintenant en attente de validation par un administrateur."
-      );
+      openResult("pending", data.message || "Votre compte a été créé. Il est maintenant en attente de validation par un administrateur.");
     } catch (error) {
       console.error("Erreur register:", error);
-
-      openResult(
-        "error",
-        "Impossible de contacter le serveur. Vérifiez que le backend est démarré."
-      );
+      openResult("error", "Impossible de contacter le serveur. Vérifiez que le backend est démarré.");
     } finally {
       setIsLoading(false);
     }
@@ -661,15 +453,11 @@ export default function HomePage() {
     const looksPhone = /^\+?[\d\s().-]{9,16}$/.test(identifier);
 
     if (!looksEmail && !looksPhone) {
-      openResult(
-        "error",
-        "Saisissez une adresse e-mail ou un numéro de téléphone valide."
-      );
+      openResult("error", "Saisissez une adresse e-mail ou un numéro de téléphone valide.");
       return;
     }
 
     const channel = looksEmail ? forgotChannel : "sms";
-
     setIsLoading(true);
 
     try {
@@ -684,18 +472,10 @@ export default function HomePage() {
       );
 
       let data: ApiResponse = {};
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
+      try { data = await response.json(); } catch { data = {}; }
 
       if (!response.ok) {
-        openResult(
-          "error",
-          data.message ||
-            "Impossible d'envoyer le code de vérification."
-        );
+        openResult("error", data.message || "Impossible d'envoyer le code de vérification.");
         return;
       }
 
@@ -720,20 +500,12 @@ export default function HomePage() {
     const code = resetCode.trim();
 
     if (!code) {
-      openResult(
-        "error",
-        "Veuillez saisir le code reçu par e-mail ou SMS."
-      );
-
+      openResult("error", "Veuillez saisir le code reçu par e-mail ou SMS.");
       return;
     }
 
     if (!/^\d{6}$/.test(code)) {
-      openResult(
-        "error",
-        "Le code doit contenir exactement 6 chiffres."
-      );
-
+      openResult("error", "Le code doit contenir exactement 6 chiffres.");
       return;
     }
 
@@ -744,47 +516,25 @@ export default function HomePage() {
         `${getApiUrl()}/auth/verify-reset-code`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            identifier: forgotEmail.trim(),
-            code,
-          }),
+          body: JSON.stringify({ identifier: forgotEmail.trim(), code }),
         }
       );
 
       let data: ApiResponse = {};
-
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
+      try { data = await response.json(); } catch { data = {}; }
 
       if (!response.ok) {
-        openResult(
-          "error",
-          data.message ||
-            "Le code est incorrect ou expiré."
-        );
-
+        openResult("error", data.message || "Le code est incorrect ou expiré.");
         return;
       }
 
       setResetToken((data as any)?.data?.resetToken ?? "");
       setAuthModal("reset");
     } catch (error) {
-      console.error(
-        "Erreur verification code:",
-        error
-      );
-
-      openResult(
-        "error",
-        "Impossible de vérifier le code."
-      );
+      console.error("Erreur verification code:", error);
+      openResult("error", "Impossible de vérifier le code.");
     } finally {
       setIsLoading(false);
     }
@@ -800,23 +550,12 @@ export default function HomePage() {
     event.preventDefault();
 
     if (newPassword.length < 12) {
-      openResult(
-        "error",
-        "Le nouveau mot de passe doit contenir au moins 12 caractères."
-      );
-
+      openResult("error", "Le nouveau mot de passe doit contenir au moins 12 caractères.");
       return;
     }
 
-    if (
-      newPassword !==
-      confirmNewPassword
-    ) {
-      openResult(
-        "error",
-        "Les deux mots de passe ne correspondent pas."
-      );
-
+    if (newPassword !== confirmNewPassword) {
+      openResult("error", "Les deux mots de passe ne correspondent pas.");
       return;
     }
 
@@ -827,57 +566,31 @@ export default function HomePage() {
         `${getApiUrl()}/auth/reset-password`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            token: resetToken,
-            newPassword,
-          }),
+          body: JSON.stringify({ token: resetToken, newPassword }),
         }
       );
 
       let data: ApiResponse = {};
-
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
+      try { data = await response.json(); } catch { data = {}; }
 
       if (!response.ok) {
-        openResult(
-          "error",
-          data.message ||
-            "Impossible de modifier le mot de passe."
-        );
-
+        openResult("error", data.message || "Impossible de modifier le mot de passe.");
         return;
       }
 
       setAuthModal(null);
-
       setForgotEmail("");
       setResetCode("");
       setResetToken("");
       setNewPassword("");
       setConfirmNewPassword("");
 
-      openResult(
-        "success",
-        "Votre mot de passe a été modifié avec succès. Vous pouvez maintenant vous connecter."
-      );
+      openResult("success", "Votre mot de passe a été modifié avec succès. Vous pouvez maintenant vous connecter.");
     } catch (error) {
-      console.error(
-        "Erreur reset password:",
-        error
-      );
-
-      openResult(
-        "error",
-        "Impossible de contacter le serveur."
-      );
+      console.error("Erreur reset password:", error);
+      openResult("error", "Impossible de contacter le serveur.");
     } finally {
       setIsLoading(false);
     }
@@ -894,28 +607,24 @@ export default function HomePage() {
       iconClass: "bg-blue-100 text-blue-600",
       titleClass: "text-blue-700",
     },
-
     pending: {
       icon: Info,
       title: "Validation nécessaire",
       iconClass: "bg-blue-100 text-blue-600",
       titleClass: "text-blue-700",
     },
-
     rejected: {
       icon: XCircle,
       title: "Demande refusée",
       iconClass: "bg-blue-50 text-blue-700",
       titleClass: "text-blue-800",
     },
-
     inactive: {
       icon: ShieldAlert,
       title: "Compte désactivé",
       iconClass: "bg-blue-50 text-blue-700",
       titleClass: "text-blue-800",
     },
-
     error: {
       icon: XCircle,
       title: "Une erreur est survenue",
@@ -924,26 +633,91 @@ export default function HomePage() {
     },
   };
 
-  const currentResult =
-    resultModal
-      ? resultConfig[resultModal]
-      : null;
-
-  const isAuthTabs =
-    authModal === "login" || authModal === "register";
+  const currentResult = resultModal ? resultConfig[resultModal] : null;
+  const isAuthTabs = authModal === "login" || authModal === "register";
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
+      
+      {/* =====================================================
+          STYLE MANOKANA HO AN'NY ANIMATION TSIRAIRAY
+      ===================================================== */}
+      <style jsx global>{`
+        @keyframes dashboard-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.08); opacity: 0.85; }
+        }
+        @keyframes users-bounce-right {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(6px); }
+        }
+        @keyframes building-sway {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(6deg); }
+          75% { transform: rotate(-6deg); }
+        }
+        @keyframes activity-wave {
+          0%, 100% { transform: translateY(0); }
+          25% { transform: translateY(-6px); }
+          75% { transform: translateY(6px); }
+        }
+        @keyframes target-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes users-bounce-left {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(-6px); }
+        }
+        @keyframes user-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-5px); }
+        }
+        @keyframes clipboard-tilt {
+          0%, 100% { transform: rotate(0deg); }
+          50% { transform: rotate(8deg); }
+        }
+        @keyframes cap-lift {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+        }
+        @keyframes bell-ring {
+          0%, 100% { transform: rotate(0deg); }
+          20% { transform: rotate(15deg); }
+          40% { transform: rotate(-15deg); }
+          60% { transform: rotate(10deg); }
+          80% { transform: rotate(-10deg); }
+        }
+        @keyframes sparkle-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(180deg); }
+        }
+        @keyframes shield-pop {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
+
+        .anim-dashboard-pulse { animation: dashboard-pulse 2.5s ease-in-out infinite; }
+        .anim-users-bounce-right { animation: users-bounce-right 1.8s ease-in-out infinite; }
+        .anim-building-sway { animation: building-sway 2.2s ease-in-out infinite; }
+        .anim-activity-wave { animation: activity-wave 1.6s ease-in-out infinite; }
+        .anim-target-spin { animation: target-spin 3s linear infinite; }
+        .anim-users-bounce-left { animation: users-bounce-left 1.8s ease-in-out infinite; }
+        .anim-user-float { animation: user-float 2s ease-in-out infinite; }
+        .anim-clipboard-tilt { animation: clipboard-tilt 2.4s ease-in-out infinite; }
+        .anim-cap-lift { animation: cap-lift 1.5s ease-in-out infinite; }
+        .anim-bell-ring { animation: bell-ring 2.5s ease-in-out infinite; }
+        .anim-sparkle-spin { animation: sparkle-spin 4s linear infinite; }
+        .anim-shield-pop { animation: shield-pop 1.8s ease-in-out infinite; }
+      `}</style>
+
       {/* =====================================================
           HEADER
       ===================================================== */}
 
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/"
-            className="flex items-center gap-3"
-          >
+          <Link href="/" className="flex items-center gap-3">
             <Image
               src="/logos/ndao-hifanosika.png"
               alt="Ndao Hifanosika"
@@ -952,45 +726,19 @@ export default function HomePage() {
               priority
               className="h-12 w-auto object-contain"
             />
-
             <div>
-              <h1 className="text-lg font-bold leading-tight">
-                Ndao Hifanosika
-              </h1>
-
-              <p className="text-xs text-gray-500">
-                Plateforme de Suivi & Évaluation
-              </p>
+              <h1 className="text-lg font-bold leading-tight">Ndao Hifanosika</h1>
+              <p className="text-xs text-gray-500">Plateforme de Suivi & Évaluation</p>
             </div>
           </Link>
 
           <nav className="hidden items-center gap-6 md:flex">
-            <Link
-              href="/"
-              className="text-sm font-medium text-blue-600"
-            >
-              Accueil
-            </Link>
-
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-gray-600 hover:text-blue-600"
-            >
-              Tableau de bord
-            </Link>
-
-            <Link
-              href="/internships"
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600"
-            >
-              Stages
-            </Link>
-
+            <Link href="/" className="text-sm font-medium text-blue-600">Accueil</Link>
+            <Link href="/dashboard" className="text-sm font-medium text-gray-600 hover:text-blue-600">Tableau de bord</Link>
+            <Link href="/internships" className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600">Stages</Link>
             <button
               type="button"
-              onClick={() =>
-                openAuth("login")
-              }
+              onClick={() => openAuth("login")}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               Se connecter
@@ -999,74 +747,22 @@ export default function HomePage() {
 
           <button
             type="button"
-            onClick={() =>
-              setMobileMenuOpen(
-                (value) => !value
-              )
-            }
+            onClick={() => setMobileMenuOpen((value) => !value)}
             className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
             aria-label="Menu"
           >
-            {mobileMenuOpen ? (
-              <X className="h-6 w-6" />
-            ) : (
-              <Menu className="h-6 w-6" />
-            )}
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
 
         {mobileMenuOpen && (
           <div className="border-t border-gray-200 bg-white px-4 py-4 md:hidden">
             <nav className="flex flex-col gap-2">
-              <Link
-                href="/"
-                onClick={() =>
-                  setMobileMenuOpen(false)
-                }
-                className="rounded-lg px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50"
-              >
-                Accueil
-              </Link>
-
-              <Link
-                href="/dashboard"
-                onClick={() =>
-                  setMobileMenuOpen(false)
-                }
-                className="rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Tableau de bord
-              </Link>
-
-              <Link
-                href="/internships"
-                onClick={() =>
-                  setMobileMenuOpen(false)
-                }
-                className="rounded-lg px-4 py-3 text-sm font-medium text-blue-700 hover:bg-blue-50"
-              >
-                Gestion des stages
-              </Link>
-
-              <button
-                type="button"
-                onClick={() =>
-                  openAuth("login")
-                }
-                className="mt-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Se connecter
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  openAuth("register")
-                }
-                className="rounded-lg border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
-              >
-                Créer un compte
-              </button>
+              <Link href="/" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50">Accueil</Link>
+              <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">Tableau de bord</Link>
+              <Link href="/internships" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-blue-700 hover:bg-blue-50">Gestion des stages</Link>
+              <button type="button" onClick={() => openAuth("login")} className="mt-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700">Se connecter</button>
+              <button type="button" onClick={() => openAuth("register")} className="rounded-lg border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">Créer un compte</button>
             </nav>
           </div>
         )}
@@ -1077,6 +773,9 @@ export default function HomePage() {
       ===================================================== */}
 
       <section className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700">
+        <div className="pointer-events-none absolute inset-0 bg-cover bg-top" style={{ backgroundImage: "url('/images/trano.png')" }} aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-950/15 via-transparent to-blue-950/25" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse 52% 58% at 50% 50%, rgba(6,18,70,0.55) 0%, rgba(6,18,70,0.35) 50%, rgba(6,18,70,0) 100%)" }} aria-hidden="true" />
         <div className="absolute inset-0 opacity-10">
           <div className="absolute -left-20 -top-20 h-72 w-72 rounded-full bg-white blur-3xl" />
           <div className="absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-white blur-3xl" />
@@ -1084,49 +783,23 @@ export default function HomePage() {
 
         <div className="relative mx-auto flex min-h-[520px] max-w-7xl items-center justify-center px-4 py-20 text-center sm:px-6 lg:px-8">
           <div className="w-full max-w-4xl">
-            <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/20">
-              <Sparkles className="h-4 w-4" />
-              Plateforme numérique de Suivi & Évaluation
-            </div>
-
-            <h2 className="text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h2 className="text-4xl font-bold tracking-tight text-white drop-shadow-[0_3px_12px_rgba(0,25,90,0.85)] sm:text-5xl lg:text-6xl">
               Ndao Hifanosika
             </h2>
-
-            <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-blue-100 sm:text-xl">
-              Une plateforme centralisée pour piloter
-              les projets, suivre les activités, gérer
-              les bénéficiaires, évaluer les performances
-              et améliorer la prise de décision.
+            <p className="mx-auto mt-6 max-w-3xl text-lg font-medium leading-8 text-white drop-shadow-[0_2px_8px_rgba(0,25,90,0.95)] sm:text-xl">
+              Une plateforme centralisée pour piloter les projets, suivre les activités, gérer les bénéficiaires, évaluer les performances et améliorer la prise de décision.
             </p>
 
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() =>
-                  openAuth("login")
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-blue-700 shadow-lg transition hover:bg-blue-50"
-              >
+              <button type="button" onClick={() => openAuth("login")} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
                 <LogIn className="h-5 w-5" />
                 Se connecter
                 <ChevronRight className="h-4 w-4" />
               </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  openAuth("register")
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-white/20"
-              >
+              <button type="button" onClick={() => openAuth("register")} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/40 bg-blue-950/45 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-blue-950/60">
                 Créer un compte
               </button>
-
-              <Link
-                href="/internships"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/30 px-6 py-3.5 text-sm font-bold text-white hover:bg-white/10"
-              >
+              <Link href="/internships" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/40 bg-blue-950/45 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-sm hover:bg-blue-950/60">
                 Gestion des stages
               </Link>
             </div>
@@ -1144,111 +817,77 @@ export default function HomePage() {
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
               <FolderKanban className="h-6 w-6 text-blue-600" />
             </div>
-
             <div>
-              <h3 className="font-semibold">
-                Gestion des projets
-              </h3>
-
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Organisez les projets, activités,
-                jalons et indicateurs.
-              </p>
+              <h3 className="font-semibold">Gestion des projets</h3>
+              <p className="mt-1 text-sm leading-6 text-gray-500">Organisez les projets, activités, jalons et indicateurs.</p>
             </div>
           </div>
-
           <div className="flex gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
               <BarChart3 className="h-6 w-6 text-blue-600" />
             </div>
-
             <div>
-              <h3 className="font-semibold">
-                Suivi & Évaluation
-              </h3>
-
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Mesurez les résultats et analysez les
-                performances.
-              </p>
+              <h3 className="font-semibold">Suivi & Évaluation</h3>
+              <p className="mt-1 text-sm leading-6 text-gray-500">Mesurez les résultats et analysez les performances.</p>
             </div>
           </div>
-
           <div className="flex gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
               <GraduationCap className="h-6 w-6 text-blue-600" />
             </div>
-
             <div>
-              <h3 className="font-semibold">
-                Gestion des stages
-              </h3>
-
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Gérez les stagiaires, leurs stages,
-                encadrements et suivis.
-              </p>
+              <h3 className="font-semibold">Gestion des stages</h3>
+              <p className="mt-1 text-sm leading-6 text-gray-500">Gérez les stagiaires, leurs stages, encadrements et suivis.</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* =====================================================
-          MODULES
+          MODULES (TOY NY SARINAO: LAVA KELY, AFOVOANY, 3 ISAKY NY LIGNE)
       ===================================================== */}
 
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
-          <span className="text-sm font-semibold uppercase tracking-wider text-blue-600">
-            Fonctionnalités
-          </span>
-
-          <h2 className="mt-2 text-3xl font-bold sm:text-4xl">
-            Modules de la plateforme
-          </h2>
-
+          <span className="text-sm font-semibold uppercase tracking-wider text-blue-600">Fonctionnalités</span>
+          <h2 className="mt-2 text-3xl font-bold sm:text-4xl">Modules de la plateforme</h2>
           <p className="mt-4 text-base leading-7 text-gray-600">
-            Tous les outils nécessaires pour assurer
-            une gestion efficace du suivi et de
-            l'évaluation.
+            Tous les outils nécessaires pour assurer une gestion efficace du suivi et de l'évaluation.
           </p>
         </div>
 
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {/* Grid: 3 colonnes, carte lava kely (padding no natao) */}
+        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {modules.map((module) => {
             const Icon = module.icon;
-            const colors =
-              colorClasses[module.color];
 
             return (
               <Link
                 key={module.href}
                 href={module.href}
-                className={`group rounded-2xl border bg-white p-6 transition duration-200 hover:-translate-y-1 hover:shadow-lg ${colors.border} ${colors.hover}`}
+                className="group relative flex flex-col items-center overflow-hidden rounded-3xl border border-blue-50 bg-white p-8 text-center shadow-sm transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-lg sm:p-10"
               >
-                <div
-                  className={`mb-5 flex h-12 w-12 items-center justify-center rounded-xl ${colors.bg}`}
-                >
-                  <Icon
-                    className={`h-6 w-6 ${colors.icon}`}
-                  />
-                </div>
+                {/* TSIKINA MANGA MITSINGEVANA (1 segondra) */}
+                <div 
+                  className="absolute left-0 top-0 h-1.5 w-0 bg-blue-600 transition-all duration-[1000ms] ease-out group-hover:w-full"
+                ></div>
 
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold">
-                      {module.title}
-                    </h3>
-
-                    <p className="mt-2 text-sm leading-6 text-gray-500">
-                      {module.description}
-                    </p>
+                {/* LOGO BORIBORY MANGA + ANIMATION */}
+                <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-blue-50/50 shadow-sm">
+                  <div
+                    className={`flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 ${`anim-${module.animation}`}`}
+                  >
+                    <Icon className="h-8 w-8" />
                   </div>
-
-                  <ChevronRight
-                    className={`mt-1 h-5 w-5 shrink-0 text-gray-300 transition group-hover:translate-x-1 ${colors.icon}`}
-                  />
                 </div>
+
+                {/* LAHATSORATRA */}
+                <h3 className="text-lg font-bold text-gray-900 transition-colors duration-300 group-hover:text-blue-700">
+                  {module.title}
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-gray-500 line-clamp-3">
+                  {module.description}
+                </p>
               </Link>
             );
           })}
@@ -1259,44 +898,23 @@ export default function HomePage() {
           STAGES
       ===================================================== */}
 
-      <PlatformCategories />
-
       <LocationSection />
 
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 to-cyan-600 shadow-xl">
           <div className="grid items-center gap-8 p-8 sm:p-10 lg:grid-cols-2 lg:p-14">
             <div>
-              <h2 className="text-3xl font-bold text-white">
-                Gestion des stages
-              </h2>
-
+              <h2 className="text-3xl font-bold text-white">Gestion des stages</h2>
               <p className="mt-4 max-w-xl text-base leading-7 text-blue-50">
-                Le module Stages permet de centraliser
-                les informations concernant les stagiaires,
-                les structures d'accueil, les encadrements,
-                les périodes de stage et le suivi des
-                activités.
+                Le module Stages permet de centraliser les informations concernant les stagiaires, les structures d'accueil, les encadrements, les périodes de stage et le suivi des activités.
               </p>
-
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/internships"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50"
-                >
+                <Link href="/internships" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50">
                   Voir les stages
                   <ChevronRight className="h-4 w-4" />
                 </Link>
-
-                <Link
-                  href="/internships/create"
-                  className="inline-flex items-center justify-center rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white hover:bg-white/20"
-                >
-                  Ajouter un stage
-                </Link>
               </div>
             </div>
-
             <div className="hidden justify-center lg:flex">
               <div className="flex h-64 w-64 items-center justify-center rounded-full bg-white/10">
                 <div className="flex h-48 w-48 items-center justify-center rounded-full bg-white/10">
@@ -1317,125 +935,42 @@ export default function HomePage() {
           <div className="grid gap-8 md:grid-cols-4">
             <div className="md:col-span-2">
               <div className="flex items-center gap-3">
-                <Image
-                  src="/logos/ndao-hifanosika.png"
-                  alt="Ndao Hifanosika"
-                  width={48}
-                  height={48}
-                  className="h-12 w-auto object-contain"
-                />
-
+                <Image src="/logos/ndao-hifanosika.png" alt="Ndao Hifanosika" width={48} height={48} className="h-12 w-auto object-contain" />
                 <div>
-                  <h3 className="font-bold text-white">
-                    Ndao Hifanosika
-                  </h3>
-
-                  <p className="text-xs text-gray-400">
-                    Plateforme de Suivi & Évaluation
-                  </p>
+                  <h3 className="font-bold text-white">Ndao Hifanosika</h3>
+                  <p className="text-xs text-gray-400">Plateforme de Suivi & Évaluation</p>
                 </div>
               </div>
-
               <p className="mt-5 max-w-md text-sm leading-6 text-gray-400">
-                Solution numérique destinée à faciliter
-                le suivi, l'évaluation et la gestion des
-                projets, programmes, bénéficiaires, membres
-                et stagiaires.
+                Solution numérique destinée à faciliter le suivi, l'évaluation et la gestion des projets, programmes, bénéficiaires, membres et stagiaires.
               </p>
             </div>
 
             <div>
-              <h4 className="font-semibold text-white">
-                Navigation
-              </h4>
-
+              <h4 className="font-semibold text-white">Navigation</h4>
               <ul className="mt-4 space-y-3 text-sm">
-                <li>
-                  <Link
-                    href="/dashboard"
-                    className="hover:text-white"
-                  >
-                    Tableau de bord
-                  </Link>
-                </li>
-
-                <li>
-                  <Link
-                    href="/beneficiaries"
-                    className="hover:text-white"
-                  >
-                    Bénéficiaires
-                  </Link>
-                </li>
-
-                <li>
-                  <Link
-                    href="/internships"
-                    className="hover:text-white"
-                  >
-                    Gestion des stages
-                  </Link>
-                </li>
+                <li><Link href="/dashboard" className="hover:text-white">Tableau de bord</Link></li>
+                <li><Link href="/beneficiaries" className="hover:text-white">Bénéficiaires</Link></li>
+                <li><Link href="/internships" className="hover:text-white">Gestion des stages</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-white">
-                Plateforme
-              </h4>
-
+              <h4 className="font-semibold text-white">Plateforme</h4>
               <ul className="mt-4 space-y-3 text-sm">
-                <li>
-                  <Link
-                    href="/notifications"
-                    className="hover:text-white"
-                  >
-                    Notifications
-                  </Link>
-                </li>
-
-                <li>
-                  <Link
-                    href="/ai"
-                    className="hover:text-white"
-                  >
-                    IA & Analytics
-                  </Link>
-                </li>
-
-                <li>
-                  <Link
-                    href="/settings"
-                    className="hover:text-white"
-                  >
-                    Paramètres
-                  </Link>
-                </li>
+                <li><Link href="/notifications" className="hover:text-white">Notifications</Link></li>
+                <li><Link href="/ai" className="hover:text-white">IA & Analytics</Link></li>
+                <li><Link href="/settings" className="hover:text-white">Paramètres</Link></li>
               </ul>
             </div>
           </div>
 
           <div className="mt-10 border-t border-gray-800 pt-6">
             <div className="flex flex-col justify-between gap-4 text-xs text-gray-500 sm:flex-row">
-              <p>
-                © {new Date().getFullYear()} Ndao
-                Hifanosika. Tous droits réservés.
-              </p>
-
+              <p>© {new Date().getFullYear()} Ndao Hifanosika. Tous droits réservés.</p>
               <div className="flex gap-5">
-                <Link
-                  href="/privacy"
-                  className="hover:text-gray-300"
-                >
-                  Confidentialité
-                </Link>
-
-                <Link
-                  href="/terms"
-                  className="hover:text-gray-300"
-                >
-                  Conditions d'utilisation
-                </Link>
+                <Link href="/privacy" className="hover:text-gray-300">Confidentialité</Link>
+                <Link href="/terms" className="hover:text-gray-300">Conditions d'utilisation</Link>
               </div>
             </div>
           </div>
@@ -1456,28 +991,15 @@ export default function HomePage() {
               : "fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6"
           }
         >
-          {/* ================= LOGIN + INSCRIPTION (dark, 1 page) ================= */}
           {isAuthTabs && (
             <div className="flex max-h-full w-full max-w-md flex-col rounded-3xl border border-slate-700/70 bg-[#1e2638] p-5 shadow-2xl sm:p-6">
-              {/* LOGO */}
               <div className="flex justify-center">
-                <Image
-                  src="/logos/ndao-hifanosika.png"
-                  alt="Ndao Hifanosika"
-                  width={160}
-                  height={56}
-                  priority
-                  className="h-12 w-auto object-contain"
-                />
+                <Image src="/logos/ndao-hifanosika.png" alt="Ndao Hifanosika" width={160} height={56} priority className="h-12 w-auto object-contain" />
               </div>
-
               <h2 className="mt-2 text-center text-xl font-bold text-white">
-                {authModal === "login"
-                  ? "Bon retour !"
-                  : "Créer un compte"}
+                {authModal === "login" ? "Bon retour !" : "Créer un compte"}
               </h2>
 
-              {/* TABS */}
               <div className="mt-3 flex rounded-2xl border border-slate-600/60 bg-slate-800/60 p-1">
                 {(["login", "register"] as const).map((t) => (
                   <button
@@ -1495,235 +1017,120 @@ export default function HomePage() {
                 ))}
               </div>
 
-              {/* ---------- FORM LOGIN ---------- */}
               {authModal === "login" && (
                 <form onSubmit={handleLogin} className="mt-4 space-y-3">
                   <div>
                     <label className={authLabel}>Adresse e-mail</label>
                     <div className={authInputWrap}>
                       <Mail className="h-4 w-4 text-slate-400" />
-                      <input
-                        type="email"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="exemple@email.com"
-                        autoComplete="email"
-                        className={authInput}
-                      />
+                      <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="exemple@email.com" autoComplete="email" className={authInput} />
                     </div>
                   </div>
-
                   <div>
                     <label className={authLabel}>Mot de passe</label>
                     <div className={authInputWrap}>
                       <Lock className="h-4 w-4 text-slate-400" />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="Votre mot de passe"
-                        autoComplete="current-password"
-                        className={authInput}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="text-slate-400 hover:text-white"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                      <input type={showPassword ? "text" : "password"} value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Votre mot de passe" autoComplete="current-password" className={authInput} />
+                      <button type="button" onClick={() => setShowPassword((v) => !v)} className="text-slate-400 hover:text-white">
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
-
                   <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2 text-xs text-slate-400">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="accent-red-600"
-                      />
+                      <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="accent-red-600" />
                       Se souvenir de moi
                     </label>
-
-                    <button
-                      type="button"
-                      onClick={() => switchAuth("forgot")}
-                      className="text-xs font-semibold text-red-500 hover:text-red-400"
-                    >
+                    <button type="button" onClick={() => switchAuth("forgot")} className="text-xs font-semibold text-red-500 hover:text-red-400">
                       Mot de passe oublié ?
                     </button>
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60"
-                  >
+                  <button type="submit" disabled={isLoading} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60">
                     <LogIn className="h-4 w-4" />
                     {isLoading ? "Connexion..." : "Se connecter"}
                   </button>
                 </form>
               )}
 
-              {/* ---------- FORM INSCRIPTION ---------- */}
               {authModal === "register" && (
                 <form onSubmit={handleRegister} className="mt-4 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={authLabel}>Nom</label>
                       <div className={authInputWrap}>
-                        <input
-                          value={registerNom}
-                          onChange={(e) => setRegisterNom(e.target.value)}
-                          placeholder="Votre nom"
-                          className={authInput}
-                        />
+                        <input value={registerNom} onChange={(e) => setRegisterNom(e.target.value)} placeholder="Votre nom" className={authInput} />
                       </div>
                     </div>
-
                     <div>
                       <label className={authLabel}>Prénom</label>
                       <div className={authInputWrap}>
-                        <input
-                          value={registerPrenom}
-                          onChange={(e) => setRegisterPrenom(e.target.value)}
-                          placeholder="Votre prénom"
-                          className={authInput}
-                        />
+                        <input value={registerPrenom} onChange={(e) => setRegisterPrenom(e.target.value)} placeholder="Votre prénom" className={authInput} />
                       </div>
                     </div>
                   </div>
-
                   <div>
                     <label className={authLabel}>Adresse e-mail</label>
                     <div className={authInputWrap}>
                       <Mail className="h-4 w-4 text-slate-400" />
-                      <input
-                        type="email"
-                        value={registerEmail}
-                        onChange={(e) => setRegisterEmail(e.target.value)}
-                        placeholder="exemple@email.com"
-                        className={authInput}
-                      />
+                      <input type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="exemple@email.com" className={authInput} />
                     </div>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={authLabel}>Mot de passe</label>
                       <div className={authInputWrap}>
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          value={registerPassword}
-                          onChange={(e) => setRegisterPassword(e.target.value)}
-                          placeholder="Min. 8 caractères"
-                          className={authInput}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((v) => !v)}
-                          className="text-slate-400 hover:text-white"
-                        >
-                          {showPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                        <input type={showPassword ? "text" : "password"} value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Min. 8 caractères" className={authInput} />
+                        <button type="button" onClick={() => setShowPassword((v) => !v)} className="text-slate-400 hover:text-white">
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
                     </div>
-
                     <div>
                       <label className={authLabel}>Confirmer</label>
                       <div className={authInputWrap}>
-                        <input
-                          type={showConfirmPassword ? "text" : "password"}
-                          value={registerConfirmPassword}
-                          onChange={(e) =>
-                            setRegisterConfirmPassword(e.target.value)
-                          }
-                          placeholder="Confirmez"
-                          className={authInput}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmPassword((v) => !v)}
-                          className="text-slate-400 hover:text-white"
-                        >
-                          {showConfirmPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                        <input type={showConfirmPassword ? "text" : "password"} value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirmez" className={authInput} />
+                        <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="text-slate-400 hover:text-white">
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
                     </div>
                   </div>
-
                   <div className="flex gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-blue-300">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                    <p>
-                      Après votre inscription, votre compte sera placé en
-                      attente. Un administrateur devra le vérifier et
-                      l'activer avant votre première connexion.
-                    </p>
+                    <p>Après votre inscription, votre compte sera placé en attente. Un administrateur devra le vérifier et l'activer avant votre première connexion.</p>
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60"
-                  >
+                  <button type="submit" disabled={isLoading} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60">
                     <ShieldCheck className="h-4 w-4" />
                     {isLoading ? "Création..." : "Créer mon compte"}
                   </button>
                 </form>
               )}
 
-              {/* FOOTER */}
               <p className="mt-4 text-center text-xs text-slate-400">
                 {authModal === "login" ? (
                   <>
                     Pas encore de compte ?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchAuth("register")}
-                      className="font-semibold text-green-500 hover:text-green-400"
-                    >
+                    <button type="button" onClick={() => switchAuth("register")} className="font-semibold text-green-500 hover:text-green-400">
                       S'inscrire
                     </button>
                   </>
                 ) : (
                   <>
                     Vous avez déjà un compte ?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchAuth("login")}
-                      className="font-semibold text-blue-500 hover:text-blue-400"
-                    >
+                    <button type="button" onClick={() => switchAuth("login")} className="font-semibold text-blue-500 hover:text-blue-400">
                       Se connecter
                     </button>
                   </>
                 )}
               </p>
 
-              <button
-                type="button"
-                onClick={closeAuth}
-                className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-300"
-              >
+              <button type="button" onClick={closeAuth} className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-300">
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Retour à l'accueil
               </button>
             </div>
           )}
 
-          {/* ================= FORGOT / VERIFY / RESET ================= */}
           {authModal === "forgot" && (
             <ForgotPasswordModal
               forgotEmail={forgotEmail}
@@ -1772,55 +1179,30 @@ export default function HomePage() {
       ===================================================== */}
 
       {currentResult && resultModal && (
-        <div
-          className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 px-4 py-6"
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 px-4 py-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="px-6 pb-5 pt-8 text-center sm:px-8">
-              <div
-                className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${currentResult.iconClass}`}
-              >
+              <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${currentResult.iconClass}`}>
                 {(() => {
-                  const ResultIcon =
-                    currentResult.icon;
-
-                  return (
-                    <ResultIcon className="h-8 w-8" />
-                  );
+                  const ResultIcon = currentResult.icon;
+                  return <ResultIcon className="h-8 w-8" />;
                 })()}
               </div>
-
-              <h2
-                className={`mt-5 text-xl font-bold ${currentResult.titleClass}`}
-              >
-                {currentResult.title}
-              </h2>
+              <h2 className={`mt-5 text-xl font-bold ${currentResult.titleClass}`}>{currentResult.title}</h2>
             </div>
 
             <div className="px-6 pb-6 sm:px-8">
               <div className="rounded-xl bg-blue-50 p-5">
-                <p className="text-center text-sm leading-7 text-blue-700">
-                  {resultMessage}
-                </p>
+                <p className="text-center text-sm leading-7 text-blue-700">{resultMessage}</p>
               </div>
 
               {resultModal === "pending" && (
                 <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
                   <div className="flex gap-3">
                     <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-
                     <div>
-                      <p className="font-semibold text-blue-800">
-                        Étape suivante
-                      </p>
-
-                      <p className="mt-1 text-sm leading-6 text-blue-700">
-                        Un administrateur doit vérifier
-                        et activer votre compte avant votre
-                        connexion.
-                      </p>
+                      <p className="font-semibold text-blue-800">Étape suivante</p>
+                      <p className="mt-1 text-sm leading-6 text-blue-700">Un administrateur doit vérifier et activer votre compte avant votre connexion.</p>
                     </div>
                   </div>
                 </div>
@@ -1828,19 +1210,12 @@ export default function HomePage() {
 
               {resultModal === "error" && (
                 <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                  <p className="text-center text-sm leading-6 text-blue-700">
-                    Vérifiez les informations saisies puis
-                    réessayez.
-                  </p>
+                  <p className="text-center text-sm leading-6 text-blue-700">Vérifiez les informations saisies puis réessayez.</p>
                 </div>
               )}
 
               {resultModal !== "success" && (
-                <button
-                  type="button"
-                  onClick={closeResult}
-                  className="mt-6 w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
-                >
+                <button type="button" onClick={closeResult} className="mt-6 w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700">
                   Fermer
                 </button>
               )}
