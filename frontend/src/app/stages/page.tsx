@@ -10,18 +10,21 @@ import {
   Clock,
   GraduationCap,
   MapPin,
+  Pencil,
   Plus,
   Search,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
+import { AppLayout } from "@/components/layout";
 import {
   InternshipOffer,
   StoredUser,
   apiRequest,
+  canManageOffers,
   formatDate,
   getStoredUser,
-  isAdmin,
   isClosed,
 } from "@/lib/stages";
 
@@ -38,7 +41,11 @@ const emptyForm = {
 const inputClass =
   "w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1B8FAE] focus:ring-2 focus:ring-[#1B8FAE]/20";
 
+const labelClass =
+  "mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500";
+
 export default function StagesPage() {
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<StoredUser | null>(null);
   const [offers, setOffers] = useState<InternshipOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,23 +53,24 @@ export default function StagesPage() {
   const [search, setSearch] = useState("");
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [busyId, setBusyId] = useState<number | string | null>(null);
 
-  const admin = isAdmin(user);
+  /** true pour ADMIN / RH / COORDINATOR : ils peuvent publier et gérer les offres */
+  const manager = canManageOffers(user);
 
   const loadOffers = async () => {
     setLoading(true);
     setError("");
     try {
       const data = await apiRequest("/internship-offers");
-      const list = Array.isArray(data) ? data : data.data ?? [];
-      setOffers(list);
+      setOffers(Array.isArray(data) ? data : data.data ?? []);
     } catch (e: any) {
       setError(
-        e?.message ||
-          "Impossible de charger les offres de stage pour le moment."
+        e?.message || "Impossible de charger les offres de stage pour le moment."
       );
     } finally {
       setLoading(false);
@@ -71,8 +79,41 @@ export default function StagesPage() {
 
   useEffect(() => {
     setUser(getStoredUser());
+    setMounted(true);
     loadOffers();
   }, []);
+
+  const openNew = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFormError("");
+    setShowForm(true);
+  };
+
+  const openEdit = (offer: InternshipOffer) => {
+    setEditingId(offer.id);
+    setForm({
+      title: offer.title ?? "",
+      domain: offer.domain ?? "",
+      location: offer.location ?? "",
+      duration: offer.duration ?? "",
+      deadline: offer.deadline ? String(offer.deadline).slice(0, 10) : "",
+      places: offer.places ? String(offer.places) : "",
+      description: offer.description ?? "",
+    });
+    setFormError("");
+    setShowForm(true);
+  };
+
+  /* Lien du menu « Nouvelle offre » : /stages?nouvelle=1 ouvre directement le formulaire */
+  useEffect(() => {
+    if (!mounted || !manager) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("nouvelle") === "1") {
+      openNew();
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [mounted, manager]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -86,7 +127,7 @@ export default function StagesPage() {
     );
   }, [offers, search]);
 
-  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError("");
 
@@ -97,84 +138,80 @@ export default function StagesPage() {
 
     setSaving(true);
     try {
-      await apiRequest("/internship-offers", {
-        method: "POST",
-        body: JSON.stringify({
-          title: form.title.trim(),
-          domain: form.domain.trim() || null,
-          location: form.location.trim() || null,
-          duration: form.duration.trim() || null,
-          deadline: form.deadline || null,
-          places: form.places ? Number(form.places) : null,
-          description: form.description.trim(),
-        }),
-      });
+      await apiRequest(
+        editingId ? `/internship-offers/${editingId}` : "/internship-offers",
+        {
+          method: editingId ? "PATCH" : "POST",
+          body: JSON.stringify({
+            title: form.title.trim(),
+            domain: form.domain.trim() || null,
+            location: form.location.trim() || null,
+            duration: form.duration.trim() || null,
+            deadline: form.deadline || null,
+            places: form.places ? Number(form.places) : null,
+            description: form.description.trim(),
+          }),
+        }
+      );
       setShowForm(false);
+      setEditingId(null);
       setForm(emptyForm);
       await loadOffers();
     } catch (e: any) {
-      setFormError(e?.message || "Impossible d'ajouter ce stage.");
+      setFormError(
+        e?.status === 403
+          ? "Votre rôle ne permet pas de publier des offres."
+          : e?.message || "Impossible d'enregistrer ce stage."
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <main className="min-h-screen bg-gray-50 text-gray-900">
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3">
-            <Image
-              src="/logos/ndao-hifanosika.png"
-              alt="Ndao Hifanosika"
-              width={48}
-              height={48}
-              priority
-              className="h-12 w-auto object-contain"
-            />
-            <div>
-              <p className="text-lg font-bold leading-tight">
-                Ndao Hifanosika
-              </p>
-              <p className="text-xs text-gray-500">Offres de stage</p>
-            </div>
-          </Link>
+  const handleRemove = async (offer: InternshipOffer) => {
+    if (!window.confirm(`Retirer l'offre « ${offer.title} » ?`)) return;
+    setBusyId(offer.id);
+    try {
+      await apiRequest(`/internship-offers/${offer.id}`, { method: "DELETE" });
+      setOffers((list) => list.filter((o) => o.id !== offer.id));
+    } catch (e: any) {
+      setError(e?.message || "Impossible de retirer cette offre.");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-[#1F5FA0]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour à l&apos;accueil
-          </Link>
-        </div>
-      </header>
+  if (!mounted) return null;
 
+  /* ---------------- Contenu commun (public + espace de gestion) ---------------- */
+  const body = (
+    <>
       {/* TITRE */}
-      <section className="bg-gradient-to-r from-[#1F5FA0] to-[#1B8FAE]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-12 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
+      <section
+        className={`bg-gradient-to-r from-[#1F5FA0] to-[#1B8FAE] ${
+          manager ? "rounded-2xl" : ""
+        }`}
+      >
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
           <div>
             <h1 className="text-3xl font-bold text-white sm:text-4xl">
-              Stages disponibles
+              {manager ? "Offres de stage" : "Stages disponibles"}
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-white/90">
-              Découvrez les offres de stage proposées par Ndao Hifanosika et
-              postulez en quelques clics.
+              {manager
+                ? "Publiez les offres, suivez les candidatures et retirez les offres terminées."
+                : "Découvrez les offres de stage proposées par Ndao Hifanosika et postulez en quelques clics."}
             </p>
           </div>
 
-          {admin && (
+          {manager && (
             <button
               type="button"
-              onClick={() => {
-                setFormError("");
-                setShowForm(true);
-              }}
+              onClick={openNew}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#1F5FA0] shadow-lg transition hover:bg-gray-50"
             >
               <Plus className="h-4 w-4" />
-              Ajouter un stage
+              Nouvelle offre
             </button>
           )}
         </div>
@@ -211,8 +248,20 @@ export default function StagesPage() {
               Aucun stage disponible pour le moment
             </p>
             <p className="mt-1 text-sm text-gray-500">
-              Revenez bientôt : de nouvelles offres seront publiées.
+              {manager
+                ? "Publiez votre première offre avec le bouton « Nouvelle offre »."
+                : "Revenez bientôt : de nouvelles offres seront publiées."}
             </p>
+            {manager && (
+              <button
+                type="button"
+                onClick={openNew}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#1F5FA0] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#194d82]"
+              >
+                <Plus className="h-4 w-4" />
+                Nouvelle offre
+              </button>
+            )}
           </div>
         )}
 
@@ -275,6 +324,37 @@ export default function StagesPage() {
 
                 <div className="mt-6 flex-1" />
 
+                {manager && (
+                  <div className="mb-3 grid grid-cols-[1fr_auto_auto] gap-2">
+                    <Link
+                      href={`/stages/${offer.id}/candidatures`}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#1F5FA0] px-4 py-2.5 text-sm font-semibold text-[#1F5FA0] transition hover:bg-[#1F5FA0]/5"
+                    >
+                      <Users className="h-4 w-4" />
+                      Candidatures
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => openEdit(offer)}
+                      aria-label="Modifier l'offre"
+                      title="Modifier"
+                      className="rounded-xl border border-gray-300 px-3 text-gray-600 transition hover:bg-gray-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(offer)}
+                      disabled={busyId === offer.id}
+                      aria-label="Retirer l'offre"
+                      title="Retirer"
+                      className="rounded-xl border border-[#D01C7F]/40 px-3 text-[#D01C7F] transition hover:bg-[#D01C7F]/5 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
                 {closed ? (
                   <button
                     type="button"
@@ -298,19 +378,21 @@ export default function StagesPage() {
         </div>
       </section>
 
-      {/* MODAL AJOUT (ADMIN) */}
-      {showForm && admin && (
+      {/* MODAL AJOUT / MODIFICATION (rôles autorisés uniquement) */}
+      {showForm && manager && (
         <div
           role="dialog"
           aria-modal="true"
           className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
         >
           <form
-            onSubmit={handleCreate}
+            onSubmit={handleSave}
             className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Ajouter un stage</h2>
+              <h2 className="text-xl font-bold">
+                {editingId ? "Modifier l'offre" : "Nouvelle offre de stage"}
+              </h2>
               <button
                 type="button"
                 onClick={() => !saving && setShowForm(false)}
@@ -323,9 +405,7 @@ export default function StagesPage() {
 
             <div className="mt-5 space-y-4">
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Titre du stage *
-                </label>
+                <label className={labelClass}>Titre du stage *</label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -336,55 +416,39 @@ export default function StagesPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Domaine
-                  </label>
+                  <label className={labelClass}>Domaine</label>
                   <input
                     value={form.domain}
-                    onChange={(e) =>
-                      setForm({ ...form, domain: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, domain: e.target.value })}
                     placeholder="Ex : Informatique"
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Lieu
-                  </label>
+                  <label className={labelClass}>Lieu</label>
                   <input
                     value={form.location}
-                    onChange={(e) =>
-                      setForm({ ...form, location: e.target.value })
-                    }
-                    placeholder="Ex : Antananarivo"
+                    onChange={(e) => setForm({ ...form, location: e.target.value })}
+                    placeholder="Ex : Fianarantsoa"
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Durée
-                  </label>
+                  <label className={labelClass}>Durée</label>
                   <input
                     value={form.duration}
-                    onChange={(e) =>
-                      setForm({ ...form, duration: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, duration: e.target.value })}
                     placeholder="Ex : 3 mois"
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Nombre de places
-                  </label>
+                  <label className={labelClass}>Nombre de places</label>
                   <input
                     type="number"
                     min={1}
                     value={form.places}
-                    onChange={(e) =>
-                      setForm({ ...form, places: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, places: e.target.value })}
                     placeholder="Ex : 2"
                     className={inputClass}
                   />
@@ -392,23 +456,17 @@ export default function StagesPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Date limite de candidature
-                </label>
+                <label className={labelClass}>Date limite de candidature</label>
                 <input
                   type="date"
                   value={form.deadline}
-                  onChange={(e) =>
-                    setForm({ ...form, deadline: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, deadline: e.target.value })}
                   className={inputClass}
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Description courte *
-                </label>
+                <label className={labelClass}>Description courte *</label>
                 <textarea
                   rows={4}
                   value={form.description}
@@ -441,12 +499,55 @@ export default function StagesPage() {
                 disabled={saving}
                 className="rounded-xl bg-[#1F5FA0] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#194d82] disabled:opacity-60"
               >
-                {saving ? "Enregistrement..." : "Publier le stage"}
+                {saving
+                  ? "Enregistrement..."
+                  : editingId
+                  ? "Enregistrer les modifications"
+                  : "Publier l'offre"}
               </button>
             </div>
           </form>
         </div>
       )}
+    </>
+  );
+
+  /* Équipe de gestion : on garde le menu et l'en-tête de l'application */
+  if (manager) {
+    return <AppLayout>{body}</AppLayout>;
+  }
+
+  /* Visiteurs / candidats : page publique */
+  return (
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <Image
+              src="/logos/ndao-hifanosika.png"
+              alt="Ndao Hifanosika"
+              width={48}
+              height={48}
+              priority
+              className="h-12 w-auto object-contain"
+            />
+            <div>
+              <p className="text-lg font-bold leading-tight">Ndao Hifanosika</p>
+              <p className="text-xs text-gray-500">Offres de stage</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-[#1F5FA0]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Retour à l&apos;accueil
+          </Link>
+        </div>
+      </header>
+
+      {body}
     </main>
   );
 }

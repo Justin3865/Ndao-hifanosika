@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   MapPin,
   Navigation,
+  Plus,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -55,7 +56,9 @@ const groups = [
       { href: "/milestones", label: "Jalons", icon: Flag },
       { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
       { href: "/evaluations", label: "Évaluations", icon: ClipboardList },
+      // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"
       { href: "/internships", label: "Stages", icon: GraduationCap },
+      // ⚠️ NOFAFANA: Ny "Offres de stage" sy "Nouvelle offre" tsy aseho eto intsony
     ],
   },
   {
@@ -79,17 +82,17 @@ const groups = [
   },
 ];
 
-// Mémorisés entre deux pages pour que le menu ne « saute » pas à chaque clic
+// Mémoire du rôle : le menu est recréé à chaque navigation, sinon il s'affichait vide puis se remplissait.
 let cachedRole = "";
-let cachedScroll = 0;
 
 export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
   const pathname = usePathname();
   const [role, setRole] = useState(cachedRole);
 
   useEffect(() => {
-    cachedRole = getStoredRole();
-    setRole(cachedRole);
+    const current = getStoredRole();
+    cachedRole = current;
+    setRole(current);
   }, []);
 
   const visibleGroups = groups
@@ -113,15 +116,7 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
         </button>
       </div>
 
-      <nav
-        ref={(element) => {
-          if (element) element.scrollTop = cachedScroll;
-        }}
-        onScroll={(event) => {
-          cachedScroll = event.currentTarget.scrollTop;
-        }}
-        className="flex-1 space-y-6 overflow-y-auto px-3 pb-6"
-      >
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-6">
         {visibleGroups.map((group) => (
           <div key={group.title}>
             <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-blue-300/70">

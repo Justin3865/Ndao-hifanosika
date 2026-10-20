@@ -2,20 +2,25 @@ import { NextFunction, Request, Response, Router } from "express";
 
 // ⚠️ Votre schema utilise le générateur "prisma-client" (output: ../generated/prisma).
 // Importez donc depuis le client généré, PAS depuis "@prisma/client".
-// Ajustez les 3 chemins ci-dessous pour qu'ils correspondent à vos autres routes.
+// Ajustez les chemins ci-dessous pour qu'ils correspondent à vos autres routes.
 import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../lib/prisma"; // la même instance que vos autres routes
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-/* ---------- Admin uniquement (rôle ADMIN de votre enum UserRole) ---------- */
+/* ---------- Rôles autorisés à gérer les offres ----------
+ * ⚠️ Même liste que OFFER_MANAGER_ROLES dans frontend/src/lib/stages.ts
+ * (valeurs de l'enum UserRole du schema Prisma). */
+const OFFER_MANAGER_ROLES = ["ADMIN", "RH", "COORDINATOR"];
+
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const role = String((req as any).user?.role || "").toUpperCase();
-  if (role !== "ADMIN" && role !== "SUPER_ADMIN") {
-    return res
-      .status(403)
-      .json({ success: false, message: "Accès réservé aux administrateurs." });
+  if (!OFFER_MANAGER_ROLES.includes(role)) {
+    return res.status(403).json({
+      success: false,
+      message: "Accès réservé à l'équipe de gestion des stages.",
+    });
   }
   next();
 }
@@ -25,16 +30,32 @@ function parseId(value: string) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/** Date valide ou null ; "invalid" si la chaîne n'est pas une date */
+function parseDate(value: unknown): Date | null | "invalid" {
+  if (!value) return null;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? "invalid" : d;
+}
+
 function cleanOfferBody(body: any) {
+  const places = body.places ? Number(body.places) : null;
+
   return {
     title: String(body.title || "").trim(),
     domain: body.domain ? String(body.domain).trim() : null,
     location: body.location ? String(body.location).trim() : null,
     duration: body.duration ? String(body.duration).trim() : null,
-    deadline: body.deadline ? new Date(body.deadline) : null,
-    places: body.places ? Number(body.places) : null,
+    deadline: parseDate(body.deadline),
+    places: places !== null && Number.isFinite(places) && places > 0 ? Math.floor(places) : null,
     description: String(body.description || "").trim(),
   };
+}
+
+/** Valide le corps d'une offre ; renvoie un message d'erreur ou null */
+function validateOffer(data: ReturnType<typeof cleanOfferBody>) {
+  if (!data.title || !data.description) return "Le titre et la description sont obligatoires.";
+  if (data.deadline === "invalid") return "La date limite est invalide.";
+  return null;
 }
 
 /* =========================================================
@@ -63,9 +84,7 @@ router.get("/:id", async (req, res) => {
   if (!id) return res.status(400).json({ success: false, message: "Identifiant invalide." });
 
   try {
-    const offer = await prisma.internshipOffer.findFirst({
-      where: { id, isActive: true },
-    });
+    const offer = await prisma.internshipOffer.findFirst({ where: { id, isActive: true } });
     if (!offer) return res.status(404).json({ success: false, message: "Stage introuvable." });
     res.json({ success: true, data: offer });
   } catch (error) {
@@ -75,21 +94,21 @@ router.get("/:id", async (req, res) => {
 });
 
 /* =========================================================
-   ADMIN : ajouter un stage
-   POST /api/internship-offers
+   GESTION : publier une nouvelle offre
+   POST /api/internship-offers          (ADMIN, RH, COORDINATOR)
 ========================================================= */
 router.post("/", authenticate, requireAdmin, async (req, res) => {
   const data = cleanOfferBody(req.body);
-
-  if (!data.title || !data.description) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Le titre et la description sont obligatoires." });
-  }
+  const problem = validateOffer(data);
+  if (problem) return res.status(400).json({ success: false, message: problem });
 
   try {
     const offer = await prisma.internshipOffer.create({
-      data: { ...data, createdById: Number((req as any).user?.id) || null },
+      data: {
+        ...data,
+        deadline: data.deadline as Date | null,
+        createdById: Number((req as any).user?.id) || null,
+      },
     });
     res.status(201).json({ success: true, data: offer });
   } catch (error) {
@@ -99,22 +118,22 @@ router.post("/", authenticate, requireAdmin, async (req, res) => {
 });
 
 /* =========================================================
-   ADMIN : modifier un stage
-   PATCH /api/internship-offers/:id
+   GESTION : modifier une offre
+   PATCH /api/internship-offers/:id     (ADMIN, RH, COORDINATOR)
 ========================================================= */
 router.patch("/:id", authenticate, requireAdmin, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ success: false, message: "Identifiant invalide." });
 
   const data = cleanOfferBody(req.body);
-  if (!data.title || !data.description) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Le titre et la description sont obligatoires." });
-  }
+  const problem = validateOffer(data);
+  if (problem) return res.status(400).json({ success: false, message: problem });
 
   try {
-    const offer = await prisma.internshipOffer.update({ where: { id }, data });
+    const offer = await prisma.internshipOffer.update({
+      where: { id },
+      data: { ...data, deadline: data.deadline as Date | null },
+    });
     res.json({ success: true, data: offer });
   } catch (error) {
     if ((error as Prisma.PrismaClientKnownRequestError).code === "P2025") {
@@ -126,8 +145,8 @@ router.patch("/:id", authenticate, requireAdmin, async (req, res) => {
 });
 
 /* =========================================================
-   ADMIN : retirer un stage (masqué, pas supprimé)
-   DELETE /api/internship-offers/:id
+   GESTION : retirer une offre (masquée, pas supprimée)
+   DELETE /api/internship-offers/:id    (ADMIN, RH, COORDINATOR)
 ========================================================= */
 router.delete("/:id", authenticate, requireAdmin, async (req, res) => {
   const id = parseId(req.params.id);
@@ -157,9 +176,7 @@ router.post("/:id/applications", authenticate, async (req, res) => {
   const motivation = String(req.body.motivation || "").trim();
 
   if (!motivation) {
-    return res
-      .status(400)
-      .json({ success: false, message: "La lettre de motivation est obligatoire." });
+    return res.status(400).json({ success: false, message: "La lettre de motivation est obligatoire." });
   }
 
   try {
@@ -170,9 +187,7 @@ router.post("/:id/applications", authenticate, async (req, res) => {
       const end = new Date(offer.deadline);
       end.setHours(23, 59, 59, 999);
       if (end.getTime() < Date.now()) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Les candidatures pour ce stage sont fermées." });
+        return res.status(400).json({ success: false, message: "Les candidatures pour ce stage sont fermées." });
       }
     }
 
@@ -190,9 +205,7 @@ router.post("/:id/applications", authenticate, async (req, res) => {
     res.status(201).json({ success: true, data: application });
   } catch (error) {
     if ((error as Prisma.PrismaClientKnownRequestError).code === "P2002") {
-      return res
-        .status(409)
-        .json({ success: false, message: "Vous avez déjà postulé à ce stage." });
+      return res.status(409).json({ success: false, message: "Vous avez déjà postulé à ce stage." });
     }
     console.error(error);
     res.status(500).json({ success: false, message: "Impossible d'envoyer votre candidature." });
@@ -200,8 +213,8 @@ router.post("/:id/applications", authenticate, async (req, res) => {
 });
 
 /* =========================================================
-   ADMIN : voir les candidatures d'un stage (avec infos du candidat)
-   GET /api/internship-offers/:id/applications
+   GESTION : candidatures d'une offre (avec infos du candidat)
+   GET /api/internship-offers/:id/applications   (ADMIN, RH, COORDINATOR)
 ========================================================= */
 router.get("/:id/applications", authenticate, requireAdmin, async (req, res) => {
   const id = parseId(req.params.id);
@@ -212,9 +225,7 @@ router.get("/:id/applications", authenticate, requireAdmin, async (req, res) => 
       where: { offerId: id },
       orderBy: { createdAt: "desc" },
       include: {
-        user: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
 
@@ -226,7 +237,7 @@ router.get("/:id/applications", authenticate, requireAdmin, async (req, res) => 
 });
 
 /* =========================================================
-   ADMIN : accepter / refuser une candidature
+   GESTION : accepter / refuser une candidature
    PATCH /api/internship-offers/applications/:applicationId
    body : { status: "PENDING" | "ACCEPTED" | "REJECTED" }
 ========================================================= */

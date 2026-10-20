@@ -36,10 +36,20 @@ export function getStoredUser(): StoredUser | null {
   }
 }
 
-export function isAdmin(user: StoredUser | null) {
+/**
+ * Rôles autorisés à publier / modifier / retirer des offres et à traiter les candidatures.
+ * ⚠️ Doit rester identique à OFFER_MANAGER_ROLES dans
+ *    backend/src/routes/internshipOffers.routes.ts
+ */
+export const OFFER_MANAGER_ROLES = ["ADMIN", "RH", "COORDINATOR"];
+
+export function canManageOffers(user: StoredUser | null) {
   const role = (user?.role || "").toUpperCase();
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+  return OFFER_MANAGER_ROLES.includes(role);
 }
+
+/** Alias conservé : les pages qui importent encore isAdmin continuent de fonctionner. */
+export const isAdmin = canManageOffers;
 
 export function isClosed(offer: InternshipOffer) {
   if (!offer.deadline) return false;

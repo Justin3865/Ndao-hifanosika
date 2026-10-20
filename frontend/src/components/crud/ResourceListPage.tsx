@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Eye, FileText, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { AppLayout } from "@/components/layout";
 import { getStoredRole } from "@/lib/access";
 import {
@@ -97,7 +97,27 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+          {/* Offres de stage : accès réservé à l'équipe de gestion (ADMIN, RH, COORDINATOR) */}
+          {config.basePath === "/internships" && ["ADMIN", "RH", "COORDINATOR"].includes(role) && (
+            <>
+              <Link
+                href="/stages"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-600 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+              >
+                <FileText className="h-4 w-4" />
+                Offres de stage
+              </Link>
+              <Link
+                href="/stages?nouvelle=1"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#D01C7F] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#b3176c]"
+              >
+                <Plus className="h-4 w-4" />
+                Nouvelle offre
+              </Link>
+            </>
+          )}
+
           <button
             type="button"
             onClick={() =>

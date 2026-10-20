@@ -110,6 +110,10 @@ const ACCESS_RULES: AccessRule[] = [
     roles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS, ...STAGIAIRES],
   },
 
+  // Offres de stage : la page /stages est publique (lecture) ; cette règle sert à afficher
+  // les entrées « Offres de stage » / « Nouvelle offre » du menu et à ouvrir la page dans l'application.
+  { pattern: /^\/stages(\/|$)/, roles: ["ADMIN", "RH", "COORDINATOR"] },
+
   // Stages (espace stagiaires) : invisible pour DIRECTION, DSI, DAF, COMMUNICATION
   { pattern: /^\/internships\/(create|[^/]+\/edit)\/?$/, roles: ["ADMIN", "RH", "COORDINATOR", ...TUTEURS] },
   {
