@@ -29,7 +29,18 @@ export default function CreateCertificatePage() {
   const [type, setType] = useState("INTERNSHIP");
   const [internships, setInternships] = useState<InternshipOption[]>([]);
   const [internshipId, setInternshipId] = useState("");
-  const [form, setForm] = useState({ holderName: "", holderEmail: "", title: "", description: "", startDate: "", endDate: "" });
+  const [form, setForm] = useState({
+    holderName: "",
+    holderEmail: "",
+    title: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+    expiresAt: "",
+    holderBirthDate: "",
+    holderBirthPlace: "",
+    missionLocation: "",
+  });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -53,7 +64,16 @@ export default function CreateCertificatePage() {
     try {
       const payload =
         type === "INTERNSHIP"
-          ? { type, internshipId: Number(internshipId), title: form.title || undefined, description: form.description || undefined }
+          ? {
+              type,
+              internshipId: Number(internshipId),
+              title: form.title || undefined,
+              description: form.description || undefined,
+              // Naissance : lue dans le profil du stagiaire ; ces valeurs ne servent que si le profil est vide
+              holderBirthDate: form.holderBirthDate || undefined,
+              holderBirthPlace: form.holderBirthPlace || undefined,
+              missionLocation: form.missionLocation || undefined,
+            }
           : { type, ...form };
 
       const res = await api.post("/certificates", payload);
@@ -120,6 +140,27 @@ export default function CreateCertificatePage() {
               </label>
             </div>
           )}
+
+          {/* Naissance du titulaire + lieu de mission : imprimés sur le certificat */}
+          <div className="grid gap-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:grid-cols-3">
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Date de naissance
+              <input type="date" className={inputClass} value={form.holderBirthDate} onChange={(e) => set("holderBirthDate", e.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Lieu de naissance
+              <input className={inputClass} placeholder="Ex. Fianarantsoa" value={form.holderBirthPlace} onChange={(e) => set("holderBirthPlace", e.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Lieu de mission
+              <input className={inputClass} placeholder="Ex. Siège — Fianarantsoa" value={form.missionLocation} onChange={(e) => set("missionLocation", e.target.value)} />
+            </label>
+            <p className="text-xs text-gray-500 md:col-span-3">
+              {type === "INTERNSHIP"
+                ? "Pour un stage, la date et le lieu de naissance sont lus dans le profil du stagiaire. Les champs ci-dessus ne servent que si son profil n'est pas encore renseigné."
+                : "Ces informations apparaîtront sur le certificat."}
+            </p>
+          </div>
 
           <label className="block space-y-1 text-sm font-medium text-gray-700">
             Mention complémentaire (optionnel)

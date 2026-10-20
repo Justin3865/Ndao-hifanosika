@@ -69,7 +69,6 @@ enum Gender {
   OTHER
 }
 
-// ▼▼▼ VAOVAO : statut d'une candidature à une offre de stage ▼▼▼
 enum ApplicationStatus {
   PENDING
   ACCEPTED
@@ -84,6 +83,12 @@ model User {
   password           String
   phone              String?
   gender             Gender?
+  
+  // ▼▼▼ NOVOAKO : Nampiana ireto ho an'ny certificat ▼▼▼
+  birthDate          DateTime?
+  birthPlace         String?
+  // ▲▲▲
+
   role               UserRole   @default(STAGIAIRE_L3)
   status             UserStatus @default(PENDING)
   departmentId       Int?
@@ -112,7 +117,6 @@ model User {
   internships        Internship[] @relation("InternshipStudent")
   supervisedInternships Internship[] @relation("InternshipSupervisor")
 
-  // ▼ VAOVAO : candidatures de l'utilisateur aux offres de stage
   internshipApplications InternshipApplication[]
 
   auditLogs           AuditLog[]
@@ -217,7 +221,6 @@ model Beneficiary {
   email       String?
   vulnerable  Boolean  @default(false)
 
-  // Suivi terrain (position partagée avec consentement)
   latitude         Float?
   longitude        Float?
   locationAccuracy Float?
@@ -226,11 +229,9 @@ model Beneficiary {
   trackingEnabled  Boolean   @default(false)
   consentAt        DateTime?
 
-  // Zone d'intervention
   altitude    Float?
   zoneId      Int?
 
-  // Domicile du ménage et indicateurs de vulnérabilité
   locality       String?
   homeLatitude   Float?
   homeLongitude  Float?
@@ -295,7 +296,6 @@ model Internship {
   @@index([status])
 }
 
-// ▼▼▼ VAOVAO : offres de stage publiées par l'admin ▼▼▼
 model InternshipOffer {
   id          Int       @id @default(autoincrement())
   title       String
@@ -316,7 +316,6 @@ model InternshipOffer {
   @@index([createdAt])
 }
 
-// ▼▼▼ VAOVAO : candidatures des utilisateurs aux offres ▼▼▼
 model InternshipApplication {
   id         Int               @id @default(autoincrement())
   offerId    Int
@@ -355,7 +354,6 @@ model AuditLog {
   @@index([createdAt])
 }
 
-
 model PasswordResetToken {
   id        String   @id @default(cuid())
   userId    Int
@@ -369,7 +367,6 @@ model PasswordResetToken {
   @@index([userId, expiresAt])
 }
 
-
 model RevokedRefreshToken {
   id        String   @id @default(cuid())
   tokenHash String   @unique
@@ -378,7 +375,6 @@ model RevokedRefreshToken {
 
   @@index([expiresAt])
 }
-
 
 model Notification {
   id        Int              @id @default(autoincrement())
@@ -394,7 +390,6 @@ model Notification {
   @@index([userId, read])
   @@index([createdAt])
 }
-
 
 model Zone {
   id             Int           @id @default(autoincrement())
@@ -414,7 +409,6 @@ model Zone {
   beneficiaries  Beneficiary[]
 }
 
-
 model Certificate {
   id           Int       @id @default(autoincrement())
   code         String    @unique
@@ -425,6 +419,13 @@ model Certificate {
   description  String?
   startDate    DateTime?
   endDate      DateTime?
+  
+  // ▼▼▼ NOVOAKO : Nampiana ireto ho an'ny certificat ▼▼▼
+  holderBirthDate DateTime?
+  holderBirthPlace String?
+  missionLocation String?
+  // ▲▲▲
+
   internshipId Int?
   userId       Int?
   issuedById   Int?
@@ -432,7 +433,6 @@ model Certificate {
   expiresAt    DateTime?
   createdAt    DateTime  @default(now())
 }
-
 
 model AiModel {
   id         Int      @id @default(autoincrement())
@@ -444,7 +444,6 @@ model AiModel {
   trainedAt  DateTime @default(now())
 }
 
-
 model EvaluationGrid {
   id          Int      @id @default(autoincrement())
   name        String
@@ -454,7 +453,6 @@ model EvaluationGrid {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
-
 
 model EvaluationCampaign {
   id          Int       @id @default(autoincrement())

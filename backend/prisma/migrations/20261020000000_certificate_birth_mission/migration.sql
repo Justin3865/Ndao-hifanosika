@@ -1,0 +1,7 @@
+-- Naissance des utilisateurs (source des certificats) + champs figés dans le certificat
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthPlace" TEXT;
+
+ALTER TABLE "Certificate" ADD COLUMN IF NOT EXISTS "holderBirthDate" TIMESTAMP(3);
+ALTER TABLE "Certificate" ADD COLUMN IF NOT EXISTS "holderBirthPlace" TEXT;
+ALTER TABLE "Certificate" ADD COLUMN IF NOT EXISTS "missionLocation" TEXT;

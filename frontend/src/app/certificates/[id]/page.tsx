@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Download, FileText, Loader2, Printer, X } from "lucide-react";
 import api from "@/lib/axios";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ORG, orgContactLine } from "@/lib/org";
@@ -22,6 +22,10 @@ interface Certificate {
   endDate?: string | null;
   createdAt: string;
   revokedAt?: string | null;
+  expiresAt?: string | null;
+  holderBirthDate?: string | null;
+  holderBirthPlace?: string | null;
+  missionLocation?: string | null;
 }
 
 const HEADLINE: Record<string, string> = {
@@ -30,6 +34,49 @@ const HEADLINE: Record<string, string> = {
   STAFF: "Certificat de travail",
   TRAINING: "Attestation de formation",
 };
+
+type PdfFormat = "A4" | "A3";
+
+/** Dimensions des pages en paysage (mm) */
+const PDF_FORMATS: Record<PdfFormat, { label: string; width: number; height: number }> = {
+  A4: { label: "A4 (297 × 210 mm)", width: 297, height: 210 },
+  A3: { label: "A3 (420 × 297 mm)", width: 420, height: 297 },
+};
+
+/**
+ * Génère et télécharge le certificat en PDF au format choisi.
+ * Nécessite :  npm install jspdf html-to-image
+ */
+async function downloadCertificatePdf(node: HTMLElement, format: PdfFormat, fileName: string) {
+  const [{ toPng }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")]);
+
+  // Capture nette du certificat (sans l'ombre de l'écran)
+  const dataUrl = await toPng(node, {
+    pixelRatio: 3,
+    backgroundColor: "#ffffff",
+    cacheBust: true,
+    style: { boxShadow: "none", margin: "0" },
+  });
+
+  const page = PDF_FORMATS[format];
+  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: format.toLowerCase() });
+
+  // Le certificat occupe la page en gardant ses proportions, centré avec une petite marge
+  const margin = 8;
+  const maxWidth = page.width - margin * 2;
+  const maxHeight = page.height - margin * 2;
+  const ratio = node.offsetWidth / node.offsetHeight;
+
+  let width = maxWidth;
+  let height = width / ratio;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * ratio;
+  }
+
+  pdf.addImage(dataUrl, "PNG", (page.width - width) / 2, (page.height - height) / 2, width, height);
+  pdf.save(fileName);
+}
 
 /** Cachet officiel : déposez l'image (PNG fond transparent) dans frontend/public/images/cachet.png. */
 function Cachet() {
@@ -47,11 +94,37 @@ function Cachet() {
   return <img src="/images/cachet.png" alt="Cachet officiel de l'association" onError={() => setMissing(true)} className="h-24 w-24 object-contain" />;
 }
 
+/**
+ * Signature de la Direction : déposez l'image (PNG fond transparent) dans
+ * frontend/public/images/signature.png. Sans fichier, l'espace reste vide pour signer à la main.
+ */
+function Signature() {
+  const [missing, setMissing] = useState(false);
+
+  if (missing) return null;
+
+  // eslint-disable-next-line @next/next/no-img-element
+  return (
+    <img
+      src="/images/signature.png"
+      alt="Signature de la Direction"
+      onError={() => setMissing(true)}
+      className="max-h-16 max-w-full object-contain"
+    />
+  );
+}
+
 export default function CertificatePage() {
   const params = useParams<{ id: string }>();
   const [item, setItem] = useState<Certificate | null>(null);
   const [error, setError] = useState("");
   const [origin, setOrigin] = useState("");
+  const [showFormat, setShowFormat] = useState(false);
+  const [mode, setMode] = useState<"pdf" | "print">("pdf");
+  const [printFormat, setPrintFormat] = useState<PdfFormat>("A4");
+  const [format, setFormat] = useState<PdfFormat>("A4");
+  const [downloading, setDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -64,80 +137,246 @@ export default function CertificatePage() {
 
   const verifyUrl = item ? `${origin}/verification/${item.code}` : "";
 
+  /** Impression : on applique le format choisi (A4/A3) à la page d'impression, puis on ouvre la fenêtre d'impression */
+  const handlePrint = () => {
+    setPrintFormat(format);
+    setShowFormat(false);
+    window.setTimeout(() => window.print(), 150);
+  };
+
+  const handleDownload = async () => {
+    const node = document.getElementById("certificate-sheet");
+    if (!node || !item) return;
+
+    setDownloading(true);
+    setPdfError("");
+
+    try {
+      await downloadCertificatePdf(node, format, `certificat-${item.code}-${format}.pdf`);
+      setShowFormat(false);
+    } catch (err) {
+      console.error("Erreur PDF:", err);
+      setPdfError("Impossible de générer le PDF. Vérifiez que « jspdf » et « html-to-image » sont installés (npm install).");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-slate-100 p-6 print:min-h-0 print:bg-white print:px-12 print:py-8">
         {/* Impression : marge de page à 0 => le navigateur n'ajoute plus l'URL, la date ni le titre en haut/bas */}
         <style>{`
-          @page { size: A4 landscape; margin: 0; }
+          @page { size: ${printFormat} landscape; margin: 0; }
           @media print {
             html, body { height: auto !important; margin: 0 !important; }
-            .cert-sheet { zoom: 0.92; break-inside: avoid; page-break-inside: avoid; }
+            .cert-sheet { zoom: ${printFormat === "A3" ? 1.3 : 0.92}; break-inside: avoid; page-break-inside: avoid; }
           }
         `}</style>
         <div className="mx-auto mb-4 flex max-w-4xl items-center justify-between print:hidden">
           <Link href="/certificates" className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
             <ArrowLeft className="h-4 w-4" /> Retour
           </Link>
-          <button type="button" onClick={() => window.print()} disabled={!item} className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40">
-            <Printer className="h-4 w-4" /> Imprimer / PDF
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("print");
+                setPdfError("");
+                setShowFormat(true);
+              }}
+              disabled={!item}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-800 bg-white px-5 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-50 disabled:opacity-40"
+            >
+              <Printer className="h-4 w-4" /> Imprimer
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("pdf");
+                setPdfError("");
+                setShowFormat(true);
+              }}
+              disabled={!item}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-900 disabled:opacity-40"
+            >
+              <Download className="h-4 w-4" /> Télécharger PDF
+            </button>
+          </div>
         </div>
 
         {error && <p className="text-center text-red-600">{error}</p>}
 
         {item && (
-          <div className="cert-sheet relative mx-auto max-w-4xl border-[8px] border-double border-blue-900 bg-white px-10 py-7 text-center shadow-xl print:shadow-none">
-            {item.revokedAt && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="-rotate-12 rounded-2xl border-8 border-red-500/60 px-10 py-4 text-6xl font-black uppercase text-red-500/60">Révoqué</span>
-              </div>
-            )}
+          <div
+            id="certificate-sheet"
+            className="cert-sheet relative mx-auto max-w-4xl overflow-hidden bg-white text-center shadow-xl print:shadow-none"
+          >
+            {/* Cadre : liseré bleu du logo + filet turquoise */}
+            <div className="m-3 border-[3px] border-[#0F6BA0] p-1.5">
+              <div className="relative border border-[#1B9AA0]/60 px-10 py-6">
+                {/* Ornements d'angle (rose du logo) */}
+                <span className="pointer-events-none absolute -left-px -top-px h-7 w-7 border-l-4 border-t-4 border-[#E4156C]" />
+                <span className="pointer-events-none absolute -right-px -top-px h-7 w-7 border-r-4 border-t-4 border-[#E4156C]" />
+                <span className="pointer-events-none absolute -bottom-px -left-px h-7 w-7 border-b-4 border-l-4 border-[#E4156C]" />
+                <span className="pointer-events-none absolute -bottom-px -right-px h-7 w-7 border-b-4 border-r-4 border-[#E4156C]" />
 
-            <div className="flex justify-center"><Logo size={56} /></div>
-            <p className="mt-2 text-lg font-bold uppercase tracking-wide text-blue-900">{ORG.name}</p>
-            <p className="text-[11px] text-gray-500">{ORG.tagline} — {ORG.address}</p>
-            {orgContactLine() && <p className="text-[11px] text-gray-500">{orgContactLine()}</p>}
+                {/* Filigrane : logo en transparence */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/logos/ndao-hifanosika.png"
+                  alt=""
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.05]"
+                />
 
-            <h1 className="mt-5 text-3xl font-bold uppercase tracking-widest text-blue-900">{HEADLINE[item.type] ?? "Certificat"}</h1>
-            <div className="mx-auto mt-2 h-1 w-28 rounded bg-amber-400" />
-            <p className="mt-1 font-mono text-xs font-semibold text-blue-900">N° {item.code}</p>
+                {item.revokedAt && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center">
+                    <span className="-rotate-12 rounded-2xl border-8 border-red-500/60 px-10 py-4 text-6xl font-black uppercase text-red-500/60">Révoqué</span>
+                  </div>
+                )}
 
-            <p className="mt-5 text-base text-gray-600">L&apos;association Ndao Hifanosika certifie que</p>
-            <p className="mt-2 text-2xl font-bold text-gray-900">{item.holderName}</p>
+                <div className="relative z-10">
+                  {/* En-tête */}
+                  <div className="flex justify-center"><Logo size={56} /></div>
+                  <p className="mt-2 text-[11px] text-gray-500">{ORG.name} — {ORG.address}</p>
+                  {orgContactLine() && <p className="text-[11px] text-gray-500">{orgContactLine()}</p>}
 
-            <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-gray-700">
-              a accompli avec sérieux la mission suivante : <strong>« {item.title} »</strong>
-              {item.startDate || item.endDate ? <>, du <strong>{fmtDate(item.startDate)}</strong> au <strong>{fmtDate(item.endDate)}</strong></> : null}.
-            </p>
+                  {/* Titre */}
+                  <h1 className="mt-4 text-3xl font-extrabold uppercase tracking-[0.25em] text-[#0F6BA0]">
+                    {HEADLINE[item.type] ?? "Certificat"}
+                  </h1>
+                  <div className="mx-auto mt-2 flex h-1 w-40 overflow-hidden rounded-full">
+                    <span className="h-full flex-1 bg-[#0F6BA0]" />
+                    <span className="h-full flex-1 bg-[#1B9AA0]" />
+                    <span className="h-full flex-1 bg-[#E4156C]" />
+                  </div>
+                  <p className="mx-auto mt-2 w-fit rounded-full bg-[#0F6BA0]/10 px-4 py-0.5 font-mono text-xs font-semibold text-[#0A4A70]">
+                    N° {item.code}
+                  </p>
 
-            {item.description && <p className="mx-auto mt-2 max-w-2xl text-xs italic text-gray-500">{item.description}</p>}
+                  {/* Titulaire */}
+                  <p className="mt-4 text-sm text-gray-600">L&apos;association Ndao Hifanosika certifie que</p>
+                  <p className="mx-auto mt-1 w-fit border-b-2 border-[#1B9AA0]/50 px-6 pb-1 font-serif text-4xl font-bold text-[#0A4A70]">
+                    {item.holderName}
+                  </p>
 
-            <p className="mx-auto mt-3 max-w-2xl text-xs text-gray-600">
-              En foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit.
-            </p>
+                  {(item.holderBirthDate || item.holderBirthPlace) && (
+                    <p className="mt-2 text-sm italic text-gray-600">
+                      Né(e){item.holderBirthDate ? <> le <strong className="not-italic text-gray-800">{fmtDate(item.holderBirthDate)}</strong></> : null}
+                      {item.holderBirthPlace ? <> à <strong className="not-italic text-gray-800">{item.holderBirthPlace}</strong></> : null}
+                    </p>
+                  )}
 
-            <div className="mt-5 flex items-end justify-between px-2 text-sm text-gray-700">
-              <div className="text-left">
-                <QrCode value={verifyUrl || item.code} size={96} />
-                <p className="mt-1 text-[10px] text-gray-500">Scannez pour vérifier l&apos;authenticité</p>
-              </div>
+                  {/* Mission */}
+                  <p className="mt-3 text-sm text-gray-600">a accompli avec sérieux la mission suivante :</p>
+                  <p className="mx-auto mt-1 max-w-2xl rounded-xl bg-[#0F6BA0]/5 px-5 py-2 text-lg font-bold text-[#0A4A70]">
+                    « {item.title} »
+                  </p>
 
-              <div className="flex flex-col items-center gap-1">
-                <p className="text-xs">Fait à {ORG.city}, le <strong>{fmtDate(item.createdAt)}</strong></p>
-                <div className="flex items-center gap-5">
-                  <Cachet />
-                  <div className="text-center text-xs">
-                    <div className="mb-10 w-44 border-b border-gray-400 pb-1">La Direction</div>
-                    {ORG.name}
+                  {/* Détails : période · lieu de mission */}
+                  <div className="mx-auto mt-3 flex max-w-2xl flex-wrap items-stretch justify-center gap-3">
+                    {(item.startDate || item.endDate) && (
+                      <div className="min-w-[200px] flex-1 rounded-xl border border-[#0F6BA0]/20 bg-white/70 px-4 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#0F6BA0]">Période</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          du {fmtDate(item.startDate)} au {fmtDate(item.endDate)}
+                        </p>
+                      </div>
+                    )}
+                    {item.missionLocation && (
+                      <div className="min-w-[200px] flex-1 rounded-xl border border-[#1B9AA0]/30 bg-white/70 px-4 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1B9AA0]">Lieu de mission</p>
+                        <p className="text-sm font-semibold text-gray-800">{item.missionLocation}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {item.description && <p className="mx-auto mt-2 max-w-2xl text-xs italic text-gray-500">{item.description}</p>}
+
+                  <p className="mx-auto mt-3 max-w-2xl text-xs text-gray-600">
+                    En foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit.
+                  </p>
+
+                  {/* Bas : QR · cachet · signature */}
+                  <div className="mt-4 flex items-end justify-between px-2 text-sm text-gray-700">
+                    <div className="text-left">
+                      <QrCode value={verifyUrl || item.code} size={92} />
+                      <p className="mt-1 text-[10px] text-gray-500">Scannez pour vérifier l&apos;authenticité</p>
+                    </div>
+
+                    <div className="flex flex-col items-center gap-1">
+                      <p className="text-xs">Fait à {ORG.city}, le <strong>{fmtDate(item.createdAt)}</strong></p>
+                      <div className="flex items-center gap-5">
+                        <Cachet />
+                        <div className="text-center text-xs">
+                          {/* Espace réservé à la signature de la Direction (image : public/images/signature.png) */}
+                          <div className="flex h-16 w-48 items-end justify-center border-b border-gray-400 pb-0.5">
+                            <Signature />
+                          </div>
+                          <p className="mt-1 font-semibold text-gray-800">La Direction</p>
+                          <p className="text-gray-500">{ORG.name}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+        )}
 
-            <p className="mt-4 border-t border-gray-200 pt-2 text-[10px] text-gray-500">
-              Vérification : {verifyUrl} — {ORG.name}, {ORG.address}{orgContactLine() ? ` — ${orgContactLine()}` : ""}
-            </p>
+        {/* Choix du format PDF */}
+        {showFormat && (
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4 print:hidden">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                  <FileText className="h-5 w-5 text-blue-800" /> {mode === "print" ? "Format d'impression" : "Choisir le format"}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => !downloading && setShowFormat(false)}
+                  className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                  aria-label="Fermer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {(Object.keys(PDF_FORMATS) as PdfFormat[]).map((key) => (
+                  <label
+                    key={key}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm transition ${
+                      format === key ? "border-blue-800 bg-blue-50" : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="pdf-format"
+                      value={key}
+                      checked={format === key}
+                      onChange={() => setFormat(key)}
+                      className="accent-blue-800"
+                    />
+                    <span className="font-semibold text-gray-900">{PDF_FORMATS[key].label}</span>
+                  </label>
+                ))}
+              </div>
+
+              {pdfError && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{pdfError}</p>}
+
+              <button
+                type="button"
+                onClick={mode === "print" ? handlePrint : handleDownload}
+                disabled={downloading}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-800 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-900 disabled:opacity-60"
+              >
+                {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === "print" ? <Printer className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                {downloading ? "Génération..." : mode === "print" ? `Imprimer en ${format}` : "Télécharger le PDF"}
+              </button>
+            </div>
           </div>
         )}
       </div>

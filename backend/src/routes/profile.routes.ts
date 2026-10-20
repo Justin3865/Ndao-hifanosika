@@ -17,6 +17,8 @@ const profileSelect = {
   lastName: true,
   email: true,
   phone: true,
+  birthDate: true,
+  birthPlace: true,
   notifyEmail: true,
   notifySms: true,
   gender: true,
@@ -51,10 +53,17 @@ router.get("/", async (req: Request, res: Response) => {
 router.put("/", async (req: Request, res: Response) => {
   try {
     const me = getReqUser(req);
-    const { firstName, lastName, phone } = req.body ?? {};
+    const { firstName, lastName, phone, birthDate, birthPlace } = req.body ?? {};
 
     if (!String(firstName ?? "").trim() || !String(lastName ?? "").trim()) {
       return res.status(400).json({ success: false, message: "Prénom et nom sont obligatoires" });
+    }
+
+    // Date de naissance : facultative, mais doit être valide et dans le passé
+    const birth = birthDate ? new Date(birthDate) : null;
+
+    if (birth && (Number.isNaN(birth.getTime()) || birth.getTime() > Date.now() || birth.getFullYear() < 1900)) {
+      return res.status(400).json({ success: false, message: "Date de naissance invalide" });
     }
 
     const user = await prisma.user.update({
@@ -63,6 +72,8 @@ router.put("/", async (req: Request, res: Response) => {
         firstName: String(firstName).trim(),
         lastName: String(lastName).trim(),
         phone: phone ? String(phone).trim() : null,
+        birthDate: birth,
+        birthPlace: birthPlace ? String(birthPlace).trim() || null : null,
       },
       select: profileSelect,
     });

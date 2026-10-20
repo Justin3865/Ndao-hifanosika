@@ -8,23 +8,19 @@ import { getReqUser } from "../utils/dataScope";
 import { sendEmail } from "../utils/mailer";
 import { notifyUsers } from "../utils/notify";
 
-/* Certificats vérifiables : code unique + QR code pointant vers /verification/<code>. */
-
 const router = Router();
 export const publicCertificateRouter = Router();
 
 const TYPES = ["INTERNSHIP", "VOLUNTEER", "STAFF", "TRAINING"];
 const ISSUERS = ["ADMIN", "DIRECTION", "RH"] as const;
-// Numéro automatique : NH-<année>-<catégorie>-<n° d'ordre>, ex. NH-2026-STG-0001
-// Chaque catégorie a sa propre numérotation, remise à 1 chaque année.
+
 const CATEGORY_CODE: Record<string, string> = {
-  INTERNSHIP: "STG", // stage
-  VOLUNTEER: "BEN", // bénévolat
-  STAFF: "TRV", // certificat de travail
-  TRAINING: "FOR", // formation
+  INTERNSHIP: "STG",
+  VOLUNTEER: "BEN",
+  STAFF: "TRV",
+  TRAINING: "FOR",
 };
 
-/** Prochain numéro libre pour (catégorie, année) : plus grand numéro existant + 1. */
 async function nextCode(type: string): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `NH-${year}-${CATEGORY_CODE[type] ?? "GEN"}-`;
@@ -43,7 +39,6 @@ type Json = any;
 
 router.use(authenticate);
 
-/** ADMIN/DIRECTION/RH : tous. Autres : uniquement leurs propres certificats. */
 router.get("/", async (req: Request, res: Response) => {
   try {
     const user = getReqUser(req);
@@ -96,9 +91,13 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     let expiresAt: Date | null = body.expiresAt ? new Date(body.expiresAt) : null;
     const internshipId = body.internshipId ? Number(body.internshipId) : null;
 
+    let holderBirthDate: Date | null = body.holderBirthDate ? new Date(body.holderBirthDate) : null;
+    let holderBirthPlace: string | null = body.holderBirthPlace ? String(body.holderBirthPlace).trim() || null : null;
+    const missionLocation: string | null = body.missionLocation ? String(body.missionLocation).trim() || null : null;
+
     const invalid = (d: Date | null) => d !== null && Number.isNaN(d.getTime());
 
-    if (invalid(startDate) || invalid(endDate) || invalid(expiresAt)) {
+    if (invalid(startDate) || invalid(endDate) || invalid(expiresAt) || invalid(holderBirthDate)) {
       return res.status(400).json({ success: false, message: "Date invalide" });
     }
 
@@ -110,13 +109,24 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: "Adresse e-mail invalide" });
     }
 
-    // Certificat de stage : informations lues dans le stage (qui doit être TERMINÉ)
     if (type === "INTERNSHIP") {
       if (!internshipId) return res.status(400).json({ success: false, message: "Stage obligatoire" });
 
+      // Eto no nisy ny erreur teo aloha: nitady birthDate tao amin'ny User
       const internship = await prisma.internship.findUnique({
         where: { id: internshipId },
-        include: { student: { select: { id: true, firstName: true, lastName: true, email: true } } },
+        include: { 
+          student: { 
+            select: { 
+              id: true, 
+              firstName: true, 
+              lastName: true, 
+              email: true, 
+              birthDate: true, // Mila mi-ensure fa misy an'ity ao amin'ny schema
+              birthPlace: true // Sy ity koa
+            } 
+          } 
+        },
       });
 
       if (!internship) return res.status(404).json({ success: false, message: "Stage introuvable" });
@@ -132,6 +142,9 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       holderName = `${internship.student.firstName} ${internship.student.lastName}`;
       holderEmail = internship.student.email;
       userId = internship.student.id;
+
+      holderBirthDate = internship.student.birthDate ?? holderBirthDate;
+      holderBirthPlace = internship.student.birthPlace?.trim() || holderBirthPlace;
       title = title || internship.title;
       startDate = internship.startDate ?? startDate;
       endDate = internship.endDate ?? endDate;
@@ -139,6 +152,10 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
     if (!holderName || !title) {
       return res.status(400).json({ success: false, message: "Nom du titulaire et intitulé obligatoires" });
+    }
+
+    if (holderBirthDate && (holderBirthDate.getTime() > Date.now() || holderBirthDate.getFullYear() < 1900)) {
+      return res.status(400).json({ success: false, message: "Date de naissance invalide" });
     }
 
     if (startDate && endDate && endDate < startDate) {
@@ -149,8 +166,6 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: "La date d'expiration doit être dans le futur" });
     }
 
-    // Deux émissions simultanées peuvent viser le même numéro : la contrainte d'unicité
-    // refuse la seconde (P2002) et on recalcule le numéro suivant.
     let row: Awaited<ReturnType<typeof db.certificate.create>> | null = null;
 
     for (let attempt = 0; attempt < 5 && !row; attempt++) {
@@ -166,6 +181,9 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
             startDate,
             endDate,
             expiresAt,
+            holderBirthDate,
+            holderBirthPlace,
+            missionLocation,
             internshipId,
             userId,
             issuedById: getReqUser(req)?.id ?? null,
@@ -180,7 +198,6 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       return res.status(503).json({ success: false, message: "Numérotation indisponible, réessayez." });
     }
 
-    // Prévenir le titulaire (notification + e-mail avec lien de vérification)
     const base = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
 
     if (userId) {
@@ -204,7 +221,6 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
   }
 });
 
-/** Révocation (le certificat reste visible comme « révoqué » à la vérification). */
 router.delete("/:id", authorizeRoles("ADMIN", "DIRECTION"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
@@ -212,7 +228,6 @@ router.delete("/:id", authorizeRoles("ADMIN", "DIRECTION"), async (req: Request,
 
     if (!existing) return res.status(404).json({ success: false, message: "Certificat introuvable" });
 
-    // Idempotent : une seconde révocation conserve la date d'origine
     if (!existing.revokedAt) await db.certificate.update({ where: { id }, data: { revokedAt: new Date() } });
 
     res.json({ success: true });
@@ -221,8 +236,6 @@ router.delete("/:id", authorizeRoles("ADMIN", "DIRECTION"), async (req: Request,
     res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
-
-/* ---------------- Vérification publique (scan du QR code) ---------------- */
 
 publicCertificateRouter.get("/:code", async (req: Request, res: Response) => {
   try {

@@ -14,6 +14,8 @@ interface Profile {
   lastName: string;
   email: string;
   phone?: string | null;
+  birthDate?: string | null;
+  birthPlace?: string | null;
   notifyEmail?: boolean;
   notifySms?: boolean;
   role: string;
@@ -42,23 +44,28 @@ async function resizeImage(file: File, size = 256): Promise<string> {
 const inputClass =
   "w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100";
 
+/** Valeurs du formulaire « Informations personnelles » à partir du profil */
+const toForm = (data: Profile) => ({
+  firstName: data.firstName,
+  lastName: data.lastName,
+  phone: data.phone ?? "",
+  birthDate: data.birthDate ? data.birthDate.slice(0, 10) : "",
+  birthPlace: data.birthPlace ?? "",
+});
+
 export default function ProfilePage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", birthDate: "", birthPlace: "" });
   const [pwd, setPwd] = useState({ currentPassword: "", newPassword: "", confirm: "" });
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState("");
 
   const sync = (data: Profile) => {
     setProfile(data);
-    setForm({
-      firstName: data.firstName,
-      lastName: data.lastName,
-      phone: data.phone ?? "",
-    });
+    setForm(toForm(data));
 
     // Met à jour la session locale + l'en-tête
     try {
@@ -80,7 +87,7 @@ export default function ProfilePage() {
       .then((res) => {
         const data = res.data?.data as Profile;
         setProfile(data);
-        setForm({ firstName: data.firstName, lastName: data.lastName, phone: data.phone ?? "" });
+        setForm(toForm(data));
       })
       .catch((err) => setMessage({ type: "err", text: errorMessage(err, "Profil introuvable.") }))
       .finally(() => setLoading(false));
@@ -310,7 +317,30 @@ export default function ProfilePage() {
                     Téléphone
                     <input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                   </label>
+                  <label className="space-y-1 text-sm font-medium text-gray-700">
+                    Date de naissance
+                    <input
+                      type="date"
+                      className={inputClass}
+                      value={form.birthDate}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm font-medium text-gray-700">
+                    Lieu de naissance
+                    <input
+                      className={inputClass}
+                      placeholder="Ex. Fianarantsoa"
+                      value={form.birthPlace}
+                      onChange={(e) => setForm({ ...form, birthPlace: e.target.value })}
+                    />
+                  </label>
                 </div>
+
+                <p className="text-xs text-gray-500">
+                  La date et le lieu de naissance sont utilisés pour vos certificats (stage, bénévolat...).
+                </p>
 
                 <div className="flex justify-end">
                   <button
