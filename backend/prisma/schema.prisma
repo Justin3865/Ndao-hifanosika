@@ -69,6 +69,13 @@ enum Gender {
   OTHER
 }
 
+// ▼▼▼ VAOVAO : statut d'une candidature à une offre de stage ▼▼▼
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model User {
   id                 Int        @id @default(autoincrement())
   firstName          String
@@ -104,6 +111,9 @@ model User {
 
   internships        Internship[] @relation("InternshipStudent")
   supervisedInternships Internship[] @relation("InternshipSupervisor")
+
+  // ▼ VAOVAO : candidatures de l'utilisateur aux offres de stage
+  internshipApplications InternshipApplication[]
 
   auditLogs           AuditLog[]
   passwordResetTokens PasswordResetToken[]
@@ -282,6 +292,48 @@ model Internship {
   @@index([projectId])
   @@index([studentId])
   @@index([supervisorId])
+  @@index([status])
+}
+
+// ▼▼▼ VAOVAO : offres de stage publiées par l'admin ▼▼▼
+model InternshipOffer {
+  id          Int       @id @default(autoincrement())
+  title       String
+  domain      String?
+  location    String?
+  duration    String?
+  deadline    DateTime?
+  places      Int?
+  description String    @db.Text
+  isActive    Boolean   @default(true)
+  createdById Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  applications InternshipApplication[]
+
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+// ▼▼▼ VAOVAO : candidatures des utilisateurs aux offres ▼▼▼
+model InternshipApplication {
+  id         Int               @id @default(autoincrement())
+  offerId    Int
+  userId     Int
+  phone      String?
+  school     String?
+  level      String?
+  motivation String            @db.Text
+  status     ApplicationStatus @default(PENDING)
+  createdAt  DateTime          @default(now())
+
+  offer      InternshipOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, userId])
+  @@index([offerId])
+  @@index([userId])
   @@index([status])
 }
 

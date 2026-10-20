@@ -31,7 +31,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import LocationSection from "@/components/home/LocationSection";
 import {
   ForgotPasswordModal,
@@ -232,6 +232,15 @@ export default function HomePage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
+  /* Ouvre le modal connexion / inscription via /?auth=login ou /?auth=register */
+  useEffect(() => {
+    const mode = new URLSearchParams(window.location.search).get("auth");
+    if (mode === "login" || mode === "register") {
+      setAuthModal(mode);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
   /* =========================================================
      API URL
   ========================================================= */
@@ -358,7 +367,9 @@ export default function HomePage() {
       openResult("success", "Connexion réussie. Vous allez être redirigé vers votre espace.");
 
       window.setTimeout(() => {
-        router.push("/dashboard");
+        const redirectTo = sessionStorage.getItem("postLoginRedirect");
+        sessionStorage.removeItem("postLoginRedirect");
+        router.push(redirectTo || "/dashboard");
         router.refresh();
       }, 1200);
     } catch (error) {
@@ -735,7 +746,7 @@ export default function HomePage() {
           <nav className="hidden items-center gap-6 md:flex">
             <Link href="/" className="text-sm font-medium text-blue-600">Accueil</Link>
             <Link href="/dashboard" className="text-sm font-medium text-gray-600 hover:text-blue-600">Tableau de bord</Link>
-            <Link href="/internships" className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600">Stages</Link>
+            <Link href="/stages" className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600">Stages</Link>
             <button
               type="button"
               onClick={() => openAuth("login")}
@@ -760,7 +771,7 @@ export default function HomePage() {
             <nav className="flex flex-col gap-2">
               <Link href="/" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50">Accueil</Link>
               <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">Tableau de bord</Link>
-              <Link href="/internships" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-blue-700 hover:bg-blue-50">Gestion des stages</Link>
+              <Link href="/stages" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-4 py-3 text-sm font-medium text-blue-700 hover:bg-blue-50">Offres de stage</Link>
               <button type="button" onClick={() => openAuth("login")} className="mt-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700">Se connecter</button>
               <button type="button" onClick={() => openAuth("register")} className="rounded-lg border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">Créer un compte</button>
             </nav>
@@ -799,8 +810,8 @@ export default function HomePage() {
               <button type="button" onClick={() => openAuth("register")} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/40 bg-blue-950/45 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-blue-950/60">
                 Créer un compte
               </button>
-              <Link href="/internships" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/40 bg-blue-950/45 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-sm hover:bg-blue-950/60">
-                Gestion des stages
+              <Link href="/stages" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/40 bg-blue-950/45 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-sm hover:bg-blue-950/60">
+                Offres de stage
               </Link>
             </div>
           </div>
@@ -909,7 +920,7 @@ export default function HomePage() {
                 Le module Stages permet de centraliser les informations concernant les stagiaires, les structures d'accueil, les encadrements, les périodes de stage et le suivi des activités.
               </p>
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                <Link href="/internships" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50">
+                <Link href="/stages" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50">
                   Voir les stages
                   <ChevronRight className="h-4 w-4" />
                 </Link>
@@ -951,7 +962,7 @@ export default function HomePage() {
               <ul className="mt-4 space-y-3 text-sm">
                 <li><Link href="/dashboard" className="hover:text-white">Tableau de bord</Link></li>
                 <li><Link href="/beneficiaries" className="hover:text-white">Bénéficiaires</Link></li>
-                <li><Link href="/internships" className="hover:text-white">Gestion des stages</Link></li>
+                <li><Link href="/stages" className="hover:text-white">Offres de stage</Link></li>
               </ul>
             </div>
 
