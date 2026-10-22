@@ -18,11 +18,36 @@ export function loadGoogleMaps(): Promise<void> {
   if (window.__gmapsPromise) return window.__gmapsPromise;
 
   window.__gmapsPromise = new Promise<void>((resolve, reject) => {
+    const fail = (message: string) => {
+      window.__gmapsPromise = undefined; // permet de réessayer
+      reject(new Error(message));
+    };
+
+    // Un <script> Google Maps existe déjà dans la page (autre composant, HMR, layout...) :
+    // on l'attend au lieu d'en ajouter un second.
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src*="maps.googleapis.com/maps/api/js"]'
+    );
+
+    if (existing) {
+      const started = Date.now();
+      const timer = window.setInterval(() => {
+        if (window.google?.maps) {
+          window.clearInterval(timer);
+          resolve();
+        } else if (Date.now() - started > 15000) {
+          window.clearInterval(timer);
+          fail("Chargement de Google Maps impossible");
+        }
+      }, 100);
+      return;
+    }
+
     const script = document.createElement("script");
     script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&v=weekly`;
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Chargement de Google Maps impossible"));
+    script.onerror = () => fail("Chargement de Google Maps impossible");
     document.head.appendChild(script);
   });
 

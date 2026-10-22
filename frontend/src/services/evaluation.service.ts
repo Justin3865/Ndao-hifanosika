@@ -19,6 +19,9 @@ export interface Evaluation {
   completedDate?: string;
   createdAt: string;
   updatedAt: string;
+  // ▼▼▼ NOVOAKO ▼▼▼
+  altitude?: number | null;
+  // ▲▲▲
 }
 
 export interface EvaluationCriteria {
@@ -55,6 +58,10 @@ export interface EvaluationCreateData {
   gridId: string;
   period: string;
   dueDate: string;
+  // ▼▼▼ NOVOAKO ▼▼▼
+  latitude?: number;
+  longitude?: number;
+  // ▲▲▲
 }
 
 export interface EvaluationUpdateData {

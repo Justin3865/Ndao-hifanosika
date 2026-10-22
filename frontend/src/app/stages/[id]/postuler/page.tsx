@@ -153,8 +153,12 @@ export default function PostulerPage() {
                   </li>
                 )}
                 {offer.deadline && (
-                  <li className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-[#D01C7F]" />
+                  <li
+                    className={`flex items-center gap-2 font-medium ${
+                      isClosed(offer) ? "text-red-500" : "text-emerald-500"
+                    }`}
+                  >
+                    <Calendar className="h-4 w-4" />
                     Date limite : {formatDate(offer.deadline)}
                   </li>
                 )}
@@ -179,8 +183,8 @@ export default function PostulerPage() {
                 </Link>
               </div>
             ) : isClosed(offer) ? (
-              <div className="mt-6 rounded-2xl bg-gray-100 p-6 text-center text-sm text-gray-500">
-                Les candidatures pour ce stage sont fermées.
+              <div className="mt-6 rounded-2xl bg-red-50 p-6 text-center text-sm font-semibold text-red-600">
+                Candidature terminée : les candidatures pour ce stage sont fermées.
               </div>
             ) : (
               <form

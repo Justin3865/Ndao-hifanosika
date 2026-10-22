@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import axios from "axios"; // ▼▼▼ NOVOAKO ▼▼▼
 import {
   evaluationScope,
   getReqUser,
@@ -9,6 +10,7 @@ import {
 } from "../utils/dataScope";
 
 import { sendError } from "../middlewares/error.middleware";
+
 export async function getEvaluations(
   req: Request,
   res: Response,
@@ -106,7 +108,6 @@ export async function getEvaluationById(
       return;
     }
 
-    // Stagiaire / tuteur : uniquement les évaluations de leurs projets
     const reqUser = getReqUser(req);
 
     if (reqUser && isScopedRole(reqUser)) {
@@ -132,7 +133,6 @@ export async function getEvaluationById(
   }
 }
 
-/** Score d'évaluation : nombre entre 0 et 100 (undefined = non fourni, null = effacé). */
 function parseScore(raw: unknown): number | null | undefined | "invalid" {
   if (raw === undefined) return undefined;
   if (raw === null || raw === "") return null;
@@ -154,9 +154,10 @@ export async function createEvaluation(
       score,
       status,
       evaluatedAt,
+      latitude,  // ▼▼▼ NOVOAKO ▼▼▼
+      longitude, // ▼▼▼ NOVOAKO ▼▼▼
     } = req.body;
 
-    // Le créateur est toujours l'utilisateur connecté (non falsifiable)
     const createdById = getReqUser(req)?.id;
 
     if (!projectId || !title || !createdById) {
@@ -205,6 +206,22 @@ export async function createEvaluation(
       return;
     }
 
+    // ▼▼▼ NOVOAKO : Miantso an'i Open-Elevation ▼▼▼
+    let altitude: number | null = null;
+    if (latitude && longitude) {
+      try {
+        const elevationRes = await axios.get(
+          `https://api.open-elevation.com/api/v1/lookup?locations=${Number(latitude)},${Number(longitude)}`
+        );
+        if (elevationRes.data?.results?.length > 0) {
+          altitude = elevationRes.data.results[0].elevation;
+        }
+      } catch (err) {
+        logger.error("Erreur Open-Elevation", err);
+      }
+    }
+    // ▲▲▲
+
     const evaluation = await prisma.evaluation.create({
       data: {
         projectId: Number(projectId),
@@ -216,6 +233,7 @@ export async function createEvaluation(
           ? new Date(evaluatedAt)
           : undefined,
         createdById: Number(createdById),
+        altitude: altitude, // ▼▼▼ NOVOAKO ▼▼▼
       },
       include: {
         project: {

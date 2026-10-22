@@ -1,4 +1,24 @@
 import { prisma } from "../config/database";
+import axios from "axios"; // <-- NOVOAKO
+import { logger } from "../config/logger"; // <-- NOVOAKO (Raha mampiasa azy ianao)
+
+// ▼▼▼ NOVOAKO : Function miantso ny API Open-Elevation ▼▼▼
+async function getAltitudeFromAPI(lat: number, lng: number): Promise<number | null> {
+  try {
+    const response = await axios.get(
+      `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`
+    );
+    
+    if (response.data && response.data.results && response.data.results.length > 0) {
+      return response.data.results[0].elevation;
+    }
+    return null;
+  } catch (error) {
+    logger.error("Erreur Open-Elevation API", error);
+    return null;
+  }
+}
+// ▲▲▲
 
 export async function findAllEvaluations(projectId?: number) {
   return prisma.evaluation.findMany({
@@ -55,7 +75,17 @@ export async function createEvaluation(data: {
   status?: any;
   evaluatedAt?: Date;
   createdById: number;
+  latitude?: number;  // <-- NOVOAKO
+  longitude?: number; // <-- NOVOAKO
 }) {
+  let altitude = null; // <-- NOVOAKO
+
+  // ▼▼▼ NOVOAKO : Raha nomena ny lat sy lng dia maka ny altitude ▼▼▼
+  if (data.latitude !== undefined && data.longitude !== undefined) {
+    altitude = await getAltitudeFromAPI(data.latitude, data.longitude);
+  }
+  // ▲▲▲
+
   return prisma.evaluation.create({
     data: {
       projectId: data.projectId,
@@ -65,6 +95,7 @@ export async function createEvaluation(data: {
       status: data.status ?? "DRAFT",
       evaluatedAt: data.evaluatedAt,
       createdById: data.createdById,
+      altitude: altitude, // <-- NOVOAKO
     },
     include: {
       project: true,

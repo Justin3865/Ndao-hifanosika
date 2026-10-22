@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Crosshair, Mountain } from "lucide-react";
-import { GoogleMap, MAPS_ENABLED, MapMarker, fetchElevation } from "@/components/maps/GoogleMap";
+import { GoogleMap, MAPS_ENABLED, MapMarker } from "@/components/maps/GoogleMap"; // <-- Esory ny fetchElevation
 import { toast } from "@/lib/toast";
+import api from "@/services/api"; // <-- Ampidiro ny api axios anao
 
 export interface GeoValue {
   latitude: string;
@@ -35,6 +36,47 @@ export function GeoPicker({
     [hasPoint, lat, lng]
   );
 
+  /** Dernière raison d'échec du calcul d'altitude (affichée à l'utilisateur) */
+  const elevationError = useRef("");
+
+  /**
+   * Altitude via le backend (GET /api/elevation).
+   * ⚠️ « @/services/api » renvoie directement le corps JSON ({ success, data }), contrairement à un
+   * axios classique ({ data: { success, data } }). On accepte les deux formes.
+   */
+  const fetchElevationFromBackend = async (latitude: number, longitude: number): Promise<number | null> => {
+    elevationError.current = "";
+
+    try {
+      const response: any = await api.get("/elevation", { params: { lat: latitude, lng: longitude } });
+      const body = response && "success" in response ? response : response?.data;
+      const value = body?.data?.elevation;
+
+      if (body?.success && typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+
+      elevationError.current = body?.message || "Réponse inattendue du serveur.";
+      return null;
+    } catch (error: any) {
+      console.error("Erreur récupération altitude", error);
+
+      const status = error?.response?.status ?? error?.status;
+      elevationError.current =
+        status === 401
+          ? "Session expirée : reconnectez-vous puis réessayez."
+          : status === 404
+          ? "Route /api/elevation introuvable : redémarrez le backend."
+          : error?.response?.data?.message ||
+            error?.message ||
+            (error?.code === "ERR_NETWORK" || !status
+              ? "Backend injoignable : vérifiez qu'il est démarré."
+              : "Altitude indisponible pour le moment.");
+
+      return null;
+    }
+  };
+
   const setPoint = async (latitude: number, longitude: number, altitude?: number | null) => {
     const next: GeoValue = {
       latitude: latitude.toFixed(6),
@@ -44,7 +86,8 @@ export function GeoPicker({
     onChange(next);
 
     if (withAltitude && (altitude === undefined || altitude === null)) {
-      const elevation = await fetchElevation(latitude, longitude);
+      // ▼▼▼ NOVOAKO : Miantso ny backend fa tsy an'i Google ▼▼▼
+      const elevation = await fetchElevationFromBackend(latitude, longitude);
       if (elevation !== null) onChange({ ...next, altitude: String(elevation) });
     }
   };
@@ -72,11 +115,16 @@ export function GeoPicker({
   const computeAltitude = async () => {
     if (!hasPoint) return;
     setBusy(true);
-    const elevation = await fetchElevation(lat, lng);
+    
+    // ▼▼▼ NOVOAKO : Miantso ny backend fa tsy an'i Google ▼▼▼
+    const elevation = await fetchElevationFromBackend(lat, lng);
     setBusy(false);
 
-    if (elevation === null) toast.warning("Altitude indisponible (activez « Elevation API » dans Google Cloud).");
-    else onChange({ ...value, altitude: String(elevation) });
+    if (elevation === null) {
+      toast.warning(`${elevationError.current || "Altitude indisponible pour le moment."} Vous pouvez aussi la saisir manuellement.`);
+    } else {
+      onChange({ ...value, altitude: String(elevation) });
+    }
   };
 
   return (

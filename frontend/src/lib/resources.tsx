@@ -272,6 +272,9 @@ export const evaluationsConfig: ResourceConfig = {
     { header: "Évaluation", render: (e) => <span className="font-medium text-gray-900">{e.title}</span> },
     { header: "Projet", render: (e) => e.project?.name ?? `#${e.projectId}` },
     { header: "Score", render: (e) => (e.score ?? e.score === 0 ? `${e.score}/100` : "—") },
+    // ▼▼▼ NOVOAKO : Aseho amin'ny tabilao raha misy altitude ▼▼▼
+    { header: "Altitude", render: (e) => (e.altitude ? `${e.altitude} m` : "—") },
+    // ▲▲▲
     { header: "Date", render: (e) => fmtDate(e.evaluatedAt) },
     { header: "Évaluateur", render: (e) => personName(e.createdBy) },
     { header: "Statut", render: (e) => <StatusBadge status={e.status} /> },
@@ -283,11 +286,24 @@ export const evaluationsConfig: ResourceConfig = {
     { name: "score", label: "Score (0-100)", type: "number", min: 0, max: 100 },
     { name: "status", label: "Statut", type: "select", options: statusOptions(EVALUATION_STATUS) },
     { name: "evaluatedAt", label: "Date d'évaluation", type: "date" },
+    
+    // ▼▼▼ NOVOAKO : Sary miasa ho an'ny calcul altitude ▼▼▼
+    { 
+      name: "location", 
+      label: "Position pour le calcul d'altitude", 
+      type: "geo", 
+      geoNames: { lat: "latitude", lng: "longitude" }, 
+      full: true 
+    },
+    // ▲▲▲
   ],
   detail: (e) => [
     { label: "Projet", value: e.project?.name ?? `#${e.projectId}` },
     { label: "Score", value: e.score ?? e.score === 0 ? `${e.score}/100` : "—" },
     { label: "Statut", value: <StatusBadge status={e.status} /> },
+    // ▼▼▼ NOVOAKO : Aseho amin'ny detail raha misy altitude ▼▼▼
+    { label: "Altitude (m)", value: e.altitude ? `${e.altitude} m` : "Non calculée" },
+    // ▲▲▲
     { label: "Date", value: fmtDate(e.evaluatedAt) },
     { label: "Évaluateur", value: personName(e.createdBy) },
     { label: "Description", value: e.description || "—" },

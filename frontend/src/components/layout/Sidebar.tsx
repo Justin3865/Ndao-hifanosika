@@ -136,7 +136,9 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                       active
-                        ? "bg-white text-blue-900 shadow-lg shadow-blue-950/30"
+                        ? /* Pastille active : reste BLANCHE avec texte bleu foncé en mode clair ET sombre
+                             (couleurs fixes, donc non modifiées par les règles ".dark ...") */
+                          "bg-[#ffffff] text-[#1e3a8a] shadow-lg shadow-blue-950/30"
                         : "text-blue-100 hover:bg-white/10"
                     }`}
                   >

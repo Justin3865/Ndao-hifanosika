@@ -85,7 +85,7 @@ function Cachet() {
   if (missing) {
     return (
       <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-dashed border-blue-900/50 px-3 text-center text-[9px] font-semibold uppercase leading-tight text-blue-900/60">
-        Cachet officiel de l&apos;association
+        Cachet officiel de l&apos;ONG
       </div>
     );
   }
@@ -256,7 +256,7 @@ export default function CertificatePage() {
                   </p>
 
                   {/* Titulaire */}
-                  <p className="mt-4 text-sm text-gray-600">L&apos;association Ndao Hifanosika certifie que</p>
+                  <p className="mt-4 text-sm text-gray-600">L&apos;ONG Ndao Hifanosika certifie que</p>
                   <p className="mx-auto mt-1 w-fit border-b-2 border-[#1B9AA0]/50 px-6 pb-1 font-serif text-4xl font-bold text-[#0A4A70]">
                     {item.holderName}
                   </p>
@@ -268,16 +268,16 @@ export default function CertificatePage() {
                     </p>
                   )}
 
-                  {/* Mission */}
+                  {/* Mission : sans cadre ni remplissage */}
                   <p className="mt-3 text-sm text-gray-600">a accompli avec sérieux la mission suivante :</p>
-                  <p className="mx-auto mt-1 max-w-2xl rounded-xl bg-[#0F6BA0]/5 px-5 py-2 text-lg font-bold text-[#0A4A70]">
+                  <p className="mx-auto mt-1 max-w-2xl px-5 py-2 text-lg font-bold text-[#0A4A70]">
                     « {item.title} »
                   </p>
 
-                  {/* Détails : période · lieu de mission */}
-                  <div className="mx-auto mt-3 flex max-w-2xl flex-wrap items-stretch justify-center gap-3">
+                  {/* Détails : période · lieu de mission (sans contour) */}
+                  <div className="mx-auto mt-3 flex max-w-2xl flex-wrap items-stretch justify-center gap-6">
                     {(item.startDate || item.endDate) && (
-                      <div className="min-w-[200px] flex-1 rounded-xl border border-[#0F6BA0]/20 bg-white/70 px-4 py-2">
+                      <div className="min-w-[200px] flex-1 px-4 py-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-[#0F6BA0]">Période</p>
                         <p className="text-sm font-semibold text-gray-800">
                           du {fmtDate(item.startDate)} au {fmtDate(item.endDate)}
@@ -285,7 +285,7 @@ export default function CertificatePage() {
                       </div>
                     )}
                     {item.missionLocation && (
-                      <div className="min-w-[200px] flex-1 rounded-xl border border-[#1B9AA0]/30 bg-white/70 px-4 py-2">
+                      <div className="min-w-[200px] flex-1 px-4 py-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1B9AA0]">Lieu de mission</p>
                         <p className="text-sm font-semibold text-gray-800">{item.missionLocation}</p>
                       </div>
