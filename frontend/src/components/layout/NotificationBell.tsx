@@ -3,18 +3,13 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
-import api from "@/lib/axios";
 import { fmtDateTime } from "@/lib/crud";
-import { getSocket } from "@/lib/socket";
-
-interface NotificationRow {
-  id: number;
-  title: string;
-  message: string;
-  type: string;
-  read: boolean;
-  createdAt: string;
-}
+import {
+  SYSTEM_SOURCE,
+  personName,
+  previewText,
+  useNotificationFeed,
+} from "@/hooks/useNotificationFeed";
 
 const DOT: Record<string, string> = {
   INFO: "bg-blue-500",
@@ -24,32 +19,18 @@ const DOT: Record<string, string> = {
 };
 
 export function NotificationBell() {
-  const [items, setItems] = useState<NotificationRow[]>([]);
+  // Compteurs et liste mis à jour automatiquement (socket) : aucune action requise
+  const { groups, unread, incoming, dismissIncoming } = useNotificationFeed();
   const [open, setOpen] = useState(false);
-  const [toast, setToast] = useState<NotificationRow | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
+  // Bannière d'un nouveau message : disparaît seule après 5 s
   useEffect(() => {
-    api
-      .get("/notifications")
-      .then((res) => setItems(res.data?.data ?? []))
-      .catch(() => setItems([]));
+    if (!incoming) return;
 
-    // Temps réel : une nouvelle notification apparaît immédiatement
-    const socket = getSocket();
-
-    const onNew = (row: NotificationRow) => {
-      setItems((cur) => [row, ...cur]);
-      setToast(row);
-      window.setTimeout(() => setToast(null), 5000);
-    };
-
-    socket?.on("notification:new", onNew);
-
-    return () => {
-      socket?.off("notification:new", onNew);
-    };
-  }, []);
+    const timer = window.setTimeout(dismissIncoming, 5000);
+    return () => window.clearTimeout(timer);
+  }, [incoming, dismissIncoming]);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -60,26 +41,13 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const unread = items.filter((item) => !item.read).length;
-
-  const markRead = async (item: NotificationRow) => {
-    if (item.read) return;
-
-    try {
-      await api.patch(`/notifications/${item.id}/read`);
-      setItems((cur) => cur.map((n) => (n.id === item.id ? { ...n, read: true } : n)));
-    } catch {
-      /* silencieux */
-    }
-  };
-
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-xl p-2.5 text-gray-600 transition hover:bg-gray-100"
-        aria-label="Notifications"
+        aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ""}`}
       >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
@@ -97,26 +65,54 @@ export function NotificationBell() {
           </div>
 
           <div className="max-h-96 divide-y divide-gray-100 overflow-y-auto">
-            {items.length === 0 && (
+            {groups.length === 0 && (
               <p className="px-4 py-8 text-center text-sm text-gray-500">Aucune notification</p>
             )}
 
-            {items.slice(0, 8).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => markRead(item)}
+            {/* Une ligne par source, avec le nombre de messages de cette source */}
+            {groups.slice(0, 8).map((group) => (
+              <Link
+                key={group.key}
+                href={`/notifications?source=${encodeURIComponent(group.key)}`}
+                onClick={() => setOpen(false)}
                 className={`flex w-full gap-3 px-4 py-3 text-left transition hover:bg-gray-50 ${
-                  item.read ? "" : "bg-blue-50/60"
+                  group.unread > 0 ? "bg-blue-50/60" : ""
                 }`}
               >
-                <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${DOT[item.type] ?? "bg-gray-400"}`} />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-gray-900">{item.title}</span>
-                  <span className="line-clamp-2 text-xs text-gray-600">{item.message}</span>
-                  <span className="mt-1 block text-[11px] text-gray-400">{fmtDateTime(item.createdAt)}</span>
+                <span
+                  className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                    group.key === SYSTEM_SOURCE ? (DOT[group.latest.type] ?? "bg-gray-400") : "bg-blue-600"
+                  }`}
+                >
+                  {group.key === SYSTEM_SOURCE ? <Bell className="h-4 w-4" /> : group.label.charAt(0).toUpperCase()}
                 </span>
-              </button>
+
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-gray-900">
+                      {group.key === SYSTEM_SOURCE ? "Système" : personName(group.latest.sender)}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-gray-400">{fmtDateTime(group.latest.createdAt)}</span>
+                  </span>
+
+                  <span className="block truncate text-xs font-medium text-gray-700">{group.latest.title}</span>
+
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="line-clamp-1 text-xs text-gray-600">{previewText(group.latest)}</span>
+
+                    <span className="flex shrink-0 items-center gap-1">
+                      {group.unread > 0 && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
+                          {group.unread}
+                        </span>
+                      )}
+                      <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600" title="Messages de cette source">
+                        {group.total}
+                      </span>
+                    </span>
+                  </span>
+                </span>
+              </Link>
             ))}
           </div>
 
@@ -130,11 +126,16 @@ export function NotificationBell() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed right-4 top-20 z-[60] w-80 max-w-[92vw] rounded-2xl border border-blue-200 bg-white p-4 shadow-2xl">
-          <p className="text-sm font-semibold text-gray-900">{toast.title}</p>
-          <p className="mt-1 text-xs text-gray-600">{toast.message}</p>
-        </div>
+      {incoming && (
+        <Link
+          href={`/notifications?source=${encodeURIComponent(incoming.senderId ? `u:${incoming.senderId}` : SYSTEM_SOURCE)}`}
+          onClick={dismissIncoming}
+          className="fixed right-4 top-20 z-[60] block w-80 max-w-[92vw] rounded-2xl border border-blue-200 bg-white p-4 shadow-2xl"
+        >
+          <p className="text-xs font-medium text-blue-700">{incoming.senderId ? personName(incoming.sender) : "Système"}</p>
+          <p className="text-sm font-semibold text-gray-900">{incoming.title}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-gray-600">{previewText(incoming)}</p>
+        </Link>
       )}
     </div>
   );

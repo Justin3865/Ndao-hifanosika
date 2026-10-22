@@ -117,7 +117,9 @@ model User {
 
   auditLogs           AuditLog[]
   passwordResetTokens PasswordResetToken[]
-  notifications       Notification[]
+  notifications       Notification[] @relation("NotificationRecipient")
+  sentNotifications   Notification[] @relation("NotificationSender")
+  notificationFiles   NotificationAttachment[] @relation("AttachmentUploader")
 
   @@index([departmentId])
   @@index([role])
@@ -379,16 +381,46 @@ model RevokedRefreshToken {
 model Notification {
   id        Int              @id @default(autoincrement())
   userId    Int
+  senderId  Int?
+  replyToId Int?
   title     String
   message   String
   type      NotificationType @default(INFO)
   read      Boolean          @default(false)
+  archived  Boolean          @default(false)
+  latitude  Float?
+  longitude Float?
+  accuracy  Float?
   createdAt DateTime         @default(now())
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User                     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  sender      User?                    @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  replyTo     Notification?            @relation("NotificationReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     Notification[]           @relation("NotificationReplies")
+  attachments NotificationAttachment[]
 
   @@index([userId, read])
+  @@index([userId, senderId])
+  @@index([userId, archived])
   @@index([createdAt])
+}
+
+model NotificationAttachment {
+  id             Int       @id @default(autoincrement())
+  notificationId Int?
+  uploaderId     Int
+  name           String
+  mime           String
+  kind           String
+  size           Int
+  data           Bytes
+  createdAt      DateTime  @default(now())
+
+  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  uploader       User          @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([uploaderId])
 }
 
 model Zone {
