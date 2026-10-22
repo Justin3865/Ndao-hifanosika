@@ -49,6 +49,13 @@ const NAV = [
   { href: "#verification", label: "Vérifier un certificat" },
 ];
 
+/**
+ * Pictogrammes : fond blanc, contour bleu, icône bleue.
+ * Couleurs fixes : identiques en mode clair et en mode sombre.
+ */
+const ICON_CIRCLE = "inline-flex items-center justify-center rounded-full border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]";
+const ICON_SQUARE = "inline-flex items-center justify-center rounded-xl border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]";
+
 /** Les fonctionnalités sont regroupées par catégorie dans des cadres. */
 const CATEGORIES = [
   {
@@ -223,7 +230,9 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
               { label: "Certificats QR", value: "✓", icon: BadgeCheck },
             ].map((stat) => (
               <div key={stat.label} className="rounded-3xl bg-white/10 p-6 ring-1 ring-white/15 backdrop-blur">
-                <stat.icon className="h-6 w-6 text-amber-300" />
+                <span className={`${ICON_CIRCLE} h-11 w-11`}>
+                  <stat.icon className="h-5 w-5" />
+                </span>
                 <p className="mt-4 text-4xl font-bold">{stat.value ?? "—"}</p>
                 <p className="text-sm text-blue-200">{stat.label}</p>
               </div>
@@ -243,7 +252,9 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
           {CATEGORIES.map((category) => (
             <article key={category.title} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition hover:shadow-xl">
               <div className={`flex items-center gap-4 bg-gradient-to-r p-6 text-white ${category.tone}`}>
-                <span className="rounded-2xl bg-white/15 p-3"><category.icon className="h-7 w-7" /></span>
+                <span className={`${ICON_SQUARE} h-14 w-14 shrink-0 rounded-2xl`}>
+                  <category.icon className="h-7 w-7" />
+                </span>
                 <div>
                   <h3 className="text-xl font-bold">{category.title}</h3>
                   <p className="text-sm text-white/80">{category.text}</p>
@@ -253,7 +264,9 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
               <ul className="divide-y divide-gray-100 p-2">
                 {category.items.map((item) => (
                   <li key={item.label} className="flex items-center gap-4 px-4 py-4">
-                    <span className="rounded-xl bg-slate-100 p-2.5 text-blue-800"><item.icon className="h-5 w-5" /></span>
+                    <span className={`${ICON_SQUARE} h-11 w-11 shrink-0`}>
+                      <item.icon className="h-5 w-5" />
+                    </span>
                     <span className="font-medium text-gray-800">{item.label}</span>
                   </li>
                 ))}
@@ -302,7 +315,9 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
         <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
           <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-7 shadow-sm">
             <div className="flex items-center gap-3">
-              <span className="rounded-2xl bg-amber-100 p-3 text-amber-700"><MapPin className="h-6 w-6" /></span>
+              <span className={`${ICON_SQUARE} h-12 w-12 shrink-0 rounded-2xl`}>
+                <MapPin className="h-6 w-6" />
+              </span>
               <h3 className="text-lg font-bold text-gray-900">Siège de l&apos;ONG</h3>
             </div>
 
@@ -310,8 +325,8 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
               <div className="space-y-3 text-sm text-gray-700">
                 <p className="text-base font-semibold text-gray-900">{hq.name}</p>
                 {hq.address && <p>{hq.address}</p>}
-                {hq.phone && <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-blue-700" /> {hq.phone}</p>}
-                {hq.email && <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-blue-700" /> {hq.email}</p>}
+                {hq.phone && <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-[#1d4ed8]" /> {hq.phone}</p>}
+                {hq.email && <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-[#1d4ed8]" /> {hq.email}</p>}
                 <a
                   href={`https://www.google.com/maps/dir/?api=1&destination=${hq.latitude},${hq.longitude}`}
                   target="_blank"
@@ -350,7 +365,9 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
       <section id="verification" className="scroll-mt-20 pb-20">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
           <form onSubmit={verify} className="rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-green-100 text-green-700"><BadgeCheck className="h-7 w-7" /></span>
+            <span className={`${ICON_SQUARE} mx-auto h-14 w-14 rounded-2xl`}>
+              <BadgeCheck className="h-7 w-7" />
+            </span>
             <h2 className="mt-4 text-2xl font-bold text-gray-900">Vérifier un certificat</h2>
             <p className="mt-2 text-sm text-gray-600">Entrez le code figurant sur le certificat, ou scannez son QR code, pour confirmer son authenticité.</p>
 
@@ -365,7 +382,9 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
       {/* ---------------- Appel à l'action ---------------- */}
       <section className="bg-gradient-to-r from-blue-900 to-blue-700 py-16 text-white">
         <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 px-4 text-center">
-          <Activity className="h-10 w-10 text-amber-300" />
+          <span className={`${ICON_CIRCLE} h-16 w-16`}>
+            <Activity className="h-8 w-8" />
+          </span>
           <h2 className="text-3xl font-bold">Rejoignez la plateforme Ndao Hifanosika</h2>
           <p className="max-w-2xl text-blue-100">Demandez votre accès : un administrateur valide votre compte et vous recevez une notification dès qu&apos;il est actif.</p>
           <button type="button" onClick={() => openAuth("register")} className="rounded-xl bg-amber-400 px-8 py-3.5 font-semibold text-blue-950 hover:bg-amber-300">

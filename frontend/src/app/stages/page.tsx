@@ -235,7 +235,8 @@ export default function StagesPage() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#1F5FA0] shadow-lg transition hover:bg-gray-50"
+              // Fond blanc forcé (couleur hexadécimale : le mode sombre ne le remplace pas)
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#ffffff] px-5 py-3 text-sm font-bold text-[#1F5FA0] shadow-lg transition hover:bg-[#eef3f9]"
             >
               <Plus className="h-4 w-4" />
               Ajouter un stage
@@ -301,7 +302,7 @@ export default function StagesPage() {
                 </div>
 
                 {offer.domain && (
-                  <span className="mt-2 inline-block w-fit rounded-full bg-[#1F5FA0]/10 px-2.5 py-1 text-xs font-semibold text-[#1F5FA0]">
+                  <span className="mt-2 inline-block w-fit rounded-full bg-[#1F5FA0] px-3 py-1 text-xs font-bold text-white">
                     {offer.domain}
                   </span>
                 )}

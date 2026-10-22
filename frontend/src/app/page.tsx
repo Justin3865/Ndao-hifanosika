@@ -615,31 +615,31 @@ export default function HomePage() {
     success: {
       icon: CheckCircle2,
       title: "Opération réussie",
-      iconClass: "bg-blue-100 text-blue-600",
+      iconClass: "border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]",
       titleClass: "text-blue-700",
     },
     pending: {
       icon: Info,
       title: "Validation nécessaire",
-      iconClass: "bg-blue-100 text-blue-600",
+      iconClass: "border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]",
       titleClass: "text-blue-700",
     },
     rejected: {
       icon: XCircle,
       title: "Demande refusée",
-      iconClass: "bg-blue-50 text-blue-700",
+      iconClass: "border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]",
       titleClass: "text-blue-800",
     },
     inactive: {
       icon: ShieldAlert,
       title: "Compte désactivé",
-      iconClass: "bg-blue-50 text-blue-700",
+      iconClass: "border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]",
       titleClass: "text-blue-800",
     },
     error: {
       icon: XCircle,
       title: "Une erreur est survenue",
-      iconClass: "bg-blue-50 text-blue-700",
+      iconClass: "border-2 border-[#1d4ed8] bg-[#ffffff] text-[#1d4ed8]",
       titleClass: "text-blue-800",
     },
   };
@@ -825,8 +825,8 @@ export default function HomePage() {
       <section className="border-b border-gray-200 bg-white">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 md:grid-cols-3 lg:px-8">
           <div className="flex gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-              <FolderKanban className="h-6 w-6 text-blue-600" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-[#1d4ed8] bg-[#ffffff]">
+              <FolderKanban className="h-6 w-6 text-[#1d4ed8]" />
             </div>
             <div>
               <h3 className="font-semibold">Gestion des projets</h3>
@@ -834,8 +834,8 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-              <BarChart3 className="h-6 w-6 text-blue-600" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-[#1d4ed8] bg-[#ffffff]">
+              <BarChart3 className="h-6 w-6 text-[#1d4ed8]" />
             </div>
             <div>
               <h3 className="font-semibold">Suivi & Évaluation</h3>
@@ -843,8 +843,8 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-              <GraduationCap className="h-6 w-6 text-blue-600" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-[#1d4ed8] bg-[#ffffff]">
+              <GraduationCap className="h-6 w-6 text-[#1d4ed8]" />
             </div>
             <div>
               <h3 className="font-semibold">Gestion des stages</h3>
@@ -884,9 +884,9 @@ export default function HomePage() {
                 ></div>
 
                 {/* LOGO BORIBORY MANGA + ANIMATION */}
-                <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-blue-50/50 shadow-sm">
+                <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 border-[#1d4ed8] bg-[#ffffff] shadow-sm">
                   <div
-                    className={`flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 ${`anim-${module.animation}`}`}
+                    className={`flex h-14 w-14 items-center justify-center rounded-full text-[#1d4ed8] ${`anim-${module.animation}`}`}
                   >
                     <Icon className="h-8 w-8" />
                   </div>
@@ -928,8 +928,8 @@ export default function HomePage() {
             </div>
             <div className="hidden justify-center lg:flex">
               <div className="flex h-64 w-64 items-center justify-center rounded-full bg-white/10">
-                <div className="flex h-48 w-48 items-center justify-center rounded-full bg-white/10">
-                  <GraduationCap className="h-28 w-28 text-white/90" />
+                <div className="flex h-48 w-48 items-center justify-center rounded-full border-4 border-[#1d4ed8] bg-[#ffffff]">
+                  <GraduationCap className="h-28 w-28 text-[#1d4ed8]" />
                 </div>
               </div>
             </div>
@@ -1210,7 +1210,7 @@ export default function HomePage() {
               {resultModal === "pending" && (
                 <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
                   <div className="flex gap-3">
-                    <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+                    <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#1d4ed8]" />
                     <div>
                       <p className="font-semibold text-blue-800">Étape suivante</p>
                       <p className="mt-1 text-sm leading-6 text-blue-700">Un administrateur doit vérifier et activer votre compte avant votre connexion.</p>
@@ -1234,7 +1234,7 @@ export default function HomePage() {
 
             <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
               <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
-                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                <ShieldCheck className="h-4 w-4 text-[#1d4ed8]" />
                 Ndao Hifanosika — Accès sécurisé
               </div>
             </div>

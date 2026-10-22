@@ -114,6 +114,23 @@ function Signature() {
   );
 }
 
+/**
+ * Date et heure d'émission à l'heure de Madagascar (UTC+3, sans heure d'été).
+ * Calcul direct sur l'instant UTC (+3 h) : ne dépend ni du fuseau de l'ordinateur ni du navigateur.
+ */
+function formatIssued(value: string) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return { date: "", time: "" };
+
+  const mg = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+  const two = (n: number) => String(n).padStart(2, "0");
+
+  return {
+    date: `${two(mg.getUTCDate())}/${two(mg.getUTCMonth() + 1)}/${mg.getUTCFullYear()}`,
+    time: `${two(mg.getUTCHours())}:${two(mg.getUTCMinutes())}:${two(mg.getUTCSeconds())}`,
+  };
+}
+
 export default function CertificatePage() {
   const params = useParams<{ id: string }>();
   const [item, setItem] = useState<Certificate | null>(null);
@@ -306,7 +323,13 @@ export default function CertificatePage() {
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                      <p className="text-xs">Fait à {ORG.city}, le <strong>{fmtDate(item.createdAt)}</strong></p>
+                      {/* Date + heure : minutes et secondes comprises */}
+                      <div className="text-center text-xs">
+                        <p>Fait à {ORG.city}, le <strong>{formatIssued(item.createdAt).date}</strong></p>
+                        <p className="mt-0.5 text-[11px] text-gray-500">
+                          à <strong className="font-mono text-gray-700">{formatIssued(item.createdAt).time}</strong>
+                        </p>
+                      </div>
                       <div className="flex items-center gap-5">
                         <Cachet />
                         <div className="text-center text-xs">

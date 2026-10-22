@@ -140,14 +140,15 @@ function LoginForm() {
     }
   };
 
+  /* Champs : fond blanc en mode clair, fond sombre + texte blanc en mode sombre */
   const input =
-    "w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100";
+    "w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-blue-400 dark:focus:ring-blue-500/30";
 
   return (
-    <main className="flex min-h-[100svh] items-center justify-center overflow-x-hidden bg-slate-100 p-3 sm:p-5 lg:p-6">
+    <main className="flex min-h-[100svh] items-center justify-center overflow-x-hidden bg-slate-100 p-3 dark:bg-slate-950 sm:p-5 lg:p-6">
       {/* Les deux panneaux sont dans un seul cadre, sans scroll vertical sur écran standard */}
-      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl shadow-slate-900/10 lg:min-h-[min(820px,calc(100svh-3rem))] lg:grid-cols-3">
-        {/* Panneau ONG : 1/3 */}
+      <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl shadow-slate-900/10 dark:border-slate-700 dark:shadow-black/40 lg:min-h-[min(820px,calc(100svh-3rem))] lg:grid-cols-3">
+        {/* Panneau ONG : 1/3 (reste bleu en mode clair et sombre) */}
         <aside className="relative flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#10275c] via-[#173b86] to-[#1d4ed8] p-6 text-white sm:p-8 lg:col-span-1 lg:p-8 xl:p-10">
           <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-amber-300/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl" />
@@ -205,31 +206,31 @@ function LoginForm() {
           </div>
         </aside>
 
-        {/* Connexion : 2/3 */}
-        <section className="flex min-w-0 items-center justify-center bg-gradient-to-br from-white via-slate-50 to-blue-50/60 p-6 sm:p-10 lg:col-span-2 lg:p-10 xl:p-14">
+        {/* Connexion : 2/3 — fond clair en mode clair, fond sombre en mode sombre */}
+        <section className="flex min-w-0 items-center justify-center bg-gradient-to-br from-white via-slate-50 to-blue-50/60 p-6 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 sm:p-10 lg:col-span-2 lg:p-10 xl:p-14">
           <div className="mx-auto w-full max-w-xl">
             <div className="mb-7 flex items-center gap-3 lg:hidden">
               <Logo size={42} />
-              <div className="h-9 w-px bg-slate-200" />
-              <p className="text-xs text-slate-500">Suivi &amp; Évaluation</p>
+              <div className="h-9 w-px bg-slate-200 dark:bg-slate-600" />
+              <p className="text-xs text-slate-500 dark:text-slate-300">Suivi &amp; Évaluation</p>
             </div>
 
             <Link
               href="/"
-              className="mb-7 inline-flex items-center gap-2 rounded-lg text-sm text-slate-500 transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-4"
+              className="mb-7 inline-flex items-center gap-2 rounded-lg text-sm text-slate-500 transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-4 dark:text-slate-300 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
             >
               <ArrowLeft className="h-4 w-4" />
               Retour à l&apos;accueil
             </Link>
 
             <div className="mb-7">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-700">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-700 dark:text-blue-300">
                 Espace sécurisé
               </p>
-              <h2 className="text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+              <h2 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
                 Connexion
               </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
                 Accédez à votre espace de travail.
               </p>
             </div>
@@ -237,7 +238,7 @@ function LoginForm() {
             {error && (
               <div
                 role="alert"
-                className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200"
               >
                 {error}
               </div>
@@ -246,14 +247,14 @@ function LoginForm() {
             {notice && (
               <div
                 role="status"
-                className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
               >
                 {notice}
               </div>
             )}
 
             <form onSubmit={submit} className="space-y-5">
-              <label className="block space-y-2 text-sm font-semibold text-slate-700">
+              <label className="block space-y-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
                 Adresse email
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -269,7 +270,7 @@ function LoginForm() {
                 </div>
               </label>
 
-              <label className="block space-y-2 text-sm font-semibold text-slate-700">
+              <label className="block space-y-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
                 Mot de passe
                 <div className="relative">
                   <LockKeyhole className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -285,7 +286,7 @@ function LoginForm() {
                   <button
                     type="button"
                     onClick={() => setShow((value) => !value)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-white"
                     aria-label={
                       show
                         ? "Masquer le mot de passe"
@@ -302,7 +303,7 @@ function LoginForm() {
               </label>
 
               <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <label className="flex items-center gap-2 font-medium text-slate-600">
+                <label className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-200">
                   <input
                     type="checkbox"
                     checked={rememberMe}
@@ -314,7 +315,7 @@ function LoginForm() {
 
                 <Link
                   href="/?auth=forgot"
-                  className="font-semibold text-blue-700 transition hover:text-blue-900 hover:underline"
+                  className="font-semibold text-blue-700 transition hover:text-blue-900 hover:underline dark:text-blue-300 dark:hover:text-blue-200"
                 >
                   Mot de passe oublié ?
                 </Link>
@@ -323,18 +324,18 @@ function LoginForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-800 to-blue-600 px-5 py-3.5 font-bold text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:from-blue-900 hover:to-blue-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-800 to-blue-600 px-5 py-3.5 font-bold text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:from-blue-900 hover:to-blue-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0 dark:focus:ring-blue-500/40"
               >
                 {loading && <Loader2 className="h-5 w-5 animate-spin" />}
                 {loading ? "Connexion..." : "Se connecter"}
               </button>
             </form>
 
-            <div className="mt-7 border-t border-slate-200 pt-5 text-center text-sm text-slate-600">
+            <div className="mt-7 border-t border-slate-200 pt-5 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
               Pas encore de compte ?{" "}
               <Link
                 href="/?auth=register"
-                className="font-bold text-blue-700 transition hover:text-blue-900 hover:underline"
+                className="font-bold text-blue-700 transition hover:text-blue-900 hover:underline dark:text-blue-300 dark:hover:text-blue-200"
               >
                 Demander un accès
               </Link>
@@ -350,7 +351,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="grid min-h-screen place-items-center bg-slate-100">
+        <div className="grid min-h-screen place-items-center bg-slate-100 dark:bg-slate-950">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-700 border-t-transparent" />
         </div>
       }
