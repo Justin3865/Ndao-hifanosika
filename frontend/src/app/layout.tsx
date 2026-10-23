@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import "./globals.css";
 import { SettingsProvider } from "@/components/providers/settings-provider";
+import { MissionProvider } from "@/components/mission/MissionProvider";
 
 export const metadata: Metadata = {
   title: {
@@ -72,7 +73,8 @@ export default function RootLayout({
 
       <body className="min-h-screen bg-background text-foreground antialiased">
         <SettingsProvider>
-          {children}
+          {/* Monté à la racine : la mission GPS continue quand on change de page */}
+          <MissionProvider>{children}</MissionProvider>
         </SettingsProvider>
       </body>
     </html>

@@ -7,6 +7,7 @@ import Header from "./Header";
 import Sidebar from "./Sidebar";
 import Footer from "./Footer";
 import { ToastHost } from "@/components/ui/ToastHost";
+import { MissionBanner } from "@/components/mission/MissionBanner";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -28,6 +29,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
             mobileMenuOpen={mobileMenuOpen}
             setMobileMenuOpen={setMobileMenuOpen}
           />
+
+          <MissionBanner />
 
           <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
 

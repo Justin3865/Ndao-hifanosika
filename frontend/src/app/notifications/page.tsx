@@ -16,11 +16,19 @@ import {
   Reply,
   Search,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { MessageAttachments } from "@/components/notifications/MessageAttachments";
+import {
+  AudiencePicker,
+  AudienceValue,
+  EMPTY_AUDIENCE,
+  audienceIsEmpty,
+  audienceToPayload,
+} from "@/components/notifications/AudiencePicker";
 import { ComposerPayload, MessageComposer } from "@/components/notifications/MessageComposer";
 import { getStoredRole } from "@/lib/access";
 import { LookupItem, errorMessage, fetchLookup, fmtDateTime } from "@/lib/crud";
@@ -107,6 +115,11 @@ function MessageCard({ item, sameSourceCount, onRead, onMenu, children }: CardPr
             <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
               {sameSourceCount} message{sameSourceCount > 1 ? "s" : ""}
             </span>
+            {item.batchId && (
+              <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                <Users className="h-3 w-3" /> Groupe{item.groupSize ? ` · ${item.groupSize}` : ""}
+              </span>
+            )}
           </p>
 
           {item.replyTo && (
@@ -129,7 +142,10 @@ function MessageCard({ item, sameSourceCount, onRead, onMenu, children }: CardPr
             accuracy={item.accuracy}
           />
 
-          <p className="text-xs text-gray-400">{fmtDateTime(item.createdAt)}</p>
+          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400">
+            <span>Envoyé : {fmtDateTime(item.createdAt)}</span>
+            <span>Reçu : {item.receivedAt ? fmtDateTime(item.receivedAt) : "…"}</span>
+          </p>
         </div>
 
         <button
@@ -167,6 +183,7 @@ interface SheetProps {
   item: FeedItem;
   onClose: () => void;
   onReply: () => void;
+  onReplyGroup: () => void;
   onMarkUnread: () => void;
   onArchive: () => void;
   onCopy: () => void;
@@ -174,7 +191,7 @@ interface SheetProps {
   onDelete: () => void;
 }
 
-function ActionSheet({ item, onClose, onReply, onMarkUnread, onArchive, onCopy, onOpenMap, onDelete }: SheetProps) {
+function ActionSheet({ item, onClose, onReply, onReplyGroup, onMarkUnread, onArchive, onCopy, onOpenMap, onDelete }: SheetProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -203,7 +220,14 @@ function ActionSheet({ item, onClose, onReply, onMarkUnread, onArchive, onCopy, 
 
         {item.senderId && (
           <button type="button" className={row} onClick={onReply}>
-            <Reply className="h-4 w-4 text-blue-600" /> Répondre
+            <Reply className="h-4 w-4 text-blue-600" /> {item.batchId ? "Répondre à l'expéditeur" : "Répondre"}
+          </button>
+        )}
+
+        {item.senderId && item.batchId && (
+          <button type="button" className={row} onClick={onReplyGroup}>
+            <Users className="h-4 w-4 text-indigo-600" /> Répondre au groupe
+            {item.groupSize ? ` (${item.groupSize - 1} personnes)` : ""}
           </button>
         )}
 
@@ -251,9 +275,12 @@ function NotificationsContent() {
   const [role, setRole] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [users, setUsers] = useState<LookupItem[]>([]);
-  const [form, setForm] = useState({ userId: "", title: "", type: "INFO" });
+  const [departments, setDepartments] = useState<LookupItem[]>([]);
+  const [audience, setAudience] = useState<AudienceValue>(EMPTY_AUDIENCE);
+  const [form, setForm] = useState({ title: "", type: "INFO" });
   const [menuId, setMenuId] = useState<number | null>(null);
   const [replyingId, setReplyingId] = useState<number | null>(null);
+  const [replyScope, setReplyScope] = useState<"sender" | "group">("sender");
   const [view, setView] = useState<"inbox" | "archived">("inbox");
   const [query, setQuery] = useState("");
 
@@ -263,6 +290,7 @@ function NotificationsContent() {
 
     if (SENDERS.includes(current)) {
       fetchLookup("users").then(setUsers).catch(() => setUsers([]));
+      fetchLookup("departments").then(setDepartments).catch(() => setDepartments([]));
     }
   }, []);
 
@@ -292,35 +320,44 @@ function NotificationsContent() {
   };
 
   const sendNew = async (payload: ComposerPayload) => {
-    if (!form.userId || !form.title.trim()) {
-      throw new Error("Destinataire et titre sont obligatoires.");
+    if (audienceIsEmpty(audience)) {
+      throw new Error("Choisissez au moins un destinataire.");
     }
 
+    if (!form.title.trim()) {
+      throw new Error("Le titre est obligatoire.");
+    }
+
+    let feedback = "Notification envoyée.";
+
     try {
-      await api.post("/notifications", {
-        userId: Number(form.userId),
+      const res = await api.post("/notifications", {
+        audience: audienceToPayload(audience),
         title: form.title.trim(),
         type: form.type,
         ...payload,
       });
+
+      if ((res.data?.count ?? 1) > 1) feedback = res.data.message;
     } catch (err) {
       throw new Error(errorMessage(err, "Envoi impossible."));
     }
 
-    setForm({ userId: "", title: "", type: "INFO" });
+    setForm({ title: "", type: "INFO" });
+    setAudience(EMPTY_AUDIENCE);
     setShowForm(false);
-    toast.success("Notification envoyée.");
+    toast.success(feedback);
   };
 
   const sendReply = async (item: FeedItem, payload: ComposerPayload) => {
     try {
-      await api.post(`/notifications/${item.id}/reply`, payload);
+      await api.post(`/notifications/${item.id}/reply`, { ...payload, scope: replyScope });
     } catch (err) {
       throw new Error(errorMessage(err, "Envoi de la réponse impossible."));
     }
 
     setReplyingId(null);
-    toast.success("Réponse envoyée.");
+    toast.success(replyScope === "group" ? "Réponse envoyée au groupe." : "Réponse envoyée.");
   };
 
   const copyText = async (item: FeedItem) => {
@@ -379,20 +416,13 @@ function NotificationsContent() {
 
       {showForm && (
         <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2">
-            <select className={inputClass} value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })}>
-              <option value="">Destinataire</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>{user.label}</option>
-              ))}
-            </select>
+          <AudiencePicker value={audience} onChange={setAudience} users={users} departments={departments} />
 
-            <select className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              {["INFO", "SUCCESS", "WARNING", "ERROR"].map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </div>
+          <select className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+            {["INFO", "SUCCESS", "WARNING", "ERROR"].map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
 
           <input className={inputClass} placeholder="Titre" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
 
@@ -511,7 +541,9 @@ function NotificationsContent() {
             {replyingId === item.id && (
               <div className="mt-3 border-t border-gray-200 pt-3" data-no-press>
                 <p className="mb-2 text-xs font-medium text-gray-600">
-                  Répondre à {personName(item.sender)}
+                  {replyScope === "group"
+                    ? `Répondre au groupe (${item.groupSize ? item.groupSize - 1 : "tous"} personnes)`
+                    : `Répondre à ${personName(item.sender)}`}
                 </p>
                 <MessageComposer
                   autoFocus
@@ -532,6 +564,12 @@ function NotificationsContent() {
           item={menuItem}
           onClose={() => setMenuId(null)}
           onReply={() => {
+            setReplyScope("sender");
+            setReplyingId(menuItem.id);
+            setMenuId(null);
+          }}
+          onReplyGroup={() => {
+            setReplyScope("group");
             setReplyingId(menuItem.id);
             setMenuId(null);
           }}

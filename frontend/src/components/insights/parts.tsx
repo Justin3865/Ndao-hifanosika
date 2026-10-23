@@ -9,16 +9,20 @@ export function useInsight<T>(path: string) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [raw, setRaw] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     api
       .get(path)
-      .then((res) => setData(res.data?.data ?? null))
+      .then((res) => {
+        setData(res.data?.data ?? null);
+        setRaw(res.data ?? null);
+      })
       .catch((err) => setError(errorMessage(err, "Analyse indisponible.")))
       .finally(() => setLoading(false));
   }, [path]);
 
-  return { data, loading, error };
+  return { data, loading, error, raw };
 }
 
 export const LEVEL_STYLE: Record<string, string> = {

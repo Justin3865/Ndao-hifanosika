@@ -31,6 +31,7 @@ import {
 import { Logo } from "@/components/brand/Logo";
 import { canAccessPath, getStoredRole } from "@/lib/access";
 import { roleLabel } from "@/lib/roles";
+import { useMission } from "@/components/mission/MissionProvider";
 
 interface SidebarProps {
   mobileMenuOpen: boolean;
@@ -87,6 +88,7 @@ let cachedRole = "";
 
 export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
   const pathname = usePathname();
+  const { active: missionActive } = useMission();
   const [role, setRole] = useState(cachedRole);
 
   useEffect(() => {
@@ -144,6 +146,11 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
                   >
                     <Icon className={`h-[18px] w-[18px] ${active ? "text-amber-500" : ""}`} />
                     {item.label}
+                    {item.href === "/mission" && missionActive && (
+                      <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> EN COURS
+                      </span>
+                    )}
                   </Link>
                 );
               })}

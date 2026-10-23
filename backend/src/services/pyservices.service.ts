@@ -81,3 +81,44 @@ export async function trainExternalMl(): Promise<Record<string, unknown> | null>
     return { error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+export interface AnomalyServiceResult {
+  ready: boolean;
+  reason?: string;
+  results: Array<{
+    id: string;
+    score: number;
+    anomaly: boolean;
+    reasons: Array<{ feature: string; value: number; median: number; z: number }>;
+  }>;
+  meta: { model: string; n_samples: number; elapsed_ms?: number; flagged?: number; n_estimators?: number };
+}
+
+/**
+ * Isolation Forest (service FastAPI). Lève une erreur si AI_SERVICE_URL est absent ou si le service échoue :
+ * l'appelant bascule alors sur les règles statistiques.
+ */
+export async function detectWithAiService(
+  kind: string,
+  features: string[],
+  rows: Array<{ id: string; values: Array<number | null> }>,
+  contamination = 0.1,
+): Promise<AnomalyServiceResult> {
+  const url = baseUrl("AI_SERVICE_URL");
+
+  if (!url) throw new Error("AI_SERVICE_URL non défini");
+
+  const response = await fetch(`${url}/v1/anomalies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-service-key": process.env.AI_SERVICE_KEY ?? "" },
+    body: JSON.stringify({ kind, features, rows, contamination }),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+    throw new Error(`ai-service HTTP ${response.status}${body.detail ? ` — ${JSON.stringify(body.detail)}` : ""}`);
+  }
+
+  return (await response.json()) as AnomalyServiceResult;
+}

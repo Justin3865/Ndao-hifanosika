@@ -89,6 +89,12 @@ export interface MapLine {
   to: { latitude: number; longitude: number };
   label?: string;
   color?: string;
+  /** Tracé complet (trajet d'une mission) : remplace la ligne from -> to */
+  path?: Array<{ latitude: number; longitude: number }>;
+  /** Trait plein au lieu de pointillés */
+  solid?: boolean;
+  /** Petite flèche à l'arrivée (indique le sens : vers l'agent, vers le ménage...) */
+  arrow?: boolean;
 }
 
 /** Trajet à tracer entre deux points (itinéraire routier si l'API Directions est activée). */
@@ -96,6 +102,8 @@ export interface MapRoute {
   from: { lat: number; lng: number };
   to: { lat: number; lng: number };
   color?: string;
+  /** Affiche la distance (et la durée) au milieu du trajet, directement sur la carte */
+  label?: boolean;
 }
 
 export interface RouteInfo {
@@ -123,6 +131,10 @@ interface Props {
 // Madagascar
 const DEFAULT_CENTER = { lat: -19.0, lng: 46.9 };
 
+// Évite de rappeler une API Google non activée (ou sans facturation) à chaque mise à jour de position
+let routesApiBlocked = false;
+let legacyDirectionsBlocked = false;
+
 const SHAPES: Record<string, string> = {
   square: "M -1 -1 L 1 -1 L 1 1 L -1 1 z",
   triangle: "M 0 -1.2 L 1 1 L -1 1 z",
@@ -132,6 +144,15 @@ const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string
   );
+
+/** Contenu de la bulle d'information (les retours à la ligne « \n » deviennent des <br>) */
+function infoHtml(item: MapMarker): string {
+  const body = item.info ? escapeHtml(item.info).replace(/\n/g, "<br>") : "";
+
+  return `<div style="font-family:system-ui;max-width:260px"><strong>${escapeHtml(item.title)}</strong>${
+    body ? `<div style="margin-top:4px;color:#374151;font-size:12px;line-height:1.5">${body}</div>` : ""
+  }</div>`;
+}
 
 function straightKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const rad = (v: number) => (v * Math.PI) / 180;
@@ -223,16 +244,15 @@ export function GoogleMap({ markers, lines = [], route = null, onRouteInfo, heig
         });
 
         marker.addListener("click", () => {
-          const html = `<div style="font-family:system-ui;max-width:230px"><strong>${escapeHtml(item.title)}</strong>${
-            item.info ? `<div style="margin-top:4px;color:#4b5563;font-size:12px">${escapeHtml(item.info)}</div>` : ""
-          }</div>`;
-          infoRef.current.setContent(html);
+          infoRef.current.setContent(marker.__html);
           infoRef.current.open({ map: mapRef.current, anchor: marker });
           selectRef.current?.(item.id);
         });
 
+        marker.__html = infoHtml(item);
         existing.set(item.id, marker);
       } else {
+        marker.__html = infoHtml(item); // texte toujours à jour (position, altitude, distance...)
         marker.setPosition({ lat: item.latitude, lng: item.longitude });
         marker.setIcon(icon);
         marker.setTitle(item.title);
@@ -266,22 +286,46 @@ export function GoogleMap({ markers, lines = [], route = null, onRouteInfo, heig
     lineRefs.current = [];
 
     lines.forEach((line) => {
-      const path = [
-        { lat: line.from.latitude, lng: line.from.longitude },
-        { lat: line.to.latitude, lng: line.to.longitude },
-      ];
+      const color = line.color ?? "#1d4ed8";
+
+      const path = line.path && line.path.length >= 2
+        ? line.path.map((p) => ({ lat: p.latitude, lng: p.longitude }))
+        : [
+            { lat: line.from.latitude, lng: line.from.longitude },
+            { lat: line.to.latitude, lng: line.to.longitude },
+          ];
+
+      const icons: any[] = [];
+
+      if (!line.solid) {
+        icons.push({
+          icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: color, scale: 3 },
+          offset: "0",
+          repeat: "14px",
+        });
+      }
+
+      if (line.arrow) {
+        icons.push({
+          icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 4,
+            fillColor: color,
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 1,
+          },
+          offset: "100%",
+        });
+      }
 
       const polyline = new google.maps.Polyline({
         map: mapRef.current,
         path,
-        strokeOpacity: 0,
-        icons: [
-          {
-            icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: line.color ?? "#1d4ed8", scale: 3 },
-            offset: "0",
-            repeat: "14px",
-          },
-        ],
+        ...(line.solid
+          ? { strokeColor: color, strokeOpacity: 0.9, strokeWeight: 4 }
+          : { strokeOpacity: 0 }),
+        icons,
       });
 
       lineRefs.current.push(polyline);
@@ -289,7 +333,7 @@ export function GoogleMap({ markers, lines = [], route = null, onRouteInfo, heig
       if (line.label) {
         const mid = new google.maps.Marker({
           map: mapRef.current,
-          position: { lat: (path[0].lat + path[1].lat) / 2, lng: (path[0].lng + path[1].lng) / 2 },
+          position: path[Math.floor(path.length / 2)] && path.length > 2 ? path[Math.floor(path.length / 2)] : { lat: (path[0].lat + path[path.length - 1].lat) / 2, lng: (path[0].lng + path[path.length - 1].lng) / 2 },
           icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
           label: { text: line.label, color: "#1e3a8a", fontSize: "12px", fontWeight: "700" },
           clickable: false,
@@ -316,6 +360,21 @@ export function GoogleMap({ markers, lines = [], route = null, onRouteInfo, heig
 
     const color = route.color ?? "#1d4ed8";
 
+    const addLabel = (position: any, text: string) => {
+      if (!route.label) return;
+
+      routeRefs.current.push(
+        new google.maps.Marker({
+          map: mapRef.current,
+          position,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          label: { text, color: "#1e3a8a", fontSize: "13px", fontWeight: "700" },
+          clickable: false,
+          zIndex: 1000,
+        }),
+      );
+    };
+
     const drawStraight = () => {
       if (cancelled) return;
 
@@ -326,53 +385,184 @@ export function GoogleMap({ markers, lines = [], route = null, onRouteInfo, heig
           strokeColor: color,
           strokeOpacity: 0.85,
           strokeWeight: 4,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 4,
+                fillColor: color,
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 1,
+              },
+              offset: "100%",
+            },
+          ],
         }),
       );
 
+      const km = Math.round(straightKm(route.from, route.to) * 10) / 10;
+
+      addLabel({ lat: (route.from.lat + route.to.lat) / 2, lng: (route.from.lng + route.to.lng) / 2 }, `${km} km`);
+
       routeInfoRef.current?.({
-        distanceKm: Math.round(straightKm(route.from, route.to) * 10) / 10,
+        distanceKm: km,
         durationMin: null,
         road: false,
       });
     };
 
-    try {
-      new google.maps.DirectionsService().route(
-        { origin: route.from, destination: route.to, travelMode: google.maps.TravelMode.DRIVING },
-        (result: any, status: string) => {
-          if (cancelled) return;
+    // Trace un itinéraire routier (flèche à l'arrivée + distance/durée sur la carte)
+    const drawRoad = (path: any[], meters: number, seconds: number) => {
+      if (cancelled) return;
 
-          if (status !== "OK" || !result?.routes?.[0]) {
-            drawStraight();
-            return;
-          }
-
-          const best = result.routes[0];
-
-          routeRefs.current.push(
-            new google.maps.Polyline({
-              map: mapRef.current,
-              path: best.overview_path,
-              strokeColor: color,
-              strokeOpacity: 0.9,
-              strokeWeight: 5,
-            }),
-          );
-
-          const legs: any[] = best.legs ?? [];
-          const meters = legs.reduce((sum, leg) => sum + (leg.distance?.value ?? 0), 0);
-          const seconds = legs.reduce((sum, leg) => sum + (leg.duration?.value ?? 0), 0);
-
-          routeInfoRef.current?.({
-            distanceKm: Math.round(meters / 100) / 10,
-            durationMin: seconds ? Math.round(seconds / 60) : null,
-            road: true,
-          });
-        },
+      routeRefs.current.push(
+        new google.maps.Polyline({
+          map: mapRef.current,
+          path,
+          strokeColor: color,
+          strokeOpacity: 0.9,
+          strokeWeight: 5,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 4,
+                fillColor: color,
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 1,
+              },
+              offset: "100%",
+            },
+          ],
+        }),
       );
-    } catch {
-      drawStraight();
-    }
+
+      const km = Math.round(meters / 100) / 10;
+      const minutes = seconds ? Math.round(seconds / 60) : null;
+
+      if (path.length > 0) addLabel(path[Math.floor(path.length / 2)], `${km} km${minutes !== null ? ` · ${minutes} min` : ""}`);
+
+      routeInfoRef.current?.({
+        distanceKm: km,
+        durationMin: minutes,
+        road: true,
+      });
+    };
+
+    // Itinéraire routier GRATUIT (OpenStreetMap / OSRM) : aucune clé ni facturation Google
+    const osrmFallback = async () => {
+      try {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 9000);
+
+        const response = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${route.from.lng},${route.from.lat};${route.to.lng},${route.to.lat}?overview=full&geometries=geojson`,
+          { signal: controller.signal },
+        );
+
+        window.clearTimeout(timer);
+
+        if (!response.ok) throw new Error(`OSRM ${response.status}`);
+
+        const data = await response.json();
+        const best = data?.routes?.[0];
+
+        if (!best?.geometry?.coordinates?.length) throw new Error("Aucun itinéraire OSRM");
+
+        drawRoad(
+          best.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ lat, lng })),
+          best.distance ?? 0,
+          best.duration ?? 0,
+        );
+      } catch {
+        drawStraight();
+      }
+    };
+
+    // Ancienne API Directions (seulement si elle est encore activée sur le projet Google Cloud)
+    const legacyDirections = () => {
+      if (legacyDirectionsBlocked) {
+        void osrmFallback();
+        return;
+      }
+
+      try {
+        new google.maps.DirectionsService().route(
+          { origin: route.from, destination: route.to, travelMode: google.maps.TravelMode.DRIVING },
+          (result: any, status: string) => {
+            if (cancelled) return;
+
+            if (status !== "OK" || !result?.routes?.[0]) {
+              if (status === "REQUEST_DENIED" || status === "MAP_ERROR") legacyDirectionsBlocked = true;
+              void osrmFallback();
+              return;
+            }
+
+            const best = result.routes[0];
+            const legs: any[] = best.legs ?? [];
+
+            drawRoad(
+              best.overview_path ?? [],
+              legs.reduce((sum, leg) => sum + (leg.distance?.value ?? 0), 0),
+              legs.reduce((sum, leg) => sum + (leg.duration?.value ?? 0), 0),
+            );
+          },
+        );
+      } catch {
+        legacyDirectionsBlocked = true;
+        void osrmFallback();
+      }
+    };
+
+    // Ordre : Routes API (Google) -> Directions (ancienne) -> OSRM gratuit -> ligne droite
+    (async () => {
+      // Sans facturation Google : NEXT_PUBLIC_ROUTES_PROVIDER=osrm dans .env.local
+      if (process.env.NEXT_PUBLIC_ROUTES_PROVIDER === "osrm") {
+        void osrmFallback();
+        return;
+      }
+
+      if (routesApiBlocked) {
+        legacyDirections();
+        return;
+      }
+
+      try {
+        const lib = await google.maps.importLibrary("routes");
+
+        if (!lib?.Route?.computeRoutes) throw new Error("Routes library indisponible");
+
+        const { routes } = await lib.Route.computeRoutes({
+          origin: route.from,
+          destination: route.to,
+          travelMode: "DRIVING",
+          fields: ["path", "distanceMeters", "durationMillis"],
+        });
+
+        if (cancelled) return;
+
+        const best = routes?.[0];
+
+        if (!best?.path?.length) throw new Error("Aucun itinéraire");
+
+        drawRoad(
+          best.path.map((p: any) => ({
+            lat: typeof p.lat === "function" ? p.lat() : p.lat,
+            lng: typeof p.lng === "function" ? p.lng() : p.lng,
+          })),
+          best.distanceMeters ?? 0,
+          (best.durationMillis ?? 0) / 1000,
+        );
+      } catch (err) {
+        if (cancelled) return;
+
+        routesApiBlocked = true;
+        console.warn("Routes API indisponible, itinéraire de secours :", err);
+        legacyDirections();
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -386,6 +576,12 @@ export function GoogleMap({ markers, lines = [], route = null, onRouteInfo, heig
     if (marker) {
       mapRef.current.panTo(marker.getPosition());
       mapRef.current.setZoom(Math.max(mapRef.current.getZoom(), 11));
+
+      // La bulle (altitude, distance...) s'ouvre aussi quand on choisit dans la liste
+      if (marker.__html && infoRef.current) {
+        infoRef.current.setContent(marker.__html);
+        infoRef.current.open({ map: mapRef.current, anchor: marker });
+      }
     }
   }, [selectedId, ready]);
 

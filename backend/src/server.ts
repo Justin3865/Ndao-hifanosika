@@ -1,6 +1,7 @@
 import http from "http";
 import app from "./app";
 import { initSocket } from "./realtime/socket";
+import { startFieldJobs } from "./services/fieldJobs.service";
 import { ensureDefaultZones } from "./routes/zones.routes";
 import { env } from "./config/env";
 import {
@@ -16,6 +17,7 @@ async function startServer() {
     const server = http.createServer(app);
     initSocket(server);
     void ensureDefaultZones();
+    startFieldJobs();
 
     server.listen(env.PORT, () => {
       logger.success(

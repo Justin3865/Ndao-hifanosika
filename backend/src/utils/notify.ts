@@ -3,6 +3,7 @@ import { logger } from "../config/logger";
 import { emitToUser } from "../realtime/socket";
 import { isEmailConfigured, sendEmail } from "./mailer";
 import { isSmsConfigured, sendSms } from "./sms";
+import { pushToUser } from "./webpush";
 
 export type NotificationKind = "INFO" | "SUCCESS" | "WARNING" | "ERROR";
 
@@ -69,6 +70,14 @@ export async function notifyUsers(
       });
 
       emitToUser(userId, "notification:new", row);
+
+      // Notification système (PC / téléphone), sans bloquer la requête
+      void pushToUser(userId, {
+        title: payload.title,
+        body: payload.message,
+        url: "/notifications?source=system",
+        tag: `ndao-msg-${row.id}`,
+      });
 
       // L'envoi externe ne bloque jamais la requête
       deliverExternal(userId, payload).catch((error) =>

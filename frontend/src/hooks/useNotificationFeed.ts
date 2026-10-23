@@ -43,7 +43,12 @@ export interface FeedItem {
   type: string;
   read: boolean;
   archived: boolean;
+  /** Identifiant du groupe (null = message individuel) et nombre de participants. */
+  batchId: string | null;
+  groupSize: number | null;
+  /** Heure d'envoi (createdAt) et heure de réception sur l'appareil. */
   createdAt: string;
+  receivedAt: string | null;
   senderId: number | null;
   sender: PersonRef | null;
   attachments: AttachmentMeta[];
@@ -81,7 +86,10 @@ export function normalizeItem(row: any): FeedItem {
     type: String(row.type ?? "INFO"),
     read: Boolean(row.read),
     archived: Boolean(row.archived),
+    batchId: row.batchId ?? null,
+    groupSize: typeof row.groupSize === "number" ? row.groupSize : null,
     createdAt: String(row.createdAt ?? new Date().toISOString()),
+    receivedAt: row.receivedAt ? String(row.receivedAt) : null,
     senderId: row.senderId ?? row.sender?.id ?? null,
     sender: row.sender ?? null,
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -163,9 +171,20 @@ export function useNotificationFeed() {
     const socket = getSocket();
 
     const onNew = (row: unknown) => {
-      const item = normalizeItem(row);
+      const parsed = normalizeItem(row);
+      const item = { ...parsed, receivedAt: parsed.receivedAt ?? new Date().toISOString() };
+
       setItems((cur) => [item, ...cur.filter((n) => n.id !== item.id)].sort(byDateDesc));
       setIncoming(item);
+
+      // Accusé de réception : le serveur enregistre l'heure d'arrivée sur cet appareil
+      api
+        .patch(`/notifications/${item.id}/received`)
+        .then((res) => {
+          const saved = res.data?.data?.receivedAt;
+          if (saved) setItems((cur) => cur.map((n) => (n.id === item.id ? { ...n, receivedAt: String(saved) } : n)));
+        })
+        .catch(() => undefined);
     };
 
     const onUpdate = (row: unknown) => {

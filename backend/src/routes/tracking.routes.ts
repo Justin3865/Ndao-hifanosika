@@ -7,6 +7,16 @@ import { authorizeRoles } from "../middlewares/role.middleware";
 import { emitToTracking, recordLocation } from "../realtime/socket";
 import { getReqUser } from "../utils/dataScope";
 import { db } from "../utils/db";
+import {
+  MISSION_ROLES,
+  createSurvey,
+  fieldSummary,
+  finishMission,
+  getActiveMission,
+  listAgents,
+  recordMissionPosition,
+  startMission,
+} from "../services/field.service";
 
 import { sendError } from "../middlewares/error.middleware";
 /* ===================================================================
@@ -282,6 +292,274 @@ trackingRouter.delete(
     }
   },
 );
+
+/* ===================================================================
+ * AGENTS EN MISSION : liste, synthèse, historique (administration)
+ * =================================================================== */
+
+const ADMIN_VIEW = ["ADMIN", "DIRECTION", "COORDINATOR"] as const;
+
+/** GET /api/tracking/agents — tous les agents : en ligne / hors ligne / en mission + dernière position */
+trackingRouter.get("/agents", authorizeRoles(...ADMIN_VIEW), async (_req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await listAgents() });
+  } catch (error) {
+    logger.error("Erreur tracking agents", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** GET /api/tracking/summary — chiffres clés du suivi terrain */
+trackingRouter.get("/summary", authorizeRoles(...ADMIN_VIEW), async (_req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await fieldSummary() });
+  } catch (error) {
+    logger.error("Erreur tracking summary", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** GET /api/tracking/missions?agentId=&from= — historique des missions (90 jours) */
+trackingRouter.get("/missions", authorizeRoles(...ADMIN_VIEW), async (req: Request, res: Response) => {
+  try {
+    const agentId = req.query.agentId ? Number(req.query.agentId) : undefined;
+    const fromParam = req.query.from ? new Date(String(req.query.from)) : null;
+    const floor = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+    const from = fromParam && !Number.isNaN(fromParam.getTime()) && fromParam > floor ? fromParam : floor;
+
+    const rows = await prisma.mission.findMany({
+      where: { startedAt: { gte: from }, ...(agentId ? { agentId } : {}) },
+      orderBy: { startedAt: "desc" },
+      take: 200,
+      include: {
+        agent: { select: { id: true, firstName: true, lastName: true } },
+        _count: { select: { points: true, surveys: true } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: rows.map((m) => ({
+        id: m.id,
+        agent: { id: m.agent.id, name: `${m.agent.firstName} ${m.agent.lastName}` },
+        startedAt: m.startedAt,
+        endedAt: m.endedAt,
+        distanceKm: Math.round(m.distanceKm * 10) / 10,
+        pointsCount: m._count.points,
+        surveysCount: m._count.surveys,
+      })),
+    });
+  } catch (error) {
+    logger.error("Erreur tracking missions", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** GET /api/tracking/missions/:id — trajet + enquêtes réalisées en chemin */
+trackingRouter.get("/missions/:id", authorizeRoles(...ADMIN_VIEW), async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+
+    const mission = await prisma.mission.findUnique({
+      where: { id },
+      include: {
+        agent: { select: { firstName: true, lastName: true } },
+        points: { orderBy: { createdAt: "asc" }, take: 5000 },
+        surveys: {
+          orderBy: { createdAt: "asc" },
+          include: { beneficiary: { select: { firstName: true, lastName: true } } },
+        },
+      },
+    });
+
+    if (!mission) return res.status(404).json({ success: false, message: "Mission introuvable" });
+
+    res.json({
+      success: true,
+      data: {
+        mission: {
+          id: mission.id,
+          agentName: `${mission.agent.firstName} ${mission.agent.lastName}`,
+          startedAt: mission.startedAt,
+          endedAt: mission.endedAt,
+          distanceKm: Math.round(mission.distanceKm * 10) / 10,
+        },
+        points: mission.points.map((p) => ({
+          latitude: p.latitude,
+          longitude: p.longitude,
+          altitude: p.altitude,
+          createdAt: p.createdAt,
+        })),
+        surveys: mission.surveys.map((sv) => ({
+          id: sv.id,
+          beneficiaryName: `${sv.beneficiary.firstName} ${sv.beneficiary.lastName}`,
+          latitude: sv.latitude,
+          longitude: sv.longitude,
+          vulnerable: sv.vulnerable,
+          createdAt: sv.createdAt,
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error("Erreur tracking mission détail", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** GET /api/tracking/agents/:id/surveys — TOUTES les enquêtes d'un agent, avec les réponses complètes */
+trackingRouter.get("/agents/:id/surveys", authorizeRoles(...ADMIN_VIEW), async (req: Request, res: Response) => {
+  try {
+    const agentId = Number(req.params.id);
+
+    if (!Number.isInteger(agentId) || agentId <= 0) {
+      return res.status(400).json({ success: false, message: "Agent invalide" });
+    }
+
+    const rows = await prisma.survey.findMany({
+      where: { agentId },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+      include: {
+        beneficiary: {
+          select: { id: true, firstName: true, lastName: true, locality: true, project: { select: { name: true } } },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: rows.map((sv) => ({
+        id: sv.id,
+        beneficiaryId: sv.beneficiaryId,
+        beneficiaryName: `${sv.beneficiary.firstName} ${sv.beneficiary.lastName}`,
+        projectName: sv.beneficiary.project?.name ?? null,
+        locality: sv.beneficiary.locality,
+        missionId: sv.missionId,
+        latitude: sv.latitude,
+        longitude: sv.longitude,
+        altitude: sv.altitude,
+        householdSize: sv.householdSize,
+        monthlyIncome: sv.monthlyIncome,
+        childrenUnder5: sv.childrenUnder5,
+        outOfSchoolChildren: sv.outOfSchoolChildren,
+        mealsPerDay: sv.mealsPerDay,
+        hasDisability: sv.hasDisability,
+        healthIssues: sv.healthIssues,
+        waterAccess: sv.waterAccess,
+        electricityAccess: sv.electricityAccess,
+        housingType: sv.housingType,
+        vulnerable: sv.vulnerable,
+        notes: sv.notes,
+        createdAt: sv.createdAt,
+      })),
+    });
+  } catch (error) {
+    logger.error("Erreur tracking enquêtes agent", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/* ===================================================================
+ * MA MISSION (agent) : démarrer / terminer / envoyer sa position / enquêtes
+ * =================================================================== */
+
+const MISSION_ACCESS = authorizeRoles(...MISSION_ROLES);
+
+/** GET /api/tracking/my-mission — mission en cours (reprise après changement de page ou rechargement) */
+trackingRouter.get("/my-mission", MISSION_ACCESS, async (req: Request, res: Response) => {
+  try {
+    const mission = await getActiveMission(getReqUser(req)!.id);
+    res.json({
+      success: true,
+      data: { active: !!mission, missionId: mission?.id ?? null, startedAt: mission?.startedAt ?? null },
+    });
+  } catch (error) {
+    logger.error("Erreur my-mission", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+trackingRouter.post("/my-mission/start", MISSION_ACCESS, async (req: Request, res: Response) => {
+  try {
+    const mission = await startMission(getReqUser(req)!.id);
+    res.json({ success: true, data: { active: true, missionId: mission.id, startedAt: mission.startedAt } });
+  } catch (error) {
+    logger.error("Erreur start mission", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** Seule action qui termine une mission : le bouton « Terminer la mission » */
+trackingRouter.post("/my-mission/finish", MISSION_ACCESS, async (req: Request, res: Response) => {
+  try {
+    await finishMission(getReqUser(req)!.id, "agent");
+    res.json({ success: true, data: { active: false } });
+  } catch (error) {
+    logger.error("Erreur finish mission", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** Repli HTTP si le WebSocket est indisponible */
+trackingRouter.post("/my-mission/location", MISSION_ACCESS, async (req: Request, res: Response) => {
+  try {
+    const result = await recordMissionPosition(getReqUser(req)!.id, req.body ?? {});
+    res.status(result.ok ? 200 : 400).json({ success: result.ok });
+  } catch (error) {
+    logger.error("Erreur position mission", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** GET /api/tracking/survey-targets?q= — ménages à enquêter (champs minimaux) */
+trackingRouter.get("/survey-targets", MISSION_ACCESS, async (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+
+    const rows = await prisma.beneficiary.findMany({
+      where: q
+        ? { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }] }
+        : undefined,
+      select: { id: true, firstName: true, lastName: true, project: { select: { name: true } } },
+      orderBy: { lastName: "asc" },
+      take: 25,
+    });
+
+    const surveyed = await prisma.survey.findMany({
+      where: { beneficiaryId: { in: rows.map((r) => r.id) } },
+      select: { beneficiaryId: true },
+      distinct: ["beneficiaryId"],
+    });
+    const done = new Set(surveyed.map((x) => x.beneficiaryId));
+
+    res.json({
+      success: true,
+      data: rows.map((r) => ({
+        id: r.id,
+        name: `${r.firstName} ${r.lastName}`,
+        projectName: r.project?.name ?? null,
+        surveyed: done.has(r.id),
+      })),
+    });
+  } catch (error) {
+    logger.error("Erreur survey-targets", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
+/** POST /api/tracking/surveys — enquête ménage (uniquement pendant une mission) */
+trackingRouter.post("/surveys", MISSION_ACCESS, async (req: Request, res: Response) => {
+  try {
+    const result = await createSurvey(getReqUser(req)!.id, req.body ?? {});
+
+    if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });
+
+    res.status(201).json({ success: true, data: { id: result.data.id } });
+  } catch (error) {
+    logger.error("Erreur création enquête", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
 
 /* ===================================================================
  * ROUTES PUBLIQUES (sans compte) — authentifiées par le jeton du lien

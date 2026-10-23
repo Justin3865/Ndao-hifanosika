@@ -4,9 +4,11 @@ import {
   getNotifications,
   getNotificationById,
   createNotification,
+  previewAudience,
   replyToNotification,
   markNotificationAsRead,
   markNotificationAsUnread,
+  markNotificationAsReceived,
   archiveNotification,
   unarchiveNotification,
   markAllNotificationsAsRead,
@@ -14,6 +16,8 @@ import {
   uploadAttachment,
   downloadAttachment,
 } from "../controllers/notification.controller";
+
+import { getPushKey, subscribePush, unsubscribePush } from "../controllers/push.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
@@ -67,6 +71,19 @@ router.get(
 );
 
 /**
+ * Web Push : clé publique, abonnement et désabonnement de l'appareil courant.
+ */
+router.get("/push/key", authorizeRoles(...ALL_ROLES), getPushKey);
+router.post("/push/subscribe", authorizeRoles(...ALL_ROLES), subscribePush);
+router.post("/push/unsubscribe", authorizeRoles(...ALL_ROLES), unsubscribePush);
+
+/**
+ * POST /api/notifications/audience/preview
+ * Nombre de destinataires d'une sélection (personnes, rôles, directions, mission).
+ */
+router.post("/audience/preview", authorizeRoles(...SENDER_ROLES), previewAudience);
+
+/**
  * PATCH /api/notifications/read-all
  */
 router.patch("/read-all", authorizeRoles(...ALL_ROLES), markAllNotificationsAsRead);
@@ -94,6 +111,12 @@ router.post("/:id/reply", authorizeRoles(...ALL_ROLES), replyToNotification);
  */
 router.patch("/:id/read", authorizeRoles(...ALL_ROLES), markNotificationAsRead);
 router.patch("/:id/unread", authorizeRoles(...ALL_ROLES), markNotificationAsUnread);
+
+/**
+ * PATCH /api/notifications/:id/received
+ * Accusé de réception de l'appareil (renseigne l'heure de réception).
+ */
+router.patch("/:id/received", authorizeRoles(...ALL_ROLES), markNotificationAsReceived);
 
 /**
  * PATCH /api/notifications/:id/archive  |  /unarchive

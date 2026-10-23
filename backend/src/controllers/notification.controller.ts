@@ -1,8 +1,10 @@
+import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import { logger } from "../config/logger";
 import { getReqUser } from "../utils/dataScope";
 import { db } from "../utils/db";
 import { emitToUser } from "../realtime/socket";
+import { pushToUser } from "../utils/webpush";
 
 import { sendError } from "../middlewares/error.middleware";
 /**
@@ -133,56 +135,172 @@ function parseAttachmentIds(raw: unknown): number[] | "invalid" {
 
 interface MessageInput {
   senderId: number;
-  recipientId: number;
+  senderName: string;
+  recipientIds: number[];
   title: string;
   message: string;
   type: string;
   replyToId?: number | null;
+  /** Identifiant commun des messages d'un envoi de groupe (null = message individuel). */
+  batchId?: string | null;
+  /** Nombre de participants du groupe, expéditeur compris. */
+  groupSize?: number | null;
   attachmentIds: number[];
   location: { latitude: number; longitude: number; accuracy: number | null } | null;
 }
 
-/** Crée le message, rattache les pièces jointes puis le pousse en temps réel. */
-async function createMessage(input: MessageInput): Promise<Row> {
-  const created = await db.$transaction(async (tx: Row) => {
-    const row = await tx.notification.create({
-      data: {
-        userId: input.recipientId,
-        senderId: input.senderId,
-        replyToId: input.replyToId ?? null,
-        title: input.title,
-        message: input.message,
-        type: input.type,
-        latitude: input.location?.latitude ?? null,
-        longitude: input.location?.longitude ?? null,
-        accuracy: input.location?.accuracy ?? null,
-      },
-    });
-
-    if (input.attachmentIds.length > 0) {
-      await tx.notificationAttachment.updateMany({
-        where: { id: { in: input.attachmentIds }, uploaderId: input.senderId, notificationId: null },
-        data: { notificationId: row.id },
-      });
-    }
-
-    return tx.notification.findUnique({ where: { id: row.id }, include: MESSAGE_INCLUDE });
-  });
-
-  const dto = toDto(created);
-  emitToUser(input.recipientId, "notification:new", dto);
-  return dto;
+/** Texte court affiché dans la notification système (PC / téléphone). */
+function pushBody(text: string, hasFiles: boolean, hasLocation: boolean): string {
+  if (text) return text;
+  if (hasFiles) return "📎 Pièce jointe";
+  if (hasLocation) return "📍 Position partagée";
+  return "";
 }
 
-/** Vérifie que les pièces jointes existent, appartiennent à l'expéditeur et sont libres. */
+/**
+ * Crée un message pour chaque destinataire (envoi individuel ou de groupe), rattache
+ * les mêmes pièces jointes à tous, puis le pousse en temps réel et en notification système.
+ */
+async function createMessages(input: MessageInput): Promise<Row[]> {
+  const created: Row[] = await db.$transaction(
+    async (tx: Row) => {
+      const rows: Row[] = [];
+
+      for (const recipientId of input.recipientIds) {
+        rows.push(
+          await tx.notification.create({
+            data: {
+              userId: recipientId,
+              senderId: input.senderId,
+              replyToId: input.replyToId ?? null,
+              batchId: input.batchId ?? null,
+              groupSize: input.groupSize ?? null,
+              title: input.title,
+              message: input.message,
+              type: input.type,
+              latitude: input.location?.latitude ?? null,
+              longitude: input.location?.longitude ?? null,
+              accuracy: input.location?.accuracy ?? null,
+              ...(input.attachmentIds.length > 0
+                ? { attachments: { connect: input.attachmentIds.map((id) => ({ id })) } }
+                : {}),
+            },
+            include: MESSAGE_INCLUDE,
+          }),
+        );
+      }
+
+      return rows;
+    },
+    { timeout: 120_000, maxWait: 10_000 },
+  );
+
+  const body = pushBody(input.message, input.attachmentIds.length > 0, !!input.location);
+
+  return created.map((row) => {
+    const dto = toDto(row);
+
+    emitToUser(row.userId, "notification:new", dto);
+
+    void pushToUser(row.userId, {
+      title: `${input.senderName} — ${input.title}`,
+      body,
+      url: `/notifications?source=${encodeURIComponent(`u:${input.senderId}`)}`,
+      tag: `ndao-msg-${row.id}`,
+    });
+
+    return dto;
+  });
+}
+
+/** Vérifie que les pièces jointes existent et ont bien été envoyées par l'expéditeur. */
 async function checkAttachments(userId: number, ids: number[]): Promise<boolean> {
   if (ids.length === 0) return true;
 
   const count = await db.notificationAttachment.count({
-    where: { id: { in: ids }, uploaderId: userId, notificationId: null },
+    where: { id: { in: ids }, uploaderId: userId },
   });
 
   return count === ids.length;
+}
+
+/* ------------------------------------------------------------------ */
+/* Destinataires : personne(s), rôles, directions / départements, mission */
+/* ------------------------------------------------------------------ */
+
+const AUDIENCE_ROLES = [
+  "ADMIN",
+  "DIRECTION",
+  "DSI",
+  "DAF",
+  "RH",
+  "COMMUNICATION",
+  "COORDINATOR",
+  "TUTEUR_L3",
+  "TUTEUR_M2",
+  "STAGIAIRE_L3",
+  "STAGIAIRE_M2",
+];
+
+const MAX_RECIPIENTS = 500;
+
+interface Audience {
+  userIds: number[];
+  roles: string[];
+  departmentIds: number[];
+  onMission: boolean;
+}
+
+function toIntList(raw: unknown): number[] | "invalid" {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) return "invalid";
+
+  const ids = Array.from(new Set(raw.map((value) => Number(value))));
+  return ids.some((id) => !Number.isInteger(id) || id <= 0) ? "invalid" : ids;
+}
+
+/** `audience` = { userIds, roles, departmentIds, onMission } ; l'ancien champ `userId` reste accepté. */
+function parseAudience(body: Row): Audience | "invalid" {
+  const source = body?.audience ?? {};
+
+  const userIds = toIntList(source.userIds);
+  const departmentIds = toIntList(source.departmentIds);
+
+  if (userIds === "invalid" || departmentIds === "invalid") return "invalid";
+
+  if (body?.userId !== undefined && body?.userId !== null && body?.userId !== "") {
+    const single = Number(body.userId);
+    if (!Number.isInteger(single) || single <= 0) return "invalid";
+    userIds.push(single);
+  }
+
+  const roles: string[] = Array.isArray(source.roles)
+    ? Array.from(new Set(source.roles.map((role: unknown) => String(role))))
+    : [];
+
+  if (roles.some((role) => !AUDIENCE_ROLES.includes(role))) return "invalid";
+
+  return { userIds, roles, departmentIds, onMission: source.onMission === true };
+}
+
+/** Comptes ACTIFS correspondant à l'union des critères (l'expéditeur est exclu). */
+async function resolveRecipients(audience: Audience, senderId: number): Promise<number[]> {
+  const or: Row[] = [];
+
+  if (audience.userIds.length) or.push({ id: { in: audience.userIds } });
+  if (audience.roles.length) or.push({ role: { in: audience.roles } });
+  if (audience.departmentIds.length) or.push({ departmentId: { in: audience.departmentIds } });
+  if (audience.onMission) or.push({ sharingLocation: true });
+
+  if (or.length === 0) return [];
+
+  const rows = (await db.user.findMany({
+    where: { status: "ACTIVE", id: { not: senderId }, OR: or },
+    select: { id: true },
+    take: MAX_RECIPIENTS + 1,
+  })) as Array<{ id: number }>;
+
+  return rows.map((row) => row.id);
 }
 
 async function pushUpdate(userId: number, id: number): Promise<Row> {
@@ -199,6 +317,12 @@ export async function getNotifications(
   try {
     const user = getReqUser(req);
     if (!user) return unauthorized(res);
+
+    // Ouverture de la boîte : tout ce qui n'était pas encore arrivé est « reçu » maintenant
+    await db.notification.updateMany({
+      where: { userId: user.id, receivedAt: null },
+      data: { receivedAt: new Date() },
+    });
 
     const rows = await db.notification.findMany({
       where: { userId: user.id },
@@ -253,7 +377,32 @@ export async function getNotificationById(
   }
 }
 
-/** Envoi d'un nouveau message (rôles autorisés par la route). */
+/** POST /api/notifications/audience/preview — nombre de destinataires d'une sélection. */
+export async function previewAudience(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
+
+    const audience = parseAudience(req.body);
+    if (audience === "invalid") return bad(res, "Sélection de destinataires invalide");
+
+    const ids = await resolveRecipients(audience, user.id);
+
+    res.status(200).json({
+      success: true,
+      data: { count: Math.min(ids.length, MAX_RECIPIENTS), tooMany: ids.length > MAX_RECIPIENTS },
+    });
+  } catch (error) {
+    logger.error("Erreur aperçu destinataires", error);
+
+    sendError(res, error, "Erreur lors du calcul des destinataires");
+  }
+}
+
+/** Envoi d'un nouveau message à une personne OU à un ou plusieurs groupes. */
 export async function createNotification(
   req: Request,
   res: Response,
@@ -262,16 +411,18 @@ export async function createNotification(
     const user = getReqUser(req);
     if (!user) return unauthorized(res);
 
-    const { userId, title, message, type } = req.body ?? {};
+    const { title, message, type } = req.body ?? {};
 
     const text = String(message ?? "").trim();
     const attachmentIds = parseAttachmentIds(req.body?.attachmentIds);
     const location = parseLocation(req.body);
+    const audience = parseAudience(req.body);
 
-    if (!userId || !String(title ?? "").trim()) {
-      return bad(res, "userId et title sont obligatoires");
+    if (!String(title ?? "").trim()) {
+      return bad(res, "Le titre est obligatoire");
     }
 
+    if (audience === "invalid") return bad(res, "Sélection de destinataires invalide");
     if (attachmentIds === "invalid") return bad(res, "Pièces jointes invalides");
     if (location === "invalid") return bad(res, "Position invalide");
     if (text.length > MAX_TEXT) return bad(res, "Message trop long");
@@ -286,26 +437,32 @@ export async function createNotification(
       return bad(res, "Type de notification invalide");
     }
 
-    const recipient = await db.user.findUnique({
-      where: { id: Number(userId) },
-      select: { id: true },
-    });
+    const recipientIds = await resolveRecipients(audience, user.id);
 
-    if (!recipient) {
-      res.status(404).json({
-        success: false,
-        message: "Destinataire introuvable",
-      });
-      return;
+    if (recipientIds.length === 0) {
+      return bad(res, "Aucun destinataire actif pour cette sélection");
+    }
+
+    if (recipientIds.length > MAX_RECIPIENTS) {
+      return bad(res, `Trop de destinataires (${MAX_RECIPIENTS} maximum par envoi)`);
     }
 
     if (!(await checkAttachments(user.id, attachmentIds))) {
-      return bad(res, "Pièce jointe introuvable ou déjà utilisée");
+      return bad(res, "Pièce jointe introuvable");
     }
 
-    const notification = await createMessage({
+    const sender = await db.user.findUnique({
+      where: { id: user.id },
+      select: { firstName: true, lastName: true },
+    });
+
+    const created = await createMessages({
       senderId: user.id,
-      recipientId: recipient.id,
+      senderName: sender ? `${sender.firstName} ${sender.lastName}`.trim() : "Nouveau message",
+      recipientIds,
+      // Envoi à plusieurs personnes = groupe : chacun pourra répondre à tout le groupe
+      batchId: recipientIds.length > 1 ? randomUUID() : null,
+      groupSize: recipientIds.length > 1 ? recipientIds.length + 1 : null,
       title: String(title).trim().slice(0, 200),
       message: text,
       type: normalizedType,
@@ -315,8 +472,12 @@ export async function createNotification(
 
     res.status(201).json({
       success: true,
-      message: "Notification créée avec succès",
-      data: notification,
+      message:
+        created.length > 1
+          ? `Message envoyé à ${created.length} destinataires`
+          : "Notification créée avec succès",
+      count: created.length,
+      data: created[0],
     });
   } catch (error) {
     logger.error("Erreur création notification", error);
@@ -355,7 +516,9 @@ export async function replyToNotification(
         id: true,
         title: true,
         senderId: true,
+        batchId: true,
         sender: { select: { id: true, status: true } },
+        user: { select: { firstName: true, lastName: true } },
       },
     });
 
@@ -373,14 +536,47 @@ export async function replyToNotification(
     }
 
     if (!(await checkAttachments(user.id, attachmentIds))) {
-      return bad(res, "Pièce jointe introuvable ou déjà utilisée");
+      return bad(res, "Pièce jointe introuvable");
     }
 
     const baseTitle = String(original.title).replace(/^(re:\s*)+/i, "");
 
-    const reply = await createMessage({
+    // Réponse à tout le groupe : expéditeur + tous les autres destinataires du même envoi
+    let recipientIds: number[] = [original.senderId];
+    let batchId: string | null = null;
+    let groupSize: number | null = null;
+
+    if (req.body?.scope === "group") {
+      if (!original.batchId) return bad(res, "Ce message n'a pas été envoyé à un groupe");
+
+      const members = (await db.notification.findMany({
+        where: { batchId: original.batchId },
+        select: { userId: true },
+      })) as Array<{ userId: number }>;
+
+      const ids = Array.from(new Set([original.senderId, ...members.map((member) => member.userId)])).filter(
+        (memberId) => memberId !== user.id,
+      );
+
+      const active = (await db.user.findMany({
+        where: { id: { in: ids }, status: "ACTIVE" },
+        select: { id: true },
+      })) as Array<{ id: number }>;
+
+      recipientIds = active.map((member) => member.id);
+
+      if (recipientIds.length === 0) return bad(res, "Aucun membre actif dans ce groupe");
+
+      batchId = original.batchId;
+      groupSize = ids.length + 1;
+    }
+
+    const [reply] = await createMessages({
       senderId: user.id,
-      recipientId: original.senderId,
+      senderName: `${original.user?.firstName ?? ""} ${original.user?.lastName ?? ""}`.trim() || "Réponse",
+      recipientIds,
+      batchId,
+      groupSize,
       title: `Re: ${baseTitle}`.slice(0, 200),
       message: text,
       type: "INFO",
@@ -391,7 +587,7 @@ export async function replyToNotification(
 
     res.status(201).json({
       success: true,
-      message: "Réponse envoyée",
+      message: recipientIds.length > 1 ? `Réponse envoyée au groupe (${recipientIds.length} personnes)` : "Réponse envoyée",
       data: reply,
     });
   } catch (error) {
@@ -448,6 +644,41 @@ export async function markNotificationAsUnread(
   res: Response,
 ): Promise<void> {
   return setRead(req, res, false);
+}
+
+/** PATCH /api/notifications/:id/received — l'appareil confirme la réception (idempotent). */
+export async function markNotificationAsReceived(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
+
+    const id = parseId(req, res);
+    if (id === null) return;
+
+    await db.notification.updateMany({
+      where: { id, userId: user.id, receivedAt: null },
+      data: { receivedAt: new Date() },
+    });
+
+    const notification = await db.notification.findFirst({
+      where: { id, userId: user.id },
+      include: MESSAGE_INCLUDE,
+    });
+
+    if (!notification) {
+      res.status(404).json({ success: false, message: "Notification introuvable" });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: toDto(notification) });
+  } catch (error) {
+    logger.error("Erreur accusé de réception", error);
+
+    sendError(res, error, "Erreur lors de l'accusé de réception");
+  }
 }
 
 async function setArchived(req: Request, res: Response, archived: boolean): Promise<void> {
@@ -639,7 +870,7 @@ export async function uploadAttachment(
     // Nettoyage des envois jamais rattachés à un message
     await db.notificationAttachment
       .deleteMany({
-        where: { notificationId: null, createdAt: { lt: new Date(Date.now() - ORPHAN_TTL_MS) } },
+        where: { notifications: { none: {} }, createdAt: { lt: new Date(Date.now() - ORPHAN_TTL_MS) } },
       })
       .catch(() => undefined);
 
@@ -676,15 +907,16 @@ export async function downloadAttachment(
         size: true,
         data: true,
         uploaderId: true,
-        notification: { select: { userId: true, senderId: true } },
+        notifications: { select: { userId: true, senderId: true } },
       },
     });
 
     const allowed =
       !!file &&
       (file.uploaderId === user.id ||
-        file.notification?.userId === user.id ||
-        file.notification?.senderId === user.id);
+        file.notifications.some(
+          (n: { userId: number; senderId: number | null }) => n.userId === user.id || n.senderId === user.id,
+        ));
 
     if (!file || !allowed) {
       res.status(404).json({ success: false, message: "Pièce jointe introuvable" });

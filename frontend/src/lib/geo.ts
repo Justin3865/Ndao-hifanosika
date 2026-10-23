@@ -40,3 +40,26 @@ export function haversineKm(
 
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+
+/** « 12,4 km » ou « 350 m » */
+export function fmtKm(km: number | null | undefined): string {
+  if (km === null || km === undefined || !Number.isFinite(km)) return "—";
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  return `${(Math.round(km * 10) / 10).toLocaleString("fr-FR")} km`;
+}
+
+/** Itinéraire Google Maps (application GPS du téléphone ou navigateur) vers une destination. */
+export function directionsUrl(
+  to: { latitude: number; longitude: number },
+  from?: { latitude: number; longitude: number } | null
+): string {
+  const params = new URLSearchParams({
+    api: "1",
+    destination: `${to.latitude},${to.longitude}`,
+    travelmode: "driving",
+  });
+
+  if (from) params.set("origin", `${from.latitude},${from.longitude}`);
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}

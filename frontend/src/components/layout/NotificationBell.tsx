@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, BellRing } from "lucide-react";
 import { fmtDateTime } from "@/lib/crud";
+import { useDeviceNotifications } from "@/hooks/useDeviceNotifications";
 import {
   SYSTEM_SOURCE,
   personName,
@@ -21,6 +22,8 @@ const DOT: Record<string, string> = {
 export function NotificationBell() {
   // Compteurs et liste mis à jour automatiquement (socket) : aucune action requise
   const { groups, unread, incoming, dismissIncoming } = useNotificationFeed();
+  // Notifications système (barre des tâches du PC / téléphone)
+  const device = useDeviceNotifications(incoming);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -63,6 +66,40 @@ export function NotificationBell() {
             <p className="font-semibold text-gray-900">Notifications</p>
             <span className="text-xs text-gray-500">{unread} non lue(s)</span>
           </div>
+
+          {device.permission !== "unsupported" && (
+            <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5 text-xs">
+              {device.permission === "denied" ? (
+                <p className="text-amber-700">
+                  Notifications bloquées par le navigateur : autorisez-les dans les réglages du site pour les recevoir sur cet appareil.
+                </p>
+              ) : device.permission === "granted" && device.enabled ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-green-700">
+                    <BellRing className="h-3.5 w-3.5" />
+                    {device.pushActive ? "Notifications de l'appareil activées" : "Actives tant que l'application est ouverte"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void device.disable()}
+                    disabled={device.busy}
+                    className="font-medium text-gray-500 hover:underline disabled:opacity-60"
+                  >
+                    Désactiver
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void device.enable()}
+                  disabled={device.busy}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  <BellRing className="h-3.5 w-3.5" /> Activer les notifications sur cet appareil
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="max-h-96 divide-y divide-gray-100 overflow-y-auto">
             {groups.length === 0 && (

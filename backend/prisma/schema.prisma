@@ -120,6 +120,9 @@ model User {
   notifications       Notification[] @relation("NotificationRecipient")
   sentNotifications   Notification[] @relation("NotificationSender")
   notificationFiles   NotificationAttachment[] @relation("AttachmentUploader")
+  pushSubscriptions   PushSubscription[] @relation("UserPushSubscriptions")
+  missions            Mission[]  @relation("MissionAgent")
+  surveys             Survey[]   @relation("SurveyAgent")
 
   @@index([departmentId])
   @@index([role])
@@ -244,6 +247,7 @@ model Beneficiary {
 
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   zone        Zone?    @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  surveys     Survey[]
 
   @@index([projectId])
   @@index([gender])
@@ -388,6 +392,9 @@ model Notification {
   type      NotificationType @default(INFO)
   read      Boolean          @default(false)
   archived  Boolean          @default(false)
+  batchId   String?
+  groupSize Int?
+  receivedAt DateTime?
   latitude  Float?
   longitude Float?
   accuracy  Float?
@@ -402,25 +409,39 @@ model Notification {
   @@index([userId, read])
   @@index([userId, senderId])
   @@index([userId, archived])
+  @@index([batchId])
   @@index([createdAt])
 }
 
 model NotificationAttachment {
-  id             Int       @id @default(autoincrement())
-  notificationId Int?
-  uploaderId     Int
-  name           String
-  mime           String
-  kind           String
-  size           Int
-  data           Bytes
-  createdAt      DateTime  @default(now())
+  id            Int      @id @default(autoincrement())
+  uploaderId    Int
+  name          String
+  mime          String
+  kind          String
+  size          Int
+  data          Bytes
+  createdAt     DateTime @default(now())
 
-  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: Cascade)
-  uploader       User          @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+  uploader      User           @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
 
-  @@index([notificationId])
   @@index([uploaderId])
+}
+
+// Abonnement Web Push d'un appareil (PC / téléphone) pour recevoir les notifications même application fermée.
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation("UserPushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Zone {
@@ -496,4 +517,70 @@ model EvaluationCampaign {
   createdById Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+/// Mission terrain : démarrée et terminée PAR L'AGENT (elle survit aux changements de page)
+model Mission {
+  id         Int       @id @default(autoincrement())
+  agentId    Int
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  distanceKm Float     @default(0)
+  endReason  String?
+
+  agent   User           @relation("MissionAgent", fields: [agentId], references: [id], onDelete: Cascade)
+  points  MissionPoint[]
+  surveys Survey[]
+
+  @@index([agentId])
+  @@index([startedAt])
+  @@index([endedAt])
+}
+
+model MissionPoint {
+  id        Int      @id @default(autoincrement())
+  missionId Int
+  latitude  Float
+  longitude Float
+  altitude  Float?
+  accuracy  Float?
+  heading   Float?
+  createdAt DateTime @default(now())
+
+  mission Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId, createdAt])
+  @@index([createdAt])
+}
+
+/// Enquête ménage réalisée par un agent PENDANT une mission (jeu de données d'entraînement du modèle)
+model Survey {
+  id                  Int      @id @default(autoincrement())
+  beneficiaryId       Int
+  agentId             Int
+  missionId           Int?
+  latitude            Float?
+  longitude           Float?
+  altitude            Float?
+  householdSize       Int?
+  monthlyIncome       Float?
+  childrenUnder5      Int?
+  outOfSchoolChildren Int?
+  mealsPerDay         Int?
+  hasDisability       Boolean  @default(false)
+  healthIssues        Boolean?
+  waterAccess         Boolean?
+  electricityAccess   Boolean?
+  housingType         String?
+  vulnerable          Boolean  @default(false)
+  notes               String?
+  createdAt           DateTime @default(now())
+
+  beneficiary Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  agent       User        @relation("SurveyAgent", fields: [agentId], references: [id], onDelete: Cascade)
+  mission     Mission?    @relation(fields: [missionId], references: [id], onDelete: SetNull)
+
+  @@index([beneficiaryId, createdAt])
+  @@index([agentId])
+  @@index([missionId])
 }

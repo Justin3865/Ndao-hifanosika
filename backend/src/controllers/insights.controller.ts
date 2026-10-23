@@ -3,6 +3,7 @@ import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
 import { sendError } from "../middlewares/error.middleware";
+import { detectWithAiService } from "../services/pyservices.service";
 /**
  * Analyses « IA » calculées en direct à partir de la base de données.
  * Méthode : règles + statistiques (moyennes, écart-type). Ce n'est PAS un modèle
@@ -239,6 +240,195 @@ function computeAnomalies(data: Data) {
   return anomalies.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
+
+/* ------------------- anomalies : règles + Isolation Forest ------------------- */
+
+type RuleAnomaly = ReturnType<typeof computeAnomalies>[number];
+
+interface SmartAnomaly extends RuleAnomaly {
+  /** "rules" = règles statistiques ; "isolation-forest" = service FastAPI (scikit-learn) */
+  source: "rules" | "isolation-forest";
+  score?: number;
+}
+
+interface EngineInfo {
+  name: string;
+  used: boolean;
+  latencyMs: number | null;
+  samples: Record<string, number>;
+  flagged: number;
+  reason: string | null;
+  checkedAt: string;
+}
+
+const FEATURE_LABEL: Record<string, string> = {
+  milestoneProgress: "avancement des jalons (%)",
+  activityCompletion: "activités terminées (%)",
+  evaluationAverage: "moyenne des évaluations",
+  timeElapsed: "temps écoulé (%)",
+  scheduleGap: "écart au calendrier (points)",
+  budgetUsedRatio: "budget consommé (%)",
+  overdueDays: "jours de retard",
+  progress: "progression (%)",
+  daysToDue: "jours avant l'échéance",
+  logBudget: "montant du budget (échelle log)",
+  shareOfProjectBudget: "part du budget du projet (%)",
+};
+
+let smartCache: { at: number; value: { anomalies: SmartAnomaly[]; engine: EngineInfo } } | null = null;
+const SMART_TTL_MS = 30_000;
+
+async function smartAnomalies(data: Data): Promise<{ anomalies: SmartAnomaly[]; engine: EngineInfo }> {
+  if (smartCache && Date.now() - smartCache.at < SMART_TTL_MS) return smartCache.value;
+
+  const rules: SmartAnomaly[] = computeAnomalies(data).map((a) => ({ ...a, source: "rules" as const }));
+  const engine: EngineInfo = {
+    name: "Isolation Forest (service FastAPI)",
+    used: false,
+    latencyMs: null,
+    samples: {},
+    flagged: 0,
+    reason: null,
+    checkedAt: new Date().toISOString(),
+  };
+
+  const started = Date.now();
+  const found: SmartAnomaly[] = [];
+  const now = Date.now();
+
+  try {
+    const performance = computePerformance(data);
+
+    const spentBy = new Map<number, number>();
+    for (const a of data.activities) {
+      if (a.status !== "CANCELLED") spentBy.set(a.projectId, (spentBy.get(a.projectId) ?? 0) + Number(a.budget ?? 0));
+    }
+
+    const projectBudget = new Map(data.projects.map((p) => [p.id, Number(p.budget ?? 0)]));
+    const projectName = (id: number) => data.projects.find((p) => p.id === id)?.name ?? `Projet #${id}`;
+
+    const jobs: Array<{
+      kind: string;
+      features: string[];
+      rows: Array<{ id: string; values: Array<number | null>; title: string; link: string; label: string }>;
+    }> = [
+      {
+        kind: "project",
+        features: ["milestoneProgress", "activityCompletion", "evaluationAverage", "timeElapsed", "scheduleGap", "budgetUsedRatio"],
+        rows: performance.map((p) => {
+          const budget = projectBudget.get(p.projectId) ?? 0;
+          return {
+            id: `project:${p.projectId}`,
+            values: [
+              p.factors.milestoneProgress, p.factors.activityCompletion, p.factors.evaluationAverage,
+              p.factors.timeElapsed, p.factors.scheduleGap,
+              budget > 0 ? round(((spentBy.get(p.projectId) ?? 0) / budget) * 100) : null,
+            ],
+            title: `Projet atypique : ${p.name}`,
+            link: `/projects/${p.projectId}`,
+            label: p.name,
+          };
+        }),
+      },
+      {
+        kind: "milestone",
+        features: ["overdueDays", "progress", "daysToDue"],
+        rows: data.milestones.map((m) => {
+          const due = m.dueDate ? new Date(m.dueDate).getTime() : null;
+          const days = due !== null ? Math.round((due - now) / DAY) : null;
+          return {
+            id: `milestone:${m.id}`,
+            values: [
+              due !== null && !m.completedAt ? Math.max(0, -(days as number)) : 0,
+              Number(m.progress ?? 0),
+              days !== null ? Math.max(-365, Math.min(365, days)) : null,
+            ],
+            title: `Jalon atypique : ${m.title}`,
+            link: `/milestones/${m.id}`,
+            label: `${m.title} (${projectName(m.projectId)})`,
+          };
+        }),
+      },
+      {
+        kind: "activity",
+        features: ["logBudget", "shareOfProjectBudget"],
+        rows: data.activities
+          .filter((a) => a.status !== "CANCELLED")
+          .map((a) => {
+            const budget = Number(a.budget ?? 0);
+            const total = projectBudget.get(a.projectId) ?? 0;
+            return {
+              id: `activity:${a.id}`,
+              values: [Math.log1p(budget), total > 0 ? round((budget / total) * 100, 2) : null],
+              title: `Activité atypique #${a.id}`,
+              link: `/activities/${a.id}`,
+              label: `Activité #${a.id} (${projectName(a.projectId)})`,
+            };
+          }),
+      },
+    ];
+
+    let readyCount = 0;
+
+    for (const job of jobs) {
+      try {
+        const out = await detectWithAiService(job.kind, job.features, job.rows.map((r) => ({ id: r.id, values: r.values })));
+        engine.samples[job.kind] = out.meta.n_samples;
+        if (out.ready) readyCount += 1;
+
+        if (!out.ready) {
+          engine.reason = engine.reason ?? out.reason ?? null;
+          continue;
+        }
+
+        const byId = new Map(job.rows.map((r) => [r.id, r]));
+
+        for (const result of out.results.filter((r) => r.anomaly)) {
+          const row = byId.get(result.id);
+          if (!row) continue;
+
+          const why = result.reasons.length
+            ? ` Valeurs inhabituelles : ${result.reasons
+                .map((r) => `${FEATURE_LABEL[r.feature] ?? r.feature} = ${r.value} (médiane du lot : ${r.median})`)
+                .join(" ; ")}.`
+            : "";
+
+          found.push({
+            type: `ML_OUTLIER_${job.kind.toUpperCase()}`,
+            severity: result.score >= 70 ? "HIGH" : "MEDIUM",
+            title: row.title,
+            detail: `${row.label} s'écarte nettement des autres (score d'anomalie ${result.score}/100).${why}`,
+            link: row.link,
+            source: "isolation-forest",
+            score: result.score,
+          });
+        }
+      } catch (error) {
+        engine.reason = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    engine.used = readyCount > 0;
+  } catch (error) {
+    engine.reason = error instanceof Error ? error.message : String(error);
+  }
+
+  engine.latencyMs = Date.now() - started;
+  engine.flagged = found.length;
+
+  if (engine.used) logger.info(`Isolation Forest : ${found.length} anomalie(s) sur ${JSON.stringify(engine.samples)} (${engine.latencyMs} ms)`);
+  else logger.warn(`Isolation Forest non utilisé : ${engine.reason ?? "inconnu"} — règles statistiques seules`);
+
+  const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  const value = {
+    anomalies: [...rules, ...found].sort((a, b) => order[a.severity] - order[b.severity] || (b.score ?? 0) - (a.score ?? 0)),
+    engine,
+  };
+
+  smartCache = { at: Date.now(), value };
+  return value;
+}
+
 /* -------------------------- risque d'abandon -------------------------- */
 
 function computeDropoutRisk(data: Data) {
@@ -288,9 +478,10 @@ function computeDropoutRisk(data: Data) {
 
 /* ------------------------------- synthèse ------------------------------- */
 
-function computeSummary(data: Data) {
+async function computeSummary(data: Data) {
   const performance = computePerformance(data).filter((p) => p.score !== null);
-  const anomalies = computeAnomalies(data);
+  const smart = await smartAnomalies(data);
+  const anomalies = smart.anomalies;
   const risk = computeDropoutRisk(data);
 
   const best = [...performance].sort((a, b) => (b.score as number) - (a.score as number))[0];
@@ -335,7 +526,10 @@ function computeSummary(data: Data) {
       highRiskBeneficiaries: highRisk,
     },
     generatedAt: new Date().toISOString(),
-    method: "Règles et statistiques calculées sur les données réelles (pas de modèle entraîné).",
+    method: smart.engine.used
+      ? "Règles statistiques + détection d'anomalies par Isolation Forest (service FastAPI)."
+      : "Règles et statistiques calculées sur les données réelles (pas de modèle entraîné).",
+    engine: smart.engine,
   };
 }
 
@@ -345,7 +539,7 @@ function handler(compute: (data: Data) => unknown) {
   return async (_req: Request, res: Response) => {
     try {
       const data = await loadData();
-      res.json({ success: true, data: compute(data) });
+      res.json({ success: true, data: await compute(data) });
     } catch (error) {
       logger.error("Erreur analyses IA", error);
       sendError(res, error, "Erreur lors du calcul des analyses");
@@ -354,6 +548,15 @@ function handler(compute: (data: Data) => unknown) {
 }
 
 export const getPerformance = handler(computePerformance);
-export const getAnomalies = handler(computeAnomalies);
+export const getAnomalies = async (_req: Request, res: Response) => {
+  try {
+    const data = await loadData();
+    const { anomalies, engine } = await smartAnomalies(data);
+    res.json({ success: true, data: anomalies, engine });
+  } catch (error) {
+    logger.error("Erreur analyses IA (anomalies)", error);
+    sendError(res, error, "Erreur lors du calcul des analyses");
+  }
+};
 export const getDropoutRiskList = handler(computeDropoutRisk);
 export const getSummary = handler(computeSummary);

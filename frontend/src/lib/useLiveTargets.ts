@@ -290,7 +290,13 @@ export function useAgents(enabled: boolean, hq: { latitude: number; longitude: n
     const load = () =>
       api
         .get("/tracking/agents")
-        .then((res) => setAgents((cur) => [...(res.data?.data ?? []), ...cur.filter((a) => a.extra && a.status === "MISSION")]))
+        .then((res) =>
+          setAgents((cur) => {
+            const fresh: Agent[] = res.data?.data ?? [];
+            const known = new Set(fresh.map((a) => a.id));
+            return [...fresh, ...cur.filter((a) => a.extra && a.status === "MISSION" && !known.has(a.id))];
+          })
+        )
         .catch(() => undefined)
         .finally(() => setLoading(false));
 
@@ -372,6 +378,7 @@ export interface FieldSummary {
   agentsOnline: number;
   agentsOnMission: number;
   surveyedHouseholds: number;
+  surveysTotal?: number;
   priorityHouseholds: number;
   priorityToSurvey: number;
   method: "ML" | "HEURISTIQUE";
