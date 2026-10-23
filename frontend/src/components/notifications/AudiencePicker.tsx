@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Search, Users } from "lucide-react";
 import api from "@/lib/axios";
 import type { LookupItem } from "@/lib/crud";
+import { roleLabel } from "@/lib/roles";
 
 /** Destinataires : une personne, ou un ou plusieurs groupes (rôles, directions, agents en mission). */
 export interface AudienceValue {
@@ -58,8 +59,19 @@ const chip = (active: boolean) =>
     active ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
   }`;
 
+interface Recipient {
+  id: number;
+  name: string;
+  role: string;
+  department: string | null;
+}
+
 export function AudiencePicker({ value, onChange, users, departments }: Props) {
   const [count, setCount] = useState<{ n: number; tooMany: boolean } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+  const [filter, setFilter] = useState("");
 
   const has = (token: string) => value.tokens.includes(token);
 
@@ -95,6 +107,35 @@ export function AudiencePicker({ value, onChange, users, departments }: Props) {
       window.clearTimeout(timer);
     };
   }, [value]);
+
+  // Liste détaillée : chargée quand on déplie « N destinataires », puis tenue à jour si la sélection change
+  useEffect(() => {
+    if (!open || audienceIsEmpty(value)) {
+      setRecipients([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingList(true);
+
+    const timer = window.setTimeout(() => {
+      api
+        .post("/notifications/audience/recipients", { audience: audienceToPayload(value) })
+        .then((res) => !cancelled && setRecipients(res.data?.data?.recipients ?? []))
+        .catch(() => !cancelled && setRecipients([]))
+        .finally(() => !cancelled && setLoadingList(false));
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, value]);
+
+  const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const shown = filter.trim()
+    ? recipients.filter((r) => normalize(`${r.name} ${roleLabel(r.role)} ${r.department ?? ""}`).includes(normalize(filter.trim())))
+    : recipients;
 
   return (
     <div className="space-y-3">
@@ -167,18 +208,70 @@ export function AudiencePicker({ value, onChange, users, departments }: Props) {
       )}
 
       {count && (
-        <p
-          className={`flex items-center gap-1.5 text-sm font-medium ${
-            count.tooMany ? "text-red-600" : count.n === 0 ? "text-amber-600" : "text-green-700"
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          {count.tooMany
-            ? "Trop de destinataires (500 maximum par envoi)"
-            : count.n === 0
-              ? "Aucun destinataire actif pour cette sélection"
-              : `${count.n} destinataire${count.n > 1 ? "s" : ""}`}
-        </p>
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={count.tooMany || count.n === 0}
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className={`flex items-center gap-1.5 rounded-lg text-sm font-medium ${
+              count.tooMany ? "text-red-600" : count.n === 0 ? "text-amber-600" : "text-green-700 hover:underline"
+            }`}
+            title={count.n > 0 && !count.tooMany ? "Voir la liste des destinataires" : undefined}
+          >
+            <Users className="h-4 w-4" />
+            {count.tooMany
+              ? "Trop de destinataires (500 maximum par envoi)"
+              : count.n === 0
+                ? "Aucun destinataire actif pour cette sélection"
+                : `${count.n} destinataire${count.n > 1 ? "s" : ""}`}
+            {count.n > 0 && !count.tooMany && (open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+          </button>
+
+          {open && count.n > 0 && !count.tooMany && (
+            <div className="rounded-xl border border-gray-200 bg-white">
+              {recipients.length > 8 && (
+                <div className="relative border-b border-gray-100 p-2">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={filter}
+                    onChange={(event) => setFilter(event.target.value)}
+                    placeholder="Filtrer la liste…"
+                    className="w-full rounded-lg border border-gray-200 py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
+
+              <ul className="max-h-64 divide-y divide-gray-100 overflow-y-auto">
+                {loadingList && recipients.length === 0 && (
+                  <li className="flex items-center gap-2 px-3 py-3 text-sm text-gray-500">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
+                  </li>
+                )}
+
+                {shown.map((person) => (
+                  <li key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                        {person.name.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="truncate font-medium text-gray-900">{person.name}</span>
+                    </span>
+
+                    <span className="flex shrink-0 flex-wrap justify-end gap-1 text-[11px]">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">{roleLabel(person.role)}</span>
+                      {person.department && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">{person.department}</span>}
+                    </span>
+                  </li>
+                ))}
+
+                {!loadingList && shown.length === 0 && recipients.length > 0 && (
+                  <li className="px-3 py-3 text-sm text-gray-500">Aucun résultat.</li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

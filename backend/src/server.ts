@@ -2,6 +2,7 @@ import http from "http";
 import app from "./app";
 import { initSocket } from "./realtime/socket";
 import { startFieldJobs } from "./services/fieldJobs.service";
+import { startScheduledMessageWorker } from "./controllers/notification.controller";
 import { ensureDefaultZones } from "./routes/zones.routes";
 import { env } from "./config/env";
 import {
@@ -18,6 +19,7 @@ async function startServer() {
     initSocket(server);
     void ensureDefaultZones();
     startFieldJobs();
+    startScheduledMessageWorker();
 
     server.listen(env.PORT, () => {
       logger.success(

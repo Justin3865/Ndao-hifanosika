@@ -5,6 +5,9 @@ import {
   getNotificationById,
   createNotification,
   previewAudience,
+  listAudienceRecipients,
+  listScheduled,
+  cancelScheduled,
   replyToNotification,
   markNotificationAsRead,
   markNotificationAsUnread,
@@ -82,6 +85,19 @@ router.post("/push/unsubscribe", authorizeRoles(...ALL_ROLES), unsubscribePush);
  * Nombre de destinataires d'une sélection (personnes, rôles, directions, mission).
  */
 router.post("/audience/preview", authorizeRoles(...SENDER_ROLES), previewAudience);
+
+/**
+ * POST /api/notifications/audience/recipients
+ * Liste détaillée (nom, rôle, direction) des destinataires d'une sélection.
+ */
+router.post("/audience/recipients", authorizeRoles(...SENDER_ROLES), listAudienceRecipients);
+
+/**
+ * GET /api/notifications/scheduled  |  DELETE /api/notifications/scheduled/:id
+ * Messages programmés de l'expéditeur : liste et annulation.
+ */
+router.get("/scheduled", authorizeRoles(...SENDER_ROLES), listScheduled);
+router.delete("/scheduled/:id", authorizeRoles(...SENDER_ROLES), cancelScheduled);
 
 /**
  * PATCH /api/notifications/read-all

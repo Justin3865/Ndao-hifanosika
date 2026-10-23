@@ -7,16 +7,19 @@ import {
   Image as ImageIcon,
   Loader2,
   MapPin,
+  Mic,
   Music,
   Paperclip,
   Send,
   Smile,
+  Square,
   Video as VideoIcon,
   X,
 } from "lucide-react";
 import api from "@/lib/axios";
 import { errorMessage } from "@/lib/crud";
 import type { AttachmentKind, AttachmentMeta } from "@/hooks/useNotificationFeed";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/draft";
 import { formatSize } from "./MessageAttachments";
 
 export interface ComposerPayload {
@@ -37,18 +40,38 @@ interface Props {
   allowLocation?: boolean;
   autoFocus?: boolean;
   rows?: number;
+  /** Identifiant du brouillon : le texte, les pièces jointes et la position sont conservés si on quitte la page. */
+  draftKey?: string;
+  /** Message vocal (micro). Activé par défaut. */
+  allowVoice?: boolean;
 }
+
+interface ComposerDraft {
+  text: string;
+  attachments: AttachmentMeta[];
+  location: { latitude: number; longitude: number; accuracy: number } | null;
+}
+
+const MAX_VOICE_SECONDS = 10 * 60;
 
 interface Staged {
   key: string;
-  file: File;
+  /** Absent pour une pièce jointe restaurée depuis un brouillon (déjà envoyée au serveur). */
+  file?: File;
+  name: string;
+  size: number;
+  kind: AttachmentKind;
   status: "uploading" | "done" | "error";
   progress: number;
   attachment?: AttachmentMeta;
   error?: string;
   preview?: string;
+  /** Écoute locale d'un message vocal avant l'envoi */
+  audioUrl?: string;
   abort: AbortController;
 }
+
+const clock = (total: number) => `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 10;
@@ -109,6 +132,8 @@ export function MessageComposer({
   allowLocation = true,
   autoFocus = false,
   rows = 3,
+  draftKey,
+  allowVoice = true,
 }: Props) {
   const [text, setText] = useState("");
   const [staged, setStaged] = useState<Staged[]>([]);
@@ -117,6 +142,16 @@ export function MessageComposer({
   const [menu, setMenu] = useState<"" | "attach" | "emoji">("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [restored, setRestored] = useState(false);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const discardRef = useRef(false);
+  const draftId = draftKey ? `composer:${draftKey}` : null;
 
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -140,10 +175,61 @@ export function MessageComposer({
       stagedRef.current.forEach((item) => {
         if (item.status === "uploading") item.abort.abort();
         if (item.preview) URL.revokeObjectURL(item.preview);
+        if (item.audioUrl) URL.revokeObjectURL(item.audioUrl);
       });
+
+      // Micro coupé si on quitte la page pendant l'enregistrement
+      discardRef.current = true;
+      if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) window.clearInterval(timerRef.current);
     },
     [],
   );
+
+  // Brouillon : restauration au montage
+  useEffect(() => {
+    if (!draftId) return;
+
+    const draft = loadDraft<ComposerDraft>(draftId);
+    if (!draft) return;
+
+    if (draft.text) setText(draft.text);
+    if (draft.location) setLocation(draft.location);
+
+    if (draft.attachments?.length) {
+      setStaged(
+        draft.attachments.map((attachment) => ({
+          key: `draft-${attachment.id}`,
+          name: attachment.name,
+          size: attachment.size,
+          kind: attachment.kind,
+          status: "done" as const,
+          progress: 100,
+          attachment,
+          abort: new AbortController(),
+        })),
+      );
+    }
+
+    if (draft.text || draft.location || draft.attachments?.length) setRestored(true);
+  }, [draftId]);
+
+  // Brouillon : sauvegarde automatique (texte, pièces jointes déjà envoyées, position)
+  useEffect(() => {
+    if (!draftId) return;
+
+    const timer = window.setTimeout(() => {
+      const attachments = staged
+        .filter((item) => item.status === "done" && item.attachment)
+        .map((item) => item.attachment as AttachmentMeta);
+
+      if (!text.trim() && attachments.length === 0 && !location) clearDraft(draftId);
+      else saveDraft<ComposerDraft>(draftId, { text, attachments, location });
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [draftId, text, staged, location]);
 
   useEffect(() => {
     if (autoFocus) areaRef.current?.focus();
@@ -153,6 +239,8 @@ export function MessageComposer({
     setStaged((cur) => cur.map((item) => (item.key === key ? { ...item, ...changes } : item)));
 
   const upload = (item: Staged) => {
+    if (!item.file) return;
+
     api
       .post(
         `/notifications/attachments?name=${encodeURIComponent(item.file.name)}&mime=${encodeURIComponent(
@@ -164,7 +252,7 @@ export function MessageComposer({
           timeout: 300_000,
           signal: item.abort.signal,
           onUploadProgress: (event) => {
-            const total = event.total || item.file.size || 1;
+            const total = event.total || item.size || 1;
             patch(item.key, { progress: Math.min(99, Math.round((event.loaded / total) * 100)) });
           },
         },
@@ -178,10 +266,14 @@ export function MessageComposer({
 
   const addFiles = (list: FileList | null) => {
     if (!list || list.length === 0) return;
+    addFileList(Array.from(list));
+  };
+
+  const addFileList = (files: File[]) => {
+    if (files.length === 0) return;
     setError("");
 
     const room = MAX_FILES - stagedRef.current.length;
-    const files = Array.from(list);
 
     if (files.length > room) setError(`${MAX_FILES} pièces jointes maximum par message.`);
 
@@ -201,9 +293,13 @@ export function MessageComposer({
       added.push({
         key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         file,
+        name: file.name,
+        size: file.size,
+        kind: guessKind(file),
         status: "uploading",
         progress: 0,
         preview: guessKind(file) === "IMAGE" ? URL.createObjectURL(file) : undefined,
+        audioUrl: guessKind(file) === "AUDIO" ? URL.createObjectURL(file) : undefined,
         abort: new AbortController(),
       });
     }
@@ -217,6 +313,7 @@ export function MessageComposer({
   const removeStaged = (item: Staged) => {
     if (item.status === "uploading") item.abort.abort();
     if (item.preview) URL.revokeObjectURL(item.preview);
+    if (item.audioUrl) URL.revokeObjectURL(item.audioUrl);
     setStaged((cur) => cur.filter((entry) => entry.key !== item.key));
   };
 
@@ -262,13 +359,98 @@ export function MessageComposer({
     });
   };
 
+  /* ----------------------------- message vocal ----------------------------- */
+
+  const releaseMic = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const stopRecording = (discard = false) => {
+    discardRef.current = discard;
+
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop(); // la suite est traitée dans onstop
+    } else {
+      releaseMic();
+      setRecording(false);
+    }
+  };
+
+  const startRecording = async () => {
+    setError("");
+    setMenu("");
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("L'enregistrement vocal n'est pas disponible sur ce navigateur (une connexion HTTPS est nécessaire).");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((type) =>
+        MediaRecorder.isTypeSupported(type),
+      );
+
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      discardRef.current = false;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const type = recorder.mimeType || mime || "audio/webm";
+
+        releaseMic();
+        setRecording(false);
+
+        if (discardRef.current || chunksRef.current.length === 0) return;
+
+        const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+
+        addFileList([new File([new Blob(chunksRef.current, { type })], `vocal-${stamp}.${extension}`, { type })]);
+      };
+
+      recorder.start(250);
+      recorderRef.current = recorder;
+      setSeconds(0);
+      setRecording(true);
+
+      timerRef.current = window.setInterval(() => setSeconds((value) => value + 1), 1000);
+    } catch (err) {
+      releaseMic();
+      const denied = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
+      setError(
+        denied
+          ? "Accès au micro refusé : autorisez le micro pour ce site dans le navigateur."
+          : "Micro introuvable ou indisponible sur cet appareil.",
+      );
+    }
+  };
+
+  // Arrêt automatique à 10 minutes
+  useEffect(() => {
+    if (recording && seconds >= MAX_VOICE_SECONDS) stopRecording(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording, seconds]);
+
   const uploading = staged.some((item) => item.status === "uploading");
   const failed = staged.some((item) => item.status === "error");
   const ready = staged.filter((item) => item.status === "done" && item.attachment);
   const empty = !text.trim() && ready.length === 0 && !location;
 
   const submit = async () => {
-    if (sending || uploading || empty) return;
+    if (sending || uploading || empty || recording) return;
 
     if (failed) {
       setError("Retirez les fichiers en échec avant d'envoyer.");
@@ -285,7 +467,12 @@ export function MessageComposer({
         ...(location ?? {}),
       });
 
-      staged.forEach((item) => item.preview && URL.revokeObjectURL(item.preview));
+      staged.forEach((item) => {
+        if (item.preview) URL.revokeObjectURL(item.preview);
+        if (item.audioUrl) URL.revokeObjectURL(item.audioUrl);
+      });
+      if (draftId) clearDraft(draftId);
+      setRestored(false);
       setStaged([]);
       setLocation(null);
       setText("");
@@ -350,8 +537,33 @@ export function MessageComposer({
             </button>
           )}
 
+          {allowVoice && (
+            <button
+              type="button"
+              onClick={() => (recording ? stopRecording(false) : void startRecording())}
+              className={`rounded-lg p-2 ${recording ? "bg-red-100 text-red-600" : "text-gray-600 hover:bg-gray-100"}`}
+              title={recording ? "Terminer l'enregistrement" : "Enregistrer un message vocal"}
+              aria-label={recording ? "Terminer l'enregistrement" : "Enregistrer un message vocal"}
+            >
+              {recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </button>
+          )}
+
           <span className="ml-auto text-[11px] text-gray-400">Ctrl + Entrée pour envoyer</span>
         </div>
+
+        {recording && (
+          <div className="flex items-center gap-3 rounded-b-xl border-t border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
+            <span className="font-medium">Enregistrement… {clock(seconds)}</span>
+            <button type="button" onClick={() => stopRecording(true)} className="ml-auto rounded-lg px-2 py-1 text-xs font-medium hover:bg-red-100">
+              Annuler
+            </button>
+            <button type="button" onClick={() => stopRecording(false)} className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700">
+              Terminer
+            </button>
+          </div>
+        )}
 
         {menu === "emoji" && (
           <div className="absolute bottom-full left-0 z-30 mb-2 grid max-h-52 w-72 max-w-[92vw] grid-cols-8 gap-0.5 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
@@ -407,7 +619,7 @@ export function MessageComposer({
       {(staged.length > 0 || location) && (
         <div className="flex flex-wrap gap-2">
           {staged.map((item) => {
-            const Icon = iconFor(guessKind(item.file));
+            const Icon = iconFor(item.kind);
 
             return (
               <div
@@ -426,12 +638,16 @@ export function MessageComposer({
                 )}
 
                 <span className="min-w-0">
-                  <span className="block max-w-[11rem] truncate font-medium text-gray-800">{item.file.name}</span>
+                  <span className="block max-w-[11rem] truncate font-medium text-gray-800">{item.name}</span>
                   <span className={item.status === "error" ? "text-red-600" : "text-gray-500"}>
                     {item.status === "uploading" && `Envoi… ${item.progress}%`}
-                    {item.status === "done" && formatSize(item.file.size)}
+                    {item.status === "done" && formatSize(item.size)}
                     {item.status === "error" && (item.error ?? "Échec")}
                   </span>
+                  {item.audioUrl && (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <audio src={item.audioUrl} controls className="mt-1 h-8 w-48 max-w-full" />
+                  )}
                 </span>
 
                 {item.status === "uploading" && (
@@ -476,13 +692,39 @@ export function MessageComposer({
         </div>
       )}
 
+      {restored && (
+        <p className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+          <span>📝 Brouillon retrouvé : vous pouvez continuer là où vous vous étiez arrêté.</span>
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => {
+              if (draftId) clearDraft(draftId);
+              staged.forEach((item) => {
+                if (item.preview) URL.revokeObjectURL(item.preview);
+                if (item.audioUrl) URL.revokeObjectURL(item.audioUrl);
+              });
+              setStaged([]);
+              setLocation(null);
+              setText("");
+              setRestored(false);
+            }}
+          >
+            Effacer
+          </button>
+        </p>
+      )}
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex justify-end gap-2">
         {onCancel && (
           <button
             type="button"
-            onClick={onCancel}
+            onClick={() => {
+              if (draftId) clearDraft(draftId);
+              onCancel();
+            }}
             className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Annuler
@@ -492,7 +734,7 @@ export function MessageComposer({
         <button
           type="button"
           onClick={() => void submit()}
-          disabled={sending || uploading || empty}
+          disabled={sending || uploading || empty || recording}
           className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {sending || uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

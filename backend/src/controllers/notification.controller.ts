@@ -23,6 +23,7 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 Mo par pièce jointe
 const MAX_ATTACHMENTS = 10;
 const MAX_TEXT = 5000;
 const ORPHAN_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_SCHEDULE_MS = 90 * 24 * 60 * 60 * 1000;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any;
@@ -451,6 +452,43 @@ export async function createNotification(
       return bad(res, "Pièce jointe introuvable");
     }
 
+    // Programmation : le message est enregistré puis envoyé automatiquement à la date choisie
+    const scheduledRaw = req.body?.scheduledAt;
+
+    if (scheduledRaw !== undefined && scheduledRaw !== null && scheduledRaw !== "") {
+      const when = new Date(String(scheduledRaw));
+
+      if (Number.isNaN(when.getTime())) return bad(res, "Date de programmation invalide");
+      if (when.getTime() < Date.now() + 60_000) return bad(res, "Choisissez une date au moins 1 minute dans le futur");
+      if (when.getTime() > Date.now() + MAX_SCHEDULE_MS) return bad(res, "La programmation est limitée à 90 jours");
+
+      const row = await db.scheduledMessage.create({
+        data: {
+          senderId: user.id,
+          audience,
+          title: String(title).trim().slice(0, 200),
+          message: text,
+          type: normalizedType,
+          latitude: location?.latitude ?? null,
+          longitude: location?.longitude ?? null,
+          accuracy: location?.accuracy ?? null,
+          scheduledAt: when,
+          recipientCount: recipientIds.length,
+          ...(attachmentIds.length > 0 ? { attachments: { connect: attachmentIds.map((id) => ({ id })) } } : {}),
+        },
+        select: { id: true, scheduledAt: true },
+      });
+
+      res.status(201).json({
+        success: true,
+        scheduled: true,
+        message: `Message programmé pour le ${when.toLocaleString("fr-FR")} (${recipientIds.length} destinataire${recipientIds.length > 1 ? "s" : ""})`,
+        count: recipientIds.length,
+        data: row,
+      });
+      return;
+    }
+
     const sender = await db.user.findUnique({
       where: { id: user.id },
       select: { firstName: true, lastName: true },
@@ -870,7 +908,7 @@ export async function uploadAttachment(
     // Nettoyage des envois jamais rattachés à un message
     await db.notificationAttachment
       .deleteMany({
-        where: { notifications: { none: {} }, createdAt: { lt: new Date(Date.now() - ORPHAN_TTL_MS) } },
+        where: { notifications: { none: {} }, scheduled: { none: {} }, createdAt: { lt: new Date(Date.now() - ORPHAN_TTL_MS) } },
       })
       .catch(() => undefined);
 
@@ -941,4 +979,201 @@ export async function downloadAttachment(
 
     sendError(res, error, "Erreur lors du téléchargement de la pièce jointe");
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Liste détaillée des destinataires d'une sélection                    */
+/* ------------------------------------------------------------------ */
+
+/** POST /api/notifications/audience/recipients — qui recevra le message (nom, rôle, direction). */
+export async function listAudienceRecipients(req: Request, res: Response): Promise<void> {
+  try {
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
+
+    const audience = parseAudience(req.body);
+    if (audience === "invalid") return bad(res, "Sélection de destinataires invalide");
+
+    const ids = await resolveRecipients(audience, user.id);
+    const shown = ids.slice(0, MAX_RECIPIENTS);
+
+    const rows = (await db.user.findMany({
+      where: { id: { in: shown } },
+      select: { id: true, firstName: true, lastName: true, role: true, department: { select: { name: true } } },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    })) as Array<{ id: number; firstName: string; lastName: string; role: string; department: { name: string } | null }>;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        count: shown.length,
+        tooMany: ids.length > MAX_RECIPIENTS,
+        recipients: rows.map((r) => ({
+          id: r.id,
+          name: `${r.firstName} ${r.lastName}`.trim(),
+          role: r.role,
+          department: r.department?.name ?? null,
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error("Erreur liste destinataires", error);
+
+    sendError(res, error, "Erreur lors de la lecture des destinataires");
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Messages programmés                                                  */
+/* ------------------------------------------------------------------ */
+
+/** GET /api/notifications/scheduled — mes messages en attente (et les échecs récents). */
+export async function listScheduled(req: Request, res: Response): Promise<void> {
+  try {
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
+
+    const rows = (await db.scheduledMessage.findMany({
+      where: {
+        senderId: user.id,
+        OR: [
+          { status: { in: ["PENDING", "SENDING"] } },
+          { status: "FAILED", scheduledAt: { gte: new Date(Date.now() - 7 * 24 * 3600 * 1000) } },
+        ],
+      },
+      orderBy: { scheduledAt: "asc" },
+      select: {
+        id: true, title: true, message: true, type: true, scheduledAt: true, status: true, error: true,
+        recipientCount: true, latitude: true, _count: { select: { attachments: true } },
+      },
+    })) as Row[];
+
+    res.status(200).json({
+      success: true,
+      data: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        message: r.message,
+        type: r.type,
+        scheduledAt: r.scheduledAt,
+        status: r.status,
+        error: r.error,
+        recipientCount: r.recipientCount,
+        attachments: r._count.attachments,
+        hasLocation: r.latitude !== null,
+      })),
+    });
+  } catch (error) {
+    logger.error("Erreur liste messages programmés", error);
+
+    sendError(res, error, "Erreur lors de la lecture des messages programmés");
+  }
+}
+
+/** DELETE /api/notifications/scheduled/:id — annule un message pas encore parti. */
+export async function cancelScheduled(req: Request, res: Response): Promise<void> {
+  try {
+    const user = getReqUser(req);
+    if (!user) return unauthorized(res);
+
+    const id = parseId(req, res);
+    if (id === null) return;
+
+    const result = await db.scheduledMessage.updateMany({
+      where: { id, status: { in: ["PENDING", "FAILED"] }, ...(user.role === "ADMIN" ? {} : { senderId: user.id }) },
+      data: { status: "CANCELLED" },
+    });
+
+    if (result.count === 0) {
+      res.status(404).json({ success: false, message: "Message programmé introuvable ou déjà envoyé" });
+      return;
+    }
+
+    res.status(200).json({ success: true, message: "Envoi programmé annulé" });
+  } catch (error) {
+    logger.error("Erreur annulation message programmé", error);
+
+    sendError(res, error, "Erreur lors de l'annulation");
+  }
+}
+
+async function sendDueScheduled(): Promise<void> {
+  const due = (await db.scheduledMessage.findMany({
+    where: { status: "PENDING", scheduledAt: { lte: new Date() } },
+    orderBy: { scheduledAt: "asc" },
+    take: 20,
+    include: { attachments: { select: { id: true } } },
+  })) as Row[];
+
+  for (const item of due) {
+    // « Réservation » atomique : un seul exemplaire du serveur envoie ce message
+    const claimed = await db.scheduledMessage.updateMany({
+      where: { id: item.id, status: "PENDING" },
+      data: { status: "SENDING" },
+    });
+
+    if (claimed.count !== 1) continue;
+
+    try {
+      const audience = item.audience as Audience;
+      const recipientIds = await resolveRecipients(audience, item.senderId);
+
+      if (recipientIds.length === 0) throw new Error("Aucun destinataire actif pour cette sélection");
+      if (recipientIds.length > MAX_RECIPIENTS) throw new Error(`Trop de destinataires (${MAX_RECIPIENTS} maximum)`);
+
+      const sender = await db.user.findUnique({
+        where: { id: item.senderId },
+        select: { firstName: true, lastName: true, status: true },
+      });
+
+      if (!sender || sender.status !== "ACTIVE") throw new Error("Expéditeur désactivé");
+
+      await createMessages({
+        senderId: item.senderId,
+        senderName: `${sender.firstName} ${sender.lastName}`.trim(),
+        recipientIds,
+        batchId: recipientIds.length > 1 ? randomUUID() : null,
+        groupSize: recipientIds.length > 1 ? recipientIds.length + 1 : null,
+        title: item.title,
+        message: item.message,
+        type: item.type,
+        attachmentIds: item.attachments.map((a: { id: number }) => a.id),
+        location:
+          item.latitude !== null && item.longitude !== null
+            ? { latitude: item.latitude, longitude: item.longitude, accuracy: item.accuracy ?? null }
+            : null,
+      });
+
+      await db.scheduledMessage.update({
+        where: { id: item.id },
+        data: { status: "SENT", sentAt: new Date(), recipientCount: recipientIds.length, error: null },
+      });
+
+      emitToUser(item.senderId, "scheduled:update", { id: item.id, status: "SENT" });
+      logger.info(`Message programmé #${item.id} envoyé à ${recipientIds.length} destinataire(s)`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.error(`Message programmé #${item.id} en échec : ${reason}`);
+
+      await db.scheduledMessage
+        .update({ where: { id: item.id }, data: { status: "FAILED", error: reason.slice(0, 300) } })
+        .catch(() => undefined);
+
+      emitToUser(item.senderId, "scheduled:update", { id: item.id, status: "FAILED" });
+    }
+  }
+}
+
+/** Vérifie toutes les 20 s les messages arrivés à échéance. */
+export function startScheduledMessageWorker(): void {
+  void db.scheduledMessage
+    .updateMany({ where: { status: "SENDING" }, data: { status: "FAILED", error: "Interrompu par un redémarrage du serveur" } })
+    .catch(() => undefined);
+
+  const run = () => void sendDueScheduled().catch((error) => logger.error("Erreur envoi programmé", error));
+
+  setInterval(run, 20_000).unref();
+  run();
+
+  logger.success("Envoi des messages programmés activé");
 }

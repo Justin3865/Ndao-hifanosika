@@ -6,6 +6,7 @@ import {
   Archive,
   ArchiveRestore,
   Bell,
+  CalendarClock,
   CheckCheck,
   Copy,
   CornerUpLeft,
@@ -22,6 +23,7 @@ import {
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { MessageAttachments } from "@/components/notifications/MessageAttachments";
+import { ScheduledList } from "@/components/notifications/ScheduledList";
 import {
   AudiencePicker,
   AudienceValue,
@@ -31,6 +33,7 @@ import {
 } from "@/components/notifications/AudiencePicker";
 import { ComposerPayload, MessageComposer } from "@/components/notifications/MessageComposer";
 import { getStoredRole } from "@/lib/access";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/draft";
 import { LookupItem, errorMessage, fetchLookup, fmtDateTime } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
 import { LONG_PRESS_MS, useLongPress } from "@/hooks/useLongPress";
@@ -51,6 +54,20 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const SENDERS = ["ADMIN", "DIRECTION", "DSI", "RH"];
+
+/** Brouillon du formulaire « nouveau message » (destinataires, titre, type, programmation). */
+interface NewDraft {
+  audience: AudienceValue;
+  form: { title: string; type: string };
+  schedule: string;
+  open: boolean;
+}
+
+/** Valeur « yyyy-MM-ddTHH:mm » (heure locale) d'un instant, pour <input type="datetime-local">. */
+function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 /** Recherche insensible à la casse et aux accents. */
 const normalize = (value: string) =>
@@ -283,6 +300,58 @@ function NotificationsContent() {
   const [replyScope, setReplyScope] = useState<"sender" | "group">("sender");
   const [view, setView] = useState<"inbox" | "archived">("inbox");
   const [query, setQuery] = useState("");
+  const [schedule, setSchedule] = useState("");
+  const [scheduledVersion, setScheduledVersion] = useState(0);
+  const [draftReady, setDraftReady] = useState(false);
+  const [pendingReply, setPendingReply] = useState<{ id: number; scope: "sender" | "group" } | null>(null);
+
+  // Brouillons : on retrouve le formulaire (et la réponse en cours) tels qu'on les avait laissés
+  useEffect(() => {
+    const draft = loadDraft<NewDraft>("new-message");
+
+    if (draft) {
+      setAudience(draft.audience ?? EMPTY_AUDIENCE);
+      setForm(draft.form ?? { title: "", type: "INFO" });
+      setSchedule(draft.schedule ?? "");
+      if (draft.open) setShowForm(true);
+    } else if (loadDraft("composer:new")) {
+      setShowForm(true);
+    }
+
+    setPendingReply(loadDraft<{ id: number; scope: "sender" | "group" }>("reply-open"));
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+
+    const empty = audienceIsEmpty(audience) && !form.title.trim() && !schedule;
+
+    if (empty && !showForm) clearDraft("new-message");
+    else saveDraft<NewDraft>("new-message", { audience, form, schedule, open: showForm });
+  }, [draftReady, audience, form, schedule, showForm]);
+
+  // Réponse en cours : mémorisée, puis rouverte au retour sur la page
+  useEffect(() => {
+    if (!draftReady) return;
+
+    if (replyingId === null) {
+      if (!pendingReply) clearDraft("reply-open");
+    } else {
+      saveDraft("reply-open", { id: replyingId, scope: replyScope });
+    }
+  }, [draftReady, replyingId, replyScope, pendingReply]);
+
+  useEffect(() => {
+    if (!pendingReply || loading) return;
+
+    if (items.some((item) => item.id === pendingReply.id)) {
+      setReplyScope(pendingReply.scope);
+      setReplyingId(pendingReply.id);
+    }
+
+    setPendingReply(null);
+  }, [pendingReply, loading, items]);
 
   useEffect(() => {
     const current = getStoredRole();
@@ -330,22 +399,30 @@ function NotificationsContent() {
 
     let feedback = "Notification envoyée.";
 
+    if (schedule && new Date(schedule).getTime() < Date.now() + 60_000) {
+      throw new Error("La date de programmation doit être au moins 1 minute dans le futur.");
+    }
+
     try {
       const res = await api.post("/notifications", {
         audience: audienceToPayload(audience),
         title: form.title.trim(),
         type: form.type,
+        ...(schedule ? { scheduledAt: new Date(schedule).toISOString() } : {}),
         ...payload,
       });
 
-      if ((res.data?.count ?? 1) > 1) feedback = res.data.message;
+      if (res.data?.scheduled || (res.data?.count ?? 1) > 1) feedback = res.data.message;
     } catch (err) {
       throw new Error(errorMessage(err, "Envoi impossible."));
     }
 
     setForm({ title: "", type: "INFO" });
     setAudience(EMPTY_AUDIENCE);
+    setSchedule("");
     setShowForm(false);
+    clearDraft("new-message");
+    setScheduledVersion((v) => v + 1);
     toast.success(feedback);
   };
 
@@ -357,6 +434,7 @@ function NotificationsContent() {
     }
 
     setReplyingId(null);
+    clearDraft("reply-open");
     toast.success(replyScope === "group" ? "Réponse envoyée au groupe." : "Réponse envoyée.");
   };
 
@@ -409,6 +487,9 @@ function NotificationsContent() {
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" /> Envoyer
+              {!showForm && draftReady && (!audienceIsEmpty(audience) || form.title.trim() !== "") && (
+                <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-amber-950">Brouillon</span>
+              )}
             </button>
           )}
         </div>
@@ -426,14 +507,44 @@ function NotificationsContent() {
 
           <input className={inputClass} placeholder="Titre" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
 
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-800">
+              <input
+                type="checkbox"
+                checked={schedule !== ""}
+                onChange={(e) => setSchedule(e.target.checked ? toLocalInput(new Date(Date.now() + 60 * 60 * 1000)) : "")}
+                className="h-4 w-4"
+              />
+              <CalendarClock className="h-4 w-4 text-indigo-600" /> Programmer l&apos;envoi
+            </label>
+
+            {schedule !== "" && (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <input
+                  type="datetime-local"
+                  value={schedule}
+                  min={toLocalInput(new Date(Date.now() + 60_000))}
+                  onChange={(e) => setSchedule(e.target.value)}
+                  className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
+                <span className="text-xs text-gray-500">
+                  Le message partira automatiquement à cette date, même si vous fermez l&apos;application.
+                </span>
+              </div>
+            )}
+          </div>
+
           <MessageComposer
+            draftKey="new"
             onSubmit={sendNew}
-            submitLabel="Envoyer la notification"
-            placeholder="Message (emoji, photo, vidéo, audio, fichier, ZIP ou position)"
+            submitLabel={schedule ? "Programmer l'envoi" : "Envoyer la notification"}
+            placeholder="Message (emoji, photo, vidéo, audio, vocal, fichier, ZIP ou position)"
             allowLocation={SENDERS.includes(role)}
           />
         </div>
       )}
+
+      {SENDERS.includes(role) && <ScheduledList refreshKey={scheduledVersion} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-xl border border-gray-300 bg-white p-1 text-sm font-medium">
@@ -548,10 +659,14 @@ function NotificationsContent() {
                 <MessageComposer
                   autoFocus
                   rows={2}
+                  draftKey={`reply:${item.id}`}
                   submitLabel="Envoyer la réponse"
-                  placeholder="Votre réponse…"
+                  placeholder="Votre réponse… (vous pouvez aussi envoyer un vocal)"
                   onSubmit={(payload) => sendReply(item, payload)}
-                  onCancel={() => setReplyingId(null)}
+                  onCancel={() => {
+                    clearDraft("reply-open");
+                    setReplyingId(null);
+                  }}
                 />
               </div>
             )}

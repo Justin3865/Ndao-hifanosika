@@ -122,6 +122,7 @@ model User {
   notificationFiles   NotificationAttachment[] @relation("AttachmentUploader")
   pushSubscriptions   PushSubscription[] @relation("UserPushSubscriptions")
   missions            Mission[]  @relation("MissionAgent")
+  scheduledMessages   ScheduledMessage[] @relation("ScheduledSender")
   surveys             Survey[]   @relation("SurveyAgent")
 
   @@index([departmentId])
@@ -424,6 +425,7 @@ model NotificationAttachment {
   createdAt     DateTime @default(now())
 
   notifications Notification[]
+  scheduled     ScheduledMessage[] @relation("ScheduledAttachments")
   uploader      User           @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
 
   @@index([uploaderId])
@@ -583,4 +585,30 @@ model Survey {
   @@index([beneficiaryId, createdAt])
   @@index([agentId])
   @@index([missionId])
+}
+
+/// Message programmé : envoyé automatiquement à la date choisie (destinataires résolus au moment de l'envoi)
+model ScheduledMessage {
+  id             Int       @id @default(autoincrement())
+  senderId       Int
+  audience       Json
+  title          String
+  message        String
+  type           String    @default("INFO")
+  latitude       Float?
+  longitude      Float?
+  accuracy       Float?
+  scheduledAt    DateTime
+  /// PENDING | SENDING | SENT | FAILED | CANCELLED
+  status         String    @default("PENDING")
+  error          String?
+  recipientCount Int?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  sender      User                     @relation("ScheduledSender", fields: [senderId], references: [id], onDelete: Cascade)
+  attachments NotificationAttachment[] @relation("ScheduledAttachments")
+
+  @@index([status, scheduledAt])
+  @@index([senderId])
 }
