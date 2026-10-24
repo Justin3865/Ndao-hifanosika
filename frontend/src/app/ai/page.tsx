@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, BarChart3, BrainCircuit, FileText, Lightbulb, MapPinned, MessageSquare, ShieldAlert } from "lucide-react";
+import { HubCharts } from "@/components/ai-charts/InsightCharts";
 import { AppLayout } from "@/components/layout";
 import { METHOD_NOTE, State, useInsight } from "@/components/insights/parts";
 
@@ -80,6 +81,8 @@ export default function AiHubPage() {
             </Link>
           ))}
         </div>
+
+        <HubCharts />
 
         <p className="text-xs text-gray-400">{METHOD_NOTE}</p>
       </div>

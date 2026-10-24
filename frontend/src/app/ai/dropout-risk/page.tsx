@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { DropoutCharts } from "@/components/ai-charts/InsightCharts";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader, LevelBadge, METHOD_NOTE, State, useInsight } from "@/components/insights/parts";
 
@@ -75,6 +76,8 @@ export default function AiDropoutRiskPage() {
             </table>
           </div>
         </State>
+
+        <DropoutCharts />
 
         <p className="text-xs text-gray-400">{METHOD_NOTE}</p>
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BrainCircuit, Loader2, Play } from "lucide-react";
 import api from "@/lib/axios";
+import { ModelsLab } from "@/components/ai-charts/ModelsLab";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader } from "@/components/insights/parts";
 import { getStoredRole } from "@/lib/access";
@@ -148,6 +149,8 @@ export default function ModelsPage() {
             ))}
           </div>
         </div>
+
+        <ModelsLab />
       </div>
     </AppLayout>
   );

@@ -1,13 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { BellRing, BookOpen, Eye, History, Loader2, X } from "lucide-react";
+import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
-import { InsightHeader, LevelBadge, METHOD_NOTE, State, useInsight } from "@/components/insights/parts";
+import { InsightHeader, LevelBadge, METHOD_NOTE, State } from "@/components/insights/parts";
+import { errorMessage } from "@/lib/crud";
+import { getStoredRole } from "@/lib/access";
+import { confirmDialog, toast } from "@/lib/toast";
+
+/* ------------------------------ Types ------------------------------ */
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
 
 interface Anomaly {
+  key?: string;
   type: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  severity: Severity;
   title: string;
   detail: string;
   link: string;
@@ -25,12 +35,172 @@ interface Engine {
   checkedAt: string;
 }
 
-export default function AiAnomalyPage() {
-  const { data, loading, error, raw } = useInsight<Anomaly[]>("/ai/anomalies");
-  const engine = (raw?.engine ?? null) as Engine | null;
-  const [severity, setSeverity] = useState("");
+interface CatalogItem {
+  code: string;
+  label: string;
+  description: string;
+  engine: "rules" | "isolation-forest";
+  severityRule: string;
+  audienceLabel: string;
+}
 
-  const rows = (data ?? []).filter((a) => !severity || a.severity === severity);
+interface AlertConfig {
+  auto: boolean;
+  everyMinutes: number;
+  minSeverity: Severity;
+  cooldownHours: number;
+  maxPerUser: number;
+}
+
+interface RunEntry {
+  id: number;
+  at: string;
+  source?: "manual" | "auto";
+  minSeverity?: Severity;
+  triggeredByName?: string | null;
+  analyzed?: number;
+  eligible?: number;
+  notificationsSent?: number;
+  digestsSent?: number;
+  usersNotified?: number;
+  duplicatesSkipped?: number;
+  engineUsed?: boolean;
+}
+
+interface NotifyResult {
+  ranAt: string;
+  dryRun: boolean;
+  minSeverity: Severity;
+  durationMs: number;
+  analyzed: number;
+  eligible: number;
+  notificationsSent: number;
+  digestsSent: number;
+  usersNotified: number;
+  duplicatesSkipped: number;
+  bySeverity: Record<Severity, number>;
+  preview: Array<{ title: string; severity: Severity; source: string; recipients: number }>;
+}
+
+const NOTIFY_ROLES = ["ADMIN", "DIRECTION", "DSI"];
+
+const SEVERITY_CHOICES: Array<[Severity, string]> = [
+  ["HIGH", "Critiques seulement"],
+  ["MEDIUM", "Critiques + moyennes"],
+  ["LOW", "Toutes les anomalies"],
+];
+
+const stamp = (value: string) => new Date(value).toLocaleString("fr-FR");
+
+/* ------------------------------ Page ------------------------------ */
+
+export default function AiAnomalyPage() {
+  const [rows, setRows] = useState<Anomaly[]>([]);
+  const [engine, setEngine] = useState<Engine | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [severity, setSeverity] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+
+  const [role, setRole] = useState("");
+  const [minSeverity, setMinSeverity] = useState<Severity>("MEDIUM");
+  const [busy, setBusy] = useState<"" | "notify" | "preview">("");
+  const [result, setResult] = useState<NotifyResult | null>(null);
+
+  const [history, setHistory] = useState<RunEntry[]>([]);
+  const [config, setConfig] = useState<AlertConfig | null>(null);
+
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+
+  const canNotify = NOTIFY_ROLES.includes(role);
+
+  const loadAnomalies = useCallback(async (fresh = false) => {
+    try {
+      const res = await api.get("/ai/anomalies", { params: fresh ? { fresh: 1 } : undefined });
+      setRows(res.data?.data ?? []);
+      setEngine((res.data?.engine ?? null) as Engine | null);
+      setError("");
+    } catch (err) {
+      setError(errorMessage(err, "Analyse indisponible."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await api.get("/ai/anomalies/alerts");
+      setHistory(res.data?.data ?? []);
+      setConfig((res.data?.config ?? null) as AlertConfig | null);
+    } catch {
+      /* le suivi est facultatif : la page reste utilisable sans lui */
+    }
+  }, []);
+
+  useEffect(() => {
+    setRole(getStoredRole());
+    void loadAnomalies();
+    void loadHistory();
+  }, [loadAnomalies, loadHistory]);
+
+  useEffect(() => {
+    if (config) setMinSeverity(config.minSeverity);
+  }, [config]);
+
+  const openCatalog = async () => {
+    const next = !showCatalog;
+    setShowCatalog(next);
+
+    if (next && catalog.length === 0) {
+      try {
+        const res = await api.get("/ai/anomalies/catalog");
+        setCatalog(res.data?.data ?? []);
+        setCatalogError("");
+      } catch (err) {
+        setCatalogError(errorMessage(err, "Catalogue indisponible."));
+      }
+    }
+  };
+
+  const runNotify = async (dryRun: boolean) => {
+    if (!dryRun) {
+      const label = SEVERITY_CHOICES.find(([value]) => value === minSeverity)?.[1] ?? "";
+      const ok = await confirmDialog(
+        `Lancer l'analyse maintenant (${label.toLowerCase()}) et envoyer les alertes aux personnes et départements concernés ?`,
+        { title: "Analyser et notifier", confirmLabel: "Analyser et notifier", danger: false },
+      );
+      if (!ok) return;
+    }
+
+    setBusy(dryRun ? "preview" : "notify");
+
+    try {
+      const res = await api.post("/ai/anomalies/notify", { minSeverity, dryRun });
+      const data = res.data?.data as NotifyResult;
+      setResult(data);
+
+      if (dryRun) {
+        toast.info(`Aperçu : ${data.notificationsSent + data.digestsSent} notification(s) seraient envoyées à ${data.usersNotified} personne(s).`);
+      } else {
+        toast.success(`${data.notificationsSent + data.digestsSent} notification(s) envoyée(s) à ${data.usersNotified} personne(s).`);
+        void loadAnomalies(true);
+        void loadHistory();
+      }
+    } catch (err) {
+      toast.error(errorMessage(err, "Analyse impossible pour le moment."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const filtered = rows.filter(
+    (a) => (!severity || a.severity === severity) && (!sourceFilter || (a.source ?? "rules") === sourceFilter),
+  );
+
+  const countFor = (code: string) => rows.filter((a) => a.type === code).length;
 
   return (
     <AppLayout>
@@ -51,6 +221,180 @@ export default function AiAnomalyPage() {
             </div>
           )}
 
+          {/* ---------------- Alertes : analyser et notifier + catalogue ---------------- */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <h2 className="flex items-center gap-2 text-base font-bold text-gray-900">
+                  <BellRing className="h-5 w-5 text-blue-800" /> Alertes aux personnes concernées
+                </h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Chaque anomalie (règles métier et Isolation Forest) est envoyée par notification au créateur du projet, au personnel du département concerné, au tuteur ou aux RH ;
+                  la Direction est toujours prévenue des anomalies critiques. Une même anomalie n&apos;est pas renotifiée avant {config?.cooldownHours ?? 72} h.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void openCatalog()}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+              >
+                <BookOpen className="h-4 w-4" />
+                {showCatalog ? "Masquer les types d'anomalies" : "Voir tous les types d'anomalies"}
+              </button>
+            </div>
+
+            {canNotify && (
+              <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">
+                <label className="text-sm font-medium text-gray-700">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Anomalies à envoyer</span>
+                  <select
+                    value={minSeverity}
+                    onChange={(event) => setMinSeverity(event.target.value as Severity)}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                  >
+                    {SEVERITY_CHOICES.map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  disabled={busy !== ""}
+                  onClick={() => void runNotify(false)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-900 disabled:opacity-60"
+                >
+                  {busy === "notify" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+                  {busy === "notify" ? "Analyse en cours..." : "Analyser et notifier maintenant"}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy !== ""}
+                  onClick={() => void runNotify(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  Aperçu sans envoyer
+                </button>
+              </div>
+            )}
+
+            {/* Résultat de la dernière analyse lancée depuis cette page */}
+            {result && (
+              <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold text-blue-900">
+                    {result.dryRun ? "Aperçu (rien n'a été envoyé)" : "Analyse terminée"} — {stamp(result.ranAt)} · {result.durationMs} ms
+                  </p>
+                  <button type="button" onClick={() => setResult(null)} className="rounded-lg p-1 text-blue-700 hover:bg-blue-100" aria-label="Fermer">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  {[
+                    ["Anomalies analysées", result.analyzed],
+                    ["Au-dessus du seuil", result.eligible],
+                    [result.dryRun ? "Notifications prévues" : "Notifications envoyées", result.notificationsSent + result.digestsSent],
+                    ["Personnes prévenues", result.usersNotified],
+                    ["Doublons ignorés", result.duplicatesSkipped],
+                  ].map(([label, value]) => (
+                    <div key={label as string} className="rounded-xl bg-white p-3 text-center ring-1 ring-blue-100">
+                      <p className="text-xl font-extrabold text-blue-900">{value}</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {result.preview.length > 0 && (
+                  <ul className="mt-3 max-h-56 space-y-1.5 overflow-y-auto pr-1 text-sm">
+                    {result.preview.map((item, index) => (
+                      <li key={`${item.title}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 ring-1 ring-blue-100">
+                        <span className="min-w-0 truncate text-gray-800">{item.title}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs text-gray-500">{item.recipients} destinataire(s)</span>
+                          <LevelBadge level={item.severity} />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Suivi */}
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                <History className="h-4 w-4 text-gray-500" /> Suivi des analyses
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {config
+                  ? config.auto
+                    ? `Analyse automatique active : toutes les ${config.everyMinutes} min (seuil par défaut : ${SEVERITY_CHOICES.find(([v]) => v === config.minSeverity)?.[1].toLowerCase()}).`
+                    : "Analyse automatique désactivée : définissez ANOMALY_MONITOR_MINUTES dans le .env du backend pour l'activer (ex. 360 = toutes les 6 h)."
+                  : "Suivi indisponible pour le moment."}
+              </p>
+
+              {history.length === 0 ? (
+                <p className="mt-2 text-sm text-gray-500">Aucune analyse enregistrée pour l&apos;instant.</p>
+              ) : (
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {history.slice(0, 5).map((entry) => (
+                    <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2">
+                      <span className="text-gray-800">
+                        {stamp(entry.at)} · {entry.source === "auto" ? "automatique" : `par ${entry.triggeredByName ?? "un administrateur"}`}
+                      </span>
+                      <span className="text-xs text-gray-600">
+                        {(entry.notificationsSent ?? 0) + (entry.digestsSent ?? 0)} notification(s) → {entry.usersNotified ?? 0} personne(s)
+                        {" · "}
+                        {entry.engineUsed ? "Isolation Forest" : "règles seules"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+
+          {/* ---------------- Catalogue des types d'anomalies ---------------- */}
+          {showCatalog && (
+            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-bold text-gray-900">Tous les types d&apos;anomalies détectés</h2>
+                <button type="button" onClick={() => setShowCatalog(false)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Fermer le catalogue">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {catalogError && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{catalogError}</p>}
+              {!catalogError && catalog.length === 0 && <p className="mt-3 text-sm text-gray-500">Chargement...</p>}
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {catalog.map((item) => (
+                  <article key={item.code} className="rounded-2xl border border-gray-200 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-semibold text-gray-900">{item.label}</h3>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                          item.engine === "isolation-forest" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {item.engine === "isolation-forest" ? "IA · Isolation Forest" : "Règle métier"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-gray-600">{item.description}</p>
+                    <p className="mt-2 text-xs text-gray-500"><strong className="text-gray-700">Gravité :</strong> {item.severityRule}</p>
+                    <p className="mt-1 text-xs text-gray-500"><strong className="text-gray-700">Prévenus :</strong> {item.audienceLabel}</p>
+                    <p className="mt-2 text-xs font-semibold text-blue-800">Détectées actuellement : {countFor(item.code)}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ---------------- Liste des anomalies ---------------- */}
           <div className="flex flex-wrap items-center gap-2">
             {[["", "Toutes"], ["HIGH", "Critiques"], ["MEDIUM", "Moyennes"], ["LOW", "Faibles"]].map(([value, label]) => (
               <button
@@ -64,18 +408,34 @@ export default function AiAnomalyPage() {
                 {label}
               </button>
             ))}
-            <span className="ml-auto text-sm text-gray-500">{rows.length} anomalie(s)</span>
+
+            <span className="mx-1 hidden h-5 w-px bg-gray-200 sm:block" />
+
+            {[["", "Toutes sources"], ["rules", "Règles"], ["isolation-forest", "IA"]].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setSourceFilter(value)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  sourceFilter === value ? "bg-indigo-700 text-white" : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+
+            <span className="ml-auto text-sm text-gray-500">{filtered.length} anomalie(s)</span>
           </div>
 
-          {rows.length === 0 && (
+          {filtered.length === 0 && (
             <div className="rounded-2xl border border-dashed border-green-300 bg-green-50 p-10 text-center text-green-800">
               Aucune anomalie détectée. 🎉
             </div>
           )}
 
           <div className="space-y-3">
-            {rows.map((a, index) => (
-              <Link key={`${a.type}-${index}`} href={a.link} className="flex items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300">
+            {filtered.map((a, index) => (
+              <Link key={`${a.key ?? a.type}-${index}`} href={a.link} className="flex items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300">
                 <div>
                   <p className="font-semibold text-gray-900">
                     {a.title}

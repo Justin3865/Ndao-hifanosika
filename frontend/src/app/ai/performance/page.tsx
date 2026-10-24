@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PerformanceCharts } from "@/components/ai-charts/InsightCharts";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader, LevelBadge, METHOD_NOTE, State, useInsight } from "@/components/insights/parts";
 
@@ -72,6 +73,8 @@ export default function AiPerformancePage() {
             </table>
           </div>
         </State>
+
+        <PerformanceCharts />
 
         <p className="text-xs text-gray-400">{METHOD_NOTE}</p>
       </div>
