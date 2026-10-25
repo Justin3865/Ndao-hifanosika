@@ -46,6 +46,11 @@ const PDF_FORMATS: Record<PdfFormat, { label: string; width: number; height: num
 /**
  * Génère et télécharge le certificat en PDF au format choisi.
  * Nécessite :  npm install jspdf html-to-image
+ *
+ * `skipFonts: true` évite l'erreur « SecurityError: Failed to read the 'cssRules' property »
+ * causée par les feuilles de style externes (CDN, extensions du navigateur) que
+ * html-to-image essaie de lire pour intégrer les polices. Le certificat n'utilise que
+ * les polices système (Tailwind sans-serif / serif) : aucune perte visuelle.
  */
 async function downloadCertificatePdf(node: HTMLElement, format: PdfFormat, fileName: string) {
   const [{ toPng }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")]);
@@ -55,6 +60,7 @@ async function downloadCertificatePdf(node: HTMLElement, format: PdfFormat, file
     pixelRatio: 3,
     backgroundColor: "#ffffff",
     cacheBust: true,
+    skipFonts: true,
     style: { boxShadow: "none", margin: "0" },
   });
 

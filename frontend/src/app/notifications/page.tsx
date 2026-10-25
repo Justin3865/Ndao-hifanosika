@@ -25,6 +25,8 @@ import {
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { MessageAttachments } from "@/components/notifications/MessageAttachments";
+import { NotificationDetail } from "@/components/notifications/NotificationDetail";
+import { RegistrationRequestActions } from "@/components/notifications/RegistrationRequestActions";
 import {
   AudiencePicker,
   AudienceValue,
@@ -461,6 +463,7 @@ function NotificationsContent() {
   const [replyScope, setReplyScope] = useState<"sender" | "group">("sender");
   const [view, setView] = useState<"inbox" | "archived">("inbox");
   const [query, setQuery] = useState("");
+  const [detailId, setDetailId] = useState<number | null>(null);
 
   // Brouillon : l'utilisateur (null = pas encore lu) et le compteur qui recharge les messages programmés
   const [draftUid, setDraftUid] = useState<string | null>(null);
@@ -542,6 +545,7 @@ function NotificationsContent() {
 
   // Version à jour du message dont le menu est ouvert (lu / supprimé par socket entre-temps)
   const menuItem = menuId === null ? null : items.find((item) => item.id === menuId) ?? null;
+  const detailItem = detailId === null ? null : items.find((item) => item.id === detailId) ?? null;
 
   const archivedCount = items.filter((item) => item.archived).length;
   const pool = items.filter((item) => item.archived === (view === "archived"));
@@ -566,6 +570,7 @@ function NotificationsContent() {
 
   const markRead = (item: FeedItem) => {
     if (!item.read) void setRead(item.id, true);
+    setDetailId(item.id); // toucher un message ouvre son détail
   };
 
   const sendNew = async (payload: ComposerPayload) => {
@@ -800,6 +805,7 @@ function NotificationsContent() {
             onRead={markRead}
             onMenu={(target) => setMenuId(target.id)}
           >
+            <RegistrationRequestActions item={item} />
             {replyingId === item.id && (
               <div className="mt-3 border-t border-gray-200 pt-3" data-no-press>
                 <p className="mb-2 text-xs font-medium text-gray-600">
@@ -820,6 +826,8 @@ function NotificationsContent() {
           </MessageCard>
         ))}
       </div>
+
+      {detailItem && <NotificationDetail item={detailItem} onClose={() => setDetailId(null)} />}
 
       {menuItem && (
         <ActionSheet

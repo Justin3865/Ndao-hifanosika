@@ -40,7 +40,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: env.CORS_ORIGIN.split(",").map((value) => value.trim()),
     credentials: true,
   }),
 );

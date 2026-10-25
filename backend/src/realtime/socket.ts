@@ -107,7 +107,7 @@ export async function recordLocation(
 
 export function initSocket(server: HttpServer): Server {
   io = new Server(server, {
-    cors: { origin: env.CORS_ORIGIN, credentials: true },
+    cors: { origin: env.CORS_ORIGIN.split(",").map((value) => value.trim()), credentials: true },
   });
 
   // ---- Personnel connecté ----

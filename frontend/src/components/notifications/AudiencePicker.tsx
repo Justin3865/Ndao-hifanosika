@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, Search, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Check, ChevronDown, ChevronUp, Loader2, Search, Users, X } from "lucide-react";
 import api from "@/lib/axios";
 import type { LookupItem } from "@/lib/crud";
 import { roleLabel } from "@/lib/roles";
@@ -64,6 +64,156 @@ interface Recipient {
   name: string;
   role: string;
   department: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Choix d'une personne : on tape le nom (ou le rôle) pour filtrer      */
+/* ------------------------------------------------------------------ */
+
+const fold = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+function UserCombobox({
+  users,
+  value,
+  onChange,
+}: {
+  users: LookupItem[];
+  value: string;
+  onChange: (userId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+
+  const selected = users.find((user) => String(user.id) === value) ?? null;
+
+  const results = useMemo(() => {
+    const words = fold(query.trim()).split(/\s+/).filter(Boolean);
+    if (words.length === 0) return users;
+
+    return users.filter((user) => {
+      const label = fold(user.label);
+      return words.every((word) => label.includes(word));
+    });
+  }, [users, query]);
+
+  // Fermer en cliquant ailleurs
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  useEffect(() => setActive(0), [query]);
+
+  // Garder l'élément actif visible pendant la navigation au clavier
+  useEffect(() => {
+    list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active, open]);
+
+  const choose = (user: LookupItem) => {
+    onChange(String(user.id));
+    setOpen(false);
+    setQuery("");
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActive((index) => Math.min(index + 1, Math.max(results.length - 1, 0)));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (open && results[active]) choose(results[active]);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      setQuery("");
+    }
+  };
+
+  return (
+    <div ref={box} className="relative">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          autoComplete="off"
+          value={open ? query : selected?.label ?? ""}
+          placeholder={selected ? selected.label : "Destinataire : tapez un nom…"}
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={onKeyDown}
+          className="w-full rounded-xl border border-gray-300 bg-white py-3 pl-9 pr-16 outline-none focus:border-blue-500"
+        />
+
+        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+          {value && (
+            <button
+              type="button"
+              aria-label="Effacer le destinataire"
+              onClick={() => {
+                onChange("");
+                setQuery("");
+              }}
+              className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <ChevronDown className="pointer-events-none h-4 w-4 text-gray-400" />
+        </div>
+      </div>
+
+      {open && (
+        <ul
+          ref={list}
+          role="listbox"
+          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+        >
+          {results.length === 0 && <li className="px-4 py-3 text-sm text-gray-500">Aucun résultat pour « {query} ».</li>}
+
+          {results.map((user, index) => {
+            const isSelected = String(user.id) === value;
+
+            return (
+              <li
+                key={user.id}
+                role="option"
+                aria-selected={isSelected}
+                data-index={index}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(user)}
+                onMouseEnter={() => setActive(index)}
+                className={`flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-sm ${
+                  index === active ? "bg-blue-50 text-blue-900" : "text-gray-800"
+                }`}
+              >
+                <span className="truncate">{user.label}</span>
+                {isSelected && <Check className="h-4 w-4 shrink-0 text-blue-600" />}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function AudiencePicker({ value, onChange, users, departments }: Props) {
@@ -153,16 +303,7 @@ export function AudiencePicker({ value, onChange, users, departments }: Props) {
       </div>
 
       {value.mode === "user" ? (
-        <select
-          className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none focus:border-blue-500"
-          value={value.userId}
-          onChange={(event) => onChange({ ...value, userId: event.target.value })}
-        >
-          <option value="">Destinataire</option>
-          {users.map((user) => (
-            <option key={user.id} value={user.id}>{user.label}</option>
-          ))}
-        </select>
+        <UserCombobox users={users} value={value.userId} onChange={(userId) => onChange({ ...value, userId })} />
       ) : (
         <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
           <div>
