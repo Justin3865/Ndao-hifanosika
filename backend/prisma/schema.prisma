@@ -612,3 +612,72 @@ model ScheduledMessage {
   @@index([status, scheduledAt])
   @@index([senderId])
 }
+
+/// Participation d'un stagiaire à une activité (demande, décision, rapport, preuve, présence, note du tuteur)
+model ActivityParticipation {
+  id               Int       @id @default(autoincrement())
+  activityId       Int
+  userId           Int
+  status           String    @default("PENDING") // PENDING | ACCEPTED | REJECTED
+  message          String?
+  decidedById      Int?
+  decidedAt        DateTime?
+
+  report           String?   @db.Text
+  reportAt         DateTime?
+  proofName        String?
+  proofMime        String?
+  proofSize        Int?
+  proofData        Bytes?
+
+  checkedInAt      DateTime?
+  checkInLatitude  Float?
+  checkInLongitude Float?
+
+  rating           Int?
+  ratingComment    String?
+  ratedById        Int?
+  ratedAt          DateTime?
+
+  remindedStartAt  DateTime?
+  remindedReportAt DateTime?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([activityId, userId])
+  @@index([userId])
+  @@index([activityId])
+  @@index([status])
+}
+
+/// Commentaires / questions sur une activité
+model ActivityComment {
+  id         Int      @id @default(autoincrement())
+  activityId Int
+  userId     Int
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([activityId, createdAt])
+  @@index([userId])
+}
+
+/// Historique de l'ordre de mérite : une ligne par stagiaire et par période clôturée
+model MeritSnapshot {
+  id         Int      @id @default(autoincrement())
+  period     String
+  userId     Int
+  level      String
+  rank       Int
+  cohortSize Int
+  score      Float
+  badge      String?
+  details    Json?
+  closedById Int?
+  createdAt  DateTime @default(now())
+
+  @@unique([period, userId])
+  @@index([period])
+  @@index([userId])
+}

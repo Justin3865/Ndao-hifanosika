@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Camera, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
@@ -56,6 +57,7 @@ const toForm = (data: Profile) => ({
 export default function ProfilePage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", birthDate: "", birthPlace: "" });
@@ -105,7 +107,11 @@ export default function ProfilePage() {
     try {
       const res = await api.put("/profile", form);
       sync(res.data.data);
-      flash("ok", "Informations enregistrées.");
+      toast.success("Informations enregistrées.");
+
+      // Quitte la page profil et revient à la page précédente (tableau de bord si aucun historique)
+      if (window.history.length > 1) router.back();
+      else router.push("/dashboard");
     } catch (err) {
       flash("err", errorMessage(err, "Enregistrement impossible."));
     } finally {
@@ -342,7 +348,15 @@ export default function ProfilePage() {
                   La date et le lieu de naissance sont utilisés pour vos certificats (stage, bénévolat...).
                 </p>
 
-                <div className="flex justify-end">
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => profile && setForm(toForm(profile))}
+                    disabled={busy === "info"}
+                    className="rounded-xl border border-gray-300 bg-white px-5 py-3 font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Annuler
+                  </button>
                   <button
                     type="submit"
                     disabled={busy === "info"}
@@ -400,7 +414,15 @@ export default function ProfilePage() {
                   </label>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPwd({ currentPassword: "", newPassword: "", confirm: "" })}
+                    disabled={busy === "pwd"}
+                    className="rounded-xl border border-gray-300 bg-white px-5 py-3 font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Annuler
+                  </button>
                   <button
                     type="submit"
                     disabled={busy === "pwd"}

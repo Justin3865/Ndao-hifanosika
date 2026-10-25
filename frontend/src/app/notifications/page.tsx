@@ -8,10 +8,12 @@ import {
   Bell,
   CalendarClock,
   CheckCheck,
+  ChevronDown,
   Copy,
   CornerUpLeft,
+  Loader2,
   Mail,
-    MapPin,
+  MapPin,
   MoreHorizontal,
   Plus,
   Reply,
@@ -23,7 +25,6 @@ import {
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { MessageAttachments } from "@/components/notifications/MessageAttachments";
-import { ScheduledList } from "@/components/notifications/ScheduledList";
 import {
   AudiencePicker,
   AudienceValue,
@@ -33,7 +34,6 @@ import {
 } from "@/components/notifications/AudiencePicker";
 import { ComposerPayload, MessageComposer } from "@/components/notifications/MessageComposer";
 import { getStoredRole } from "@/lib/access";
-import { clearDraft, loadDraft, saveDraft } from "@/lib/draft";
 import { LookupItem, errorMessage, fetchLookup, fmtDateTime } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
 import { LONG_PRESS_MS, useLongPress } from "@/hooks/useLongPress";
@@ -54,20 +54,6 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const SENDERS = ["ADMIN", "DIRECTION", "DSI", "RH"];
-
-/** Brouillon du formulaire « nouveau message » (destinataires, titre, type, programmation). */
-interface NewDraft {
-  audience: AudienceValue;
-  form: { title: string; type: string };
-  schedule: string;
-  open: boolean;
-}
-
-/** Valeur « yyyy-MM-ddTHH:mm » (heure locale) d'un instant, pour <input type="datetime-local">. */
-function toLocalInput(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 /** Recherche insensible à la casse et aux accents. */
 const normalize = (value: string) =>
@@ -94,15 +80,153 @@ function matches(item: FeedItem, query: string): boolean {
 /* Carte d'un message (appui long → actions)                            */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Messages programmés (en attente d'envoi) : on peut les annuler        */
+/* ------------------------------------------------------------------ */
+
+interface ScheduledItem {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  sendAt: string;
+  status: "PENDING" | "SENDING" | "FAILED";
+  error: string | null;
+  recipientsCount: number | null;
+  attachments: number;
+  hasLocation: boolean;
+}
+
+function ScheduledMessages({ refreshKey }: { refreshKey: number }) {
+  const [scheduled, setScheduled] = useState<ScheduledItem[]>([]);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const load = () =>
+    api
+      .get("/notifications/scheduled")
+      .then((res) => setScheduled(res.data?.data ?? []))
+      .catch(() => setScheduled([]));
+
+  // Rechargé après chaque programmation, puis toutes les minutes (un message envoyé disparaît de la liste)
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cancelScheduled = async (entry: ScheduledItem) => {
+    const ok = await confirmDialog(`Annuler l'envoi programmé de « ${entry.title} » ?`, {
+      title: "Annuler l'envoi programmé",
+      confirmLabel: "Annuler l'envoi",
+      danger: true,
+    });
+
+    if (!ok) return;
+
+    setBusyId(entry.id);
+
+    try {
+      await api.delete(`/notifications/scheduled/${entry.id}`);
+      toast.success("Envoi programmé annulé.");
+      await load();
+    } catch (err) {
+      toast.error(errorMessage(err, "Annulation impossible."));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (scheduled.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+        <CalendarClock className="h-4 w-4" /> Messages programmés ({scheduled.length})
+      </p>
+
+      <ul className="space-y-2">
+        {scheduled.map((entry) => (
+          <li key={entry.id} className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-gray-900">{entry.title}</p>
+
+              {entry.message && <p className="truncate text-xs text-gray-500">{entry.message}</p>}
+
+              <p className="mt-1 text-xs text-gray-600">
+                {entry.status === "FAILED" ? (
+                  <span className="font-medium text-red-600">Échec : {entry.error ?? "envoi impossible"}</span>
+                ) : entry.status === "SENDING" ? (
+                  <span className="font-medium text-blue-700">Envoi en cours…</span>
+                ) : (
+                  <>
+                    Envoi le <b>{fmtDateTime(entry.sendAt)}</b>
+                  </>
+                )}
+                {entry.recipientsCount !== null && ` · ${entry.recipientsCount} destinataire${entry.recipientsCount > 1 ? "s" : ""}`}
+                {entry.attachments > 0 && ` · ${entry.attachments} pièce(s) jointe(s)`}
+                {entry.hasLocation && " · position"}
+              </p>
+            </div>
+
+            {entry.status !== "SENDING" && (
+              <button
+                type="button"
+                onClick={() => void cancelScheduled(entry)}
+                disabled={busyId === entry.id}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+              >
+                {busyId === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                {entry.status === "FAILED" ? "Retirer" : "Annuler"}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 interface CardProps {
   item: FeedItem;
   sameSourceCount: number;
+  /** Tous les messages du même expéditeur (affichés quand on touche « N messages ») */
+  sameSourceItems: FeedItem[];
   onRead: (item: FeedItem) => void;
   onMenu: (item: FeedItem) => void;
   children?: ReactNode;
 }
 
-function MessageCard({ item, sameSourceCount, onRead, onMenu, children }: CardProps) {
+/** Résumé d'une ligne pour la liste des messages d'un expéditeur */
+function snippetOf(item: FeedItem): string {
+  if (item.message) return item.message;
+
+  const voice = item.attachments.find((file) => file.kind === "AUDIO" && file.name.toLowerCase().startsWith("vocal-"));
+
+  if (voice) return "🎤 Message vocal";
+  if (item.attachments.length > 0) return `📎 ${item.attachments.length} pièce${item.attachments.length > 1 ? "s" : ""} jointe${item.attachments.length > 1 ? "s" : ""}`;
+  if (item.latitude !== null && item.latitude !== undefined) return "📍 Position partagée";
+
+  return "";
+}
+
+/** Défile jusqu'au message et le met brièvement en évidence */
+function jumpToMessage(id: number) {
+  const element = document.getElementById(`msg-${id}`);
+  if (!element) return;
+
+  element.scrollIntoView({ block: "center", behavior: "smooth" });
+  element.classList.add("ring-2", "ring-blue-400");
+  window.setTimeout(() => element.classList.remove("ring-2", "ring-blue-400"), 1800);
+}
+
+function MessageCard({ item, sameSourceCount, sameSourceItems, onRead, onMenu, children }: CardProps) {
+  const [showThread, setShowThread] = useState(false);
+
   const { pressing, handlers } = useLongPress({
     onLongPress: () => onMenu(item),
     onClick: () => onRead(item),
@@ -129,15 +253,52 @@ function MessageCard({ item, sameSourceCount, onRead, onMenu, children }: CardPr
 
           <p className="text-xs text-gray-500" title={item.sender?.role}>
             De : <span className="font-medium text-gray-700">{personName(item.sender)}</span>
-            <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
+            <button
+              type="button"
+              onClick={() => setShowThread((current) => !current)}
+              aria-expanded={showThread}
+              title="Voir tous les messages de cet expéditeur"
+              className="ml-2 inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-200"
+            >
               {sameSourceCount} message{sameSourceCount > 1 ? "s" : ""}
-            </span>
+              <ChevronDown className={`h-3 w-3 transition ${showThread ? "rotate-180" : ""}`} />
+            </button>
             {item.batchId && (
               <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
                 <Users className="h-3 w-3" /> Groupe{item.groupSize ? ` · ${item.groupSize}` : ""}
               </span>
             )}
           </p>
+
+          {showThread && (
+            <div className="space-y-1.5 rounded-xl border border-gray-200 bg-white/70 p-2" data-no-press>
+              <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                Messages de {personName(item.sender)} ({sameSourceItems.length})
+              </p>
+
+              {sameSourceItems.map((other) => (
+                <button
+                  key={other.id}
+                  type="button"
+                  onClick={() => jumpToMessage(other.id)}
+                  className={`block w-full rounded-lg border px-3 py-2 text-left transition ${
+                    other.id === item.id ? "border-blue-300 bg-blue-50" : "border-gray-100 bg-white hover:bg-gray-50"
+                  }`}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {!other.read && <span className="h-2 w-2 shrink-0 rounded-full bg-blue-600" />}
+                      <span className="truncate text-xs font-semibold text-gray-900">{other.title}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-gray-400">{fmtDateTime(other.createdAt)}</span>
+                  </span>
+
+                  {snippetOf(other) && <span className="mt-0.5 block line-clamp-2 text-xs text-gray-600">{snippetOf(other)}</span>}
+                  {other.id === item.id && <span className="text-[10px] font-medium text-blue-600">Ce message</span>}
+                </button>
+              ))}
+            </div>
+          )}
 
           {item.replyTo && (
             <div className="rounded-lg border-l-4 border-blue-300 bg-white/70 px-3 py-1.5 text-xs text-gray-600">
@@ -300,58 +461,22 @@ function NotificationsContent() {
   const [replyScope, setReplyScope] = useState<"sender" | "group">("sender");
   const [view, setView] = useState<"inbox" | "archived">("inbox");
   const [query, setQuery] = useState("");
-  const [schedule, setSchedule] = useState("");
-  const [scheduledVersion, setScheduledVersion] = useState(0);
-  const [draftReady, setDraftReady] = useState(false);
-  const [pendingReply, setPendingReply] = useState<{ id: number; scope: "sender" | "group" } | null>(null);
 
-  // Brouillons : on retrouve le formulaire (et la réponse en cours) tels qu'on les avait laissés
-  useEffect(() => {
-    const draft = loadDraft<NewDraft>("new-message");
+  // Brouillon : l'utilisateur (null = pas encore lu) et le compteur qui recharge les messages programmés
+  const [draftUid, setDraftUid] = useState<string | null>(null);
+  const [scheduledTick, setScheduledTick] = useState(0);
 
-    if (draft) {
-      setAudience(draft.audience ?? EMPTY_AUDIENCE);
-      setForm(draft.form ?? { title: "", type: "INFO" });
-      setSchedule(draft.schedule ?? "");
-      if (draft.open) setShowForm(true);
-    } else if (loadDraft("composer:new")) {
-      setShowForm(true);
+  const metaKey = draftUid ? `ndao.draft.notif.${draftUid}` : null;
+
+  const clearMeta = () => {
+    if (!metaKey) return;
+
+    try {
+      window.localStorage.removeItem(metaKey);
+    } catch {
+      /* ignore */
     }
-
-    setPendingReply(loadDraft<{ id: number; scope: "sender" | "group" }>("reply-open"));
-    setDraftReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!draftReady) return;
-
-    const empty = audienceIsEmpty(audience) && !form.title.trim() && !schedule;
-
-    if (empty && !showForm) clearDraft("new-message");
-    else saveDraft<NewDraft>("new-message", { audience, form, schedule, open: showForm });
-  }, [draftReady, audience, form, schedule, showForm]);
-
-  // Réponse en cours : mémorisée, puis rouverte au retour sur la page
-  useEffect(() => {
-    if (!draftReady) return;
-
-    if (replyingId === null) {
-      if (!pendingReply) clearDraft("reply-open");
-    } else {
-      saveDraft("reply-open", { id: replyingId, scope: replyScope });
-    }
-  }, [draftReady, replyingId, replyScope, pendingReply]);
-
-  useEffect(() => {
-    if (!pendingReply || loading) return;
-
-    if (items.some((item) => item.id === pendingReply.id)) {
-      setReplyScope(pendingReply.scope);
-      setReplyingId(pendingReply.id);
-    }
-
-    setPendingReply(null);
-  }, [pendingReply, loading, items]);
+  };
 
   useEffect(() => {
     const current = getStoredRole();
@@ -362,6 +487,52 @@ function NotificationsContent() {
       fetchLookup("departments").then(setDepartments).catch(() => setDepartments([]));
     }
   }, []);
+
+  // Brouillon : on retrouve le formulaire tel qu'on l'a quitté (destinataires, titre, message, pièces jointes)
+  useEffect(() => {
+    let id = "anon";
+
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("user") ?? "null");
+      if (stored?.id) id = String(stored.id);
+    } catch {
+      /* ignore */
+    }
+
+    setDraftUid(id);
+
+    if (!SENDERS.includes(getStoredRole())) return;
+
+    try {
+      let reopen = Boolean(window.localStorage.getItem(`ndao.draft.msg.notif-compose.${id}`));
+      const raw = window.localStorage.getItem(`ndao.draft.notif.${id}`);
+      const draft = raw ? JSON.parse(raw) : null;
+
+      if (draft && Date.now() - (draft.savedAt ?? 0) < 7 * 24 * 3600 * 1000) {
+        if (draft.audience) setAudience(draft.audience);
+        if (draft.form) setForm(draft.form);
+        reopen = reopen || Boolean(draft.showForm);
+      }
+
+      if (reopen) setShowForm(true);
+    } catch {
+      /* brouillon illisible : on l'ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!metaKey || !showForm) return;
+
+    try {
+      if (!audienceIsEmpty(audience) || form.title.trim()) {
+        window.localStorage.setItem(metaKey, JSON.stringify({ audience, form, showForm: true, savedAt: Date.now() }));
+      } else {
+        window.localStorage.removeItem(metaKey);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [metaKey, showForm, audience, form]);
 
   useEffect(() => {
     if (replyingId !== null) {
@@ -376,6 +547,15 @@ function NotificationsContent() {
   const pool = items.filter((item) => item.archived === (view === "archived"));
   const groups = buildGroups(pool);
   const countBySource = new Map(groups.map((group) => [group.key, group.total]));
+  const itemsBySource = new Map<string, FeedItem[]>();
+
+  for (const entry of pool) {
+    const key = sourceKey(entry);
+    const list = itemsBySource.get(key);
+
+    if (list) list.push(entry);
+    else itemsBySource.set(key, [entry]);
+  }
   const search = normalize(query.trim());
   const visible = pool
     .filter((item) => !source || sourceKey(item) === source)
@@ -399,16 +579,11 @@ function NotificationsContent() {
 
     let feedback = "Notification envoyée.";
 
-    if (schedule && new Date(schedule).getTime() < Date.now() + 60_000) {
-      throw new Error("La date de programmation doit être au moins 1 minute dans le futur.");
-    }
-
     try {
       const res = await api.post("/notifications", {
         audience: audienceToPayload(audience),
         title: form.title.trim(),
         type: form.type,
-        ...(schedule ? { scheduledAt: new Date(schedule).toISOString() } : {}),
         ...payload,
       });
 
@@ -417,12 +592,11 @@ function NotificationsContent() {
       throw new Error(errorMessage(err, "Envoi impossible."));
     }
 
+    clearMeta();
     setForm({ title: "", type: "INFO" });
     setAudience(EMPTY_AUDIENCE);
-    setSchedule("");
     setShowForm(false);
-    clearDraft("new-message");
-    setScheduledVersion((v) => v + 1);
+    setScheduledTick((n) => n + 1);
     toast.success(feedback);
   };
 
@@ -434,7 +608,6 @@ function NotificationsContent() {
     }
 
     setReplyingId(null);
-    clearDraft("reply-open");
     toast.success(replyScope === "group" ? "Réponse envoyée au groupe." : "Réponse envoyée.");
   };
 
@@ -487,15 +660,14 @@ function NotificationsContent() {
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" /> Envoyer
-              {!showForm && draftReady && (!audienceIsEmpty(audience) || form.title.trim() !== "") && (
-                <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-amber-950">Brouillon</span>
-              )}
             </button>
           )}
         </div>
       </div>
 
-      {showForm && (
+      {SENDERS.includes(role) && <ScheduledMessages refreshKey={scheduledTick} />}
+
+      {showForm && draftUid !== null && (
         <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <AudiencePicker value={audience} onChange={setAudience} users={users} departments={departments} />
 
@@ -507,44 +679,22 @@ function NotificationsContent() {
 
           <input className={inputClass} placeholder="Titre" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
 
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-800">
-              <input
-                type="checkbox"
-                checked={schedule !== ""}
-                onChange={(e) => setSchedule(e.target.checked ? toLocalInput(new Date(Date.now() + 60 * 60 * 1000)) : "")}
-                className="h-4 w-4"
-              />
-              <CalendarClock className="h-4 w-4 text-indigo-600" /> Programmer l&apos;envoi
-            </label>
-
-            {schedule !== "" && (
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <input
-                  type="datetime-local"
-                  value={schedule}
-                  min={toLocalInput(new Date(Date.now() + 60_000))}
-                  onChange={(e) => setSchedule(e.target.value)}
-                  className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
-                <span className="text-xs text-gray-500">
-                  Le message partira automatiquement à cette date, même si vous fermez l&apos;application.
-                </span>
-              </div>
-            )}
-          </div>
-
           <MessageComposer
-            draftKey="new"
             onSubmit={sendNew}
-            submitLabel={schedule ? "Programmer l'envoi" : "Envoyer la notification"}
-            placeholder="Message (emoji, photo, vidéo, audio, vocal, fichier, ZIP ou position)"
+            submitLabel="Envoyer la notification"
+            placeholder="Message (emoji, photo, vidéo, audio, message vocal, fichier, ZIP ou position)"
             allowLocation={SENDERS.includes(role)}
+            allowVoice
+            allowSchedule
+            draftKey={`notif-compose.${draftUid}`}
+            onDiscardDraft={() => {
+              setAudience(EMPTY_AUDIENCE);
+              setForm({ title: "", type: "INFO" });
+              clearMeta();
+            }}
           />
         </div>
       )}
-
-      {SENDERS.includes(role) && <ScheduledList refreshKey={scheduledVersion} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-xl border border-gray-300 bg-white p-1 text-sm font-medium">
@@ -646,6 +796,7 @@ function NotificationsContent() {
             key={item.id}
             item={item}
             sameSourceCount={countBySource.get(sourceKey(item)) ?? 1}
+            sameSourceItems={itemsBySource.get(sourceKey(item)) ?? [item]}
             onRead={markRead}
             onMenu={(target) => setMenuId(target.id)}
           >
@@ -659,14 +810,10 @@ function NotificationsContent() {
                 <MessageComposer
                   autoFocus
                   rows={2}
-                  draftKey={`reply:${item.id}`}
                   submitLabel="Envoyer la réponse"
-                  placeholder="Votre réponse… (vous pouvez aussi envoyer un vocal)"
+                  placeholder="Votre réponse…"
                   onSubmit={(payload) => sendReply(item, payload)}
-                  onCancel={() => {
-                    clearDraft("reply-open");
-                    setReplyingId(null);
-                  }}
+                  onCancel={() => setReplyingId(null)}
                 />
               </div>
             )}

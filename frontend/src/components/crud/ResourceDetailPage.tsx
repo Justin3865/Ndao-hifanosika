@@ -9,8 +9,10 @@ import { getStoredRole } from "@/lib/access";
 import {
   Item,
   ResourceConfig,
+  canSeeBudget,
   errorMessage,
   getItem,
+  isBudgetLabel,
   removeItem,
 } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
@@ -100,7 +102,10 @@ export function ResourceDetailPage({
               {config.titleOf(item)}
             </h1>
 
-            {config.detail(item).map((row) => (
+            {config
+              .detail(item)
+              .filter((row) => canSeeBudget(role) || !isBudgetLabel(row.label))
+              .map((row) => (
               <div
                 key={row.label}
                 className="flex justify-between gap-6 border-b border-gray-100 py-3 text-sm"

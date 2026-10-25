@@ -92,6 +92,31 @@ const SEVERITY_CHOICES: Array<[Severity, string]> = [
 
 const stamp = (value: string) => new Date(value).toLocaleString("fr-FR");
 
+/**
+ * Convertit n'importe quelle réponse « liste » du serveur en tableau :
+ * un tableau tel quel, { items | catalog | types | rows | list: [...] }, ou un objet indexé par code.
+ * Évite l'erreur « x.map is not a function » si le format change.
+ */
+function toList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+
+  if (value && typeof value === "object") {
+    const box = value as Record<string, unknown>;
+
+    for (const key of ["items", "catalog", "types", "rows", "list", "data"]) {
+      if (Array.isArray(box[key])) return box[key] as T[];
+    }
+
+    const entries = Object.entries(box).filter(([, item]) => item && typeof item === "object");
+
+    if (entries.length > 0 && entries.length === Object.keys(box).length) {
+      return entries.map(([code, item]) => ({ code, ...(item as object) })) as T[];
+    }
+  }
+
+  return [];
+}
+
 /* ------------------------------ Page ------------------------------ */
 
 export default function AiAnomalyPage() {
@@ -120,7 +145,7 @@ export default function AiAnomalyPage() {
   const loadAnomalies = useCallback(async (fresh = false) => {
     try {
       const res = await api.get("/ai/anomalies", { params: fresh ? { fresh: 1 } : undefined });
-      setRows(res.data?.data ?? []);
+      setRows(toList<Anomaly>(res.data?.data));
       setEngine((res.data?.engine ?? null) as Engine | null);
       setError("");
     } catch (err) {
@@ -133,7 +158,7 @@ export default function AiAnomalyPage() {
   const loadHistory = useCallback(async () => {
     try {
       const res = await api.get("/ai/anomalies/alerts");
-      setHistory(res.data?.data ?? []);
+      setHistory(toList<RunEntry>(res.data?.data));
       setConfig((res.data?.config ?? null) as AlertConfig | null);
     } catch {
       /* le suivi est facultatif : la page reste utilisable sans lui */
@@ -157,7 +182,7 @@ export default function AiAnomalyPage() {
     if (next && catalog.length === 0) {
       try {
         const res = await api.get("/ai/anomalies/catalog");
-        setCatalog(res.data?.data ?? []);
+        setCatalog(toList<CatalogItem>(res.data?.data));
         setCatalogError("");
       } catch (err) {
         setCatalogError(errorMessage(err, "Catalogue indisponible."));
@@ -179,13 +204,25 @@ export default function AiAnomalyPage() {
 
     try {
       const res = await api.post("/ai/anomalies/notify", { minSeverity, dryRun });
-      const data = res.data?.data as NotifyResult;
+      const data = res.data?.data as NotifyResult | undefined;
+
+      if (!data) throw new Error("Réponse vide du serveur.");
+
       setResult(data);
 
+      const total = data.notificationsSent + data.digestsSent;
+
       if (dryRun) {
-        toast.info(`Aperçu : ${data.notificationsSent + data.digestsSent} notification(s) seraient envoyées à ${data.usersNotified} personne(s).`);
+        toast.info(`Aperçu : ${total} notification(s) seraient envoyées à ${data.usersNotified} personne(s).`);
+      } else if (total === 0) {
+        toast.info(
+          data.duplicatesSkipped > 0
+            ? `Rien de nouveau à envoyer : ${data.duplicatesSkipped} anomalie(s) déjà notifiée(s) récemment.`
+            : "Aucune anomalie à notifier avec ce seuil.",
+        );
+        void loadHistory();
       } else {
-        toast.success(`${data.notificationsSent + data.digestsSent} notification(s) envoyée(s) à ${data.usersNotified} personne(s).`);
+        toast.success(`${total} notification(s) envoyée(s) à ${data.usersNotified} personne(s).`);
         void loadAnomalies(true);
         void loadHistory();
       }
@@ -215,7 +252,7 @@ export default function AiAnomalyPage() {
               </p>
               <p className="mt-1 text-xs">
                 {engine.used
-                  ? `Service IA joint en ${engine.latencyMs} ms · éléments analysés : ${Object.entries(engine.samples).map(([k, n]) => `${k} ${n}`).join(", ")} · ${engine.flagged} anomalie(s) détectée(s) par le modèle · vérifié à ${new Date(engine.checkedAt).toLocaleTimeString("fr-FR")}`
+                  ? `Service IA joint en ${engine.latencyMs} ms · éléments analysés : ${Object.entries(engine.samples ?? {}).map(([k, n]) => `${k} ${n}`).join(", ")} · ${engine.flagged} anomalie(s) détectée(s) par le modèle · vérifié à ${new Date(engine.checkedAt).toLocaleTimeString("fr-FR")}`
                   : `Raison : ${engine.reason ?? "service IA indisponible"}. Démarrez le service Python et vérifiez AI_SERVICE_URL dans le .env du backend.`}
               </p>
             </div>

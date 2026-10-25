@@ -121,6 +121,12 @@ const ACCESS_RULES: AccessRule[] = [
     roles: ["ADMIN", "RH", "COORDINATOR", ...TUTEURS, ...STAGIAIRES],
   },
 
+  // Ordre de mérite (stagiaires : leur propre position ; encadrement : classement)
+  {
+    pattern: /^\/merit(\/|$)/,
+    roles: ["ADMIN", "DIRECTION", "COORDINATOR", "RH", ...TUTEURS, ...STAGIAIRES],
+  },
+
   // Rapports
   { pattern: /^\/reports(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "RH", "COMMUNICATION", "COORDINATOR"] },
 

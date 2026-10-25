@@ -8,8 +8,11 @@ import { getStoredRole } from "@/lib/access";
 import {
   Item,
   ResourceConfig,
+  canSeeBudget,
   errorMessage,
   exportCsv,
+  isBudgetField,
+  isBudgetLabel,
   listItems,
   removeItem,
 } from "@/lib/crud";
@@ -57,6 +60,9 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
   const current = Math.min(page, totalPages);
   const visible = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
+  const showBudget = canSeeBudget(role);
+  const columns = config.columns.filter((column) => showBudget || !isBudgetLabel(column.header));
+  const exportFields = config.fields.filter((field) => showBudget || !isBudgetField(field.name));
   const canCreate = config.createRoles.includes(role);
   const canEdit = config.editRoles.includes(role);
   const canDelete = config.deleteRoles.includes(role);
@@ -121,7 +127,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
           <button
             type="button"
             onClick={() =>
-              exportCsv(`${config.basePath.replace("/", "")}.csv`, config.fields, filtered)
+              exportCsv(`${config.basePath.replace("/", "")}.csv`, exportFields, filtered)
             }
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
           >
@@ -187,7 +193,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
-                  {config.columns.map((column) => (
+                  {columns.map((column) => (
                     <th key={column.header} className="px-4 py-3 font-semibold">
                       {column.header}
                     </th>
@@ -200,7 +206,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
                 {visible.length === 0 && (
                   <tr>
                     <td
-                      colSpan={config.columns.length + 1}
+                      colSpan={columns.length + 1}
                       className="px-4 py-10 text-center text-gray-500"
                     >
                       Aucun élément trouvé.
@@ -210,7 +216,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
 
                 {visible.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    {config.columns.map((column) => (
+                    {columns.map((column) => (
                       <td key={column.header} className="px-4 py-3 text-gray-700">
                         {column.render(item)}
                       </td>

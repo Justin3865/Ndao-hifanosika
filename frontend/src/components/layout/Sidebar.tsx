@@ -24,6 +24,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Trophy,
   UserCog,
   Users,
   X,
@@ -59,6 +60,7 @@ const groups = [
       { href: "/evaluations", label: "Évaluations", icon: ClipboardList },
       // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"
       { href: "/internships", label: "Stages", icon: GraduationCap },
+      { href: "/merit", label: "Ordre de mérite", icon: Trophy },
       // ⚠️ NOFAFANA: Ny "Offres de stage" sy "Nouvelle offre" tsy aseho eto intsony
     ],
   },

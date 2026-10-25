@@ -32,6 +32,7 @@ import { trackingRouter, publicTrackingRouter } from "./routes/tracking.routes";
 import { vulnerabilityRouter, serviceRouter } from "./routes/vulnerability.routes";
 import { eventNotifier } from "./middlewares/eventNotifier.middleware";
 
+import activitySpaceRoutes from "./routes/activitySpace.routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
 
@@ -75,6 +76,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/departements", departementsRoutes);
 app.use("/api/projects", projectsRoutes);
 app.use("/api/activities", activitiesRoutes);
+app.use("/api/activity-space", activitySpaceRoutes);
 app.use("/api/milestones", milestonesRoutes);
 app.use("/api/members", membersRoutes);
 app.use("/api/beneficiaries", beneficiariesRoutes);

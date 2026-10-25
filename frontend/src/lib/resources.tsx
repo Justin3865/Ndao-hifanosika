@@ -2,6 +2,7 @@
 // Configuration de chaque module : colonnes, formulaires, rôles autorisés.
 // Les rôles d'écriture reflètent authorizeRoles() du backend.
 
+import { ActivitySpace } from "@/components/activities/ActivitySpace";
 import { StatusBadge } from "@/components/crud/StatusBadge";
 import { TrackingPanel } from "@/components/tracking/TrackingPanel";
 import {
@@ -131,6 +132,7 @@ export const activitiesConfig: ResourceConfig = {
     { label: "Budget", value: fmtMoney(a.budget) },
     { label: "Description", value: a.description || "—" },
   ],
+  extra: (a) => <ActivitySpace activity={a} />,
   titleOf: (a) => a.title,
   searchOf: (a) => `${a.title} ${a.project?.name ?? ""} ${a.location ?? ""}`,
   statusFilter: { field: "status", options: statusOptions(ACTIVITY_STATUS) },

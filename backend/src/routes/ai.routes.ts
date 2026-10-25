@@ -14,6 +14,8 @@ import {
   getPerformance,
   getSummary,
 } from "../controllers/insights.controller";
+// AJOUT : alertes d'anomalies (Analyser et notifier + Suivi des analyses)
+import { getAlerts, postNotify } from "../controllers/anomalyAlerts.controller";
 
 const router = Router();
 
@@ -53,6 +55,10 @@ router.get("/summary", authorizeRoles(...AI_ROLES), getSummary);
 router.get("/performance", authorizeRoles(...AI_ROLES), getPerformance);
 router.get("/anomalies", authorizeRoles(...AI_ROLES), getAnomalies);
 router.get("/dropout-risk", authorizeRoles(...AI_ROLES), getDropoutRiskList);
+
+// AJOUT : « Analyser et notifier » (ADMIN, DIRECTION, DSI) et historique des analyses
+router.post("/anomalies/notify", authorizeRoles("ADMIN", "DIRECTION", "DSI"), postNotify);
+router.get("/anomalies/alerts", authorizeRoles(...AI_ROLES), getAlerts);
 
 router.post("/train", authorizeRoles("ADMIN", "DSI"), trainModels);
 router.get("/models", authorizeRoles(...AI_ROLES), getModels);

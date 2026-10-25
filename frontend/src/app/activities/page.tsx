@@ -1,8 +1,7 @@
 "use client";
 
-import { ResourceListPage } from "@/components/crud/ResourceListPage";
-import { activitiesConfig } from "@/lib/resources";
+import { ActivitiesBoard } from "@/components/activities/ActivitiesBoard";
 
 export default function Page() {
-  return <ResourceListPage config={activitiesConfig} />;
+  return <ActivitiesBoard />;
 }

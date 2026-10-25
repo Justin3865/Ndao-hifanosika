@@ -232,3 +232,15 @@ export function exportCsv(
   link.click();
   URL.revokeObjectURL(url);
 }
+
+/* ---------- Budget : visible seulement par les rôles de pilotage ---------- */
+
+/** Rôles autorisés à voir (et modifier) les budgets. Les autres (stagiaires, tuteurs, DSI, RH, COM) ne les voient pas. */
+export const BUDGET_ROLES = ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"];
+
+export const canSeeBudget = (role?: string | null): boolean =>
+  BUDGET_ROLES.includes((role ?? "").toUpperCase());
+
+/** Libellés / noms de champs financiers à masquer. */
+export const isBudgetLabel = (label?: string): boolean => /budget/i.test(label ?? "");
+export const isBudgetField = (name?: string): boolean => /budget/i.test(name ?? "");

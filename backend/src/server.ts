@@ -10,6 +10,7 @@ import {
   disconnectDatabase,
 } from "./config/database";
 import { logger } from "./config/logger";
+import { startActivityReminders } from "./services/activityReminders.service";
 
 async function startServer() {
   try {
@@ -18,6 +19,7 @@ async function startServer() {
     const server = http.createServer(app);
     initSocket(server);
     void ensureDefaultZones();
+    startActivityReminders();
     startFieldJobs();
     startScheduledMessageWorker();
 

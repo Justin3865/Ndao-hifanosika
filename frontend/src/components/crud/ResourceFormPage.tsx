@@ -9,13 +9,16 @@ import {
   LookupItem,
   LookupKind,
   ResourceConfig,
+  canSeeBudget,
   errorMessage,
   fetchLookup,
   getItem,
+  isBudgetField,
   saveItem,
 } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
 import { GeoPicker } from "@/components/maps/GeoPicker";
+import { getStoredRole } from "@/lib/access";
 
 type Values = Record<string, string | boolean>;
 
@@ -77,8 +80,13 @@ export function ResourceFormPage({
   const router = useRouter();
   const isEdit = mode === "edit";
 
-  const fields = config.fields.filter((field) =>
-    isEdit ? !field.hideOnEdit : !field.hideOnCreate
+  const showBudget = canSeeBudget(getStoredRole());
+
+  // Le champ « budget » n'existe pas dans le formulaire des rôles non autorisés
+  const fields = config.fields.filter(
+    (field) =>
+      (isEdit ? !field.hideOnEdit : !field.hideOnCreate) &&
+      (showBudget || !isBudgetField(field.name))
   );
 
   const [values, setValues] = useState<Values>(() =>
