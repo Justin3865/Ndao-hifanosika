@@ -32,6 +32,7 @@ import { campaignsRouter, gridsRouter } from "./routes/evalconfig.routes";
 import { trackingRouter, publicTrackingRouter } from "./routes/tracking.routes";
 import { vulnerabilityRouter, serviceRouter } from "./routes/vulnerability.routes";
 import { eventNotifier } from "./middlewares/eventNotifier.middleware";
+import { anomalyWatcher } from "./services/anomalyRealtime.service";
 
 import activitySpaceRoutes from "./routes/activitySpace.routes";
 import monitoringRoutes from "./routes/monitoring.routes";
@@ -56,6 +57,7 @@ app.use(morgan("dev"));
 
 app.use(auditMiddleware);
 app.use(eventNotifier);
+app.use(anomalyWatcher);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({

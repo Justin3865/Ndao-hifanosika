@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BrainCircuit, Loader2, Play } from "lucide-react";
+import { BrainCircuit, Loader2, Play, Trash2 } from "lucide-react";
 import api from "@/lib/axios";
 import { ModelsLab } from "@/components/ai-charts/ModelsLab";
 import { AppLayout } from "@/components/layout";
@@ -46,6 +46,23 @@ export default function ModelsPage() {
     setCanTrain(["ADMIN", "DSI"].includes(getStoredRole()));
     void load();
   }, []);
+
+  const removeModel = async (m: StoredModel) => {
+    const ok = await confirmDialog(`Supprimer l'entraînement « ${m.name} » du ${fmtDateTime(m.trainedAt)} ? Cette action est définitive.`, {
+      title: "Supprimer cet entraînement",
+      confirmLabel: "Supprimer",
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await api.delete(`/ai/models/${m.id}`);
+      toast.success("Entraînement supprimé.");
+      await load();
+    } catch (err) {
+      toast.error(errorMessage(err, "Suppression impossible."));
+    }
+  };
 
   const train = async () => {
     if (!(await confirmDialog("Entraîner les modèles sur les données actuelles ? Cela peut prendre quelques secondes.", { title: "Entraînement IA", confirmLabel: "Lancer", danger: false }))) return;
@@ -100,7 +117,7 @@ export default function ModelsPage() {
             </div>
 
             {report.reliability !== "CORRECTE" && (
-              <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
+              <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
                 Peu de données : les résultats sont indicatifs. Il faut plusieurs centaines de ménages renseignés (dont au moins 40 vulnérables) pour des prédictions réellement fiables.
               </p>
             )}
@@ -144,13 +161,26 @@ export default function ModelsPage() {
               <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                 <span className="font-medium text-gray-900">{m.name}</span>
                 <span className="text-gray-500">{m.sampleSize} ménages · AUC {Number(m.metrics.auc).toFixed(2)} · exactitude {pct(m.metrics.accuracy)}</span>
-                <span className="text-xs text-gray-400">{fmtDateTime(m.trainedAt)}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">{fmtDateTime(m.trainedAt)}</span>
+                  {canTrain && (
+                    <button
+                      type="button"
+                      onClick={() => void removeModel(m)}
+                      title="Supprimer cet entraînement"
+                      aria-label="Supprimer cet entraînement"
+                      className="inline-flex items-center rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-700 hover:bg-red-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
         </div>
 
-        <ModelsLab />
+        <ModelsLab onChanged={() => void load()} />
       </div>
     </AppLayout>
   );

@@ -11,6 +11,8 @@ import {
 } from "./config/database";
 import { logger } from "./config/logger";
 import { startActivityReminders } from "./services/activityReminders.service";
+import { startAnomalyMonitor } from "./controllers/anomalyAlerts.controller";
+import { startAnomalyRealtime } from "./services/anomalyRealtime.service";
 import { startReminderScheduler } from "./services/reminders.service";
 
 async function startServer() {
@@ -24,6 +26,8 @@ async function startServer() {
     startActivityReminders();
     startFieldJobs();
     startScheduledMessageWorker();
+    startAnomalyRealtime();
+    startAnomalyMonitor();
 
     server.listen(env.PORT, () => {
       logger.success(

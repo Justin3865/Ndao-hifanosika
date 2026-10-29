@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { logger } from "../config/logger";
 import { sendError } from "../middlewares/error.middleware";
 import { insightInternals } from "./insights.controller";
-import { latestComparison, modelHistory, runAndStoreComparison } from "../ml/compare";
+import { comparisonHistory, deleteStoredModel, latestComparison, modelHistory, runAndStoreComparison } from "../ml/compare";
 import { scoreHouseholds } from "../ml/vulnerability";
 
 /**
@@ -327,3 +327,13 @@ export const getComparison = handler(async () => (await latestComparison()) ?? (
 
 /** Relance la comparaison (ADMIN, DSI) et l'enregistre dans la base. */
 export const runComparison = handler(() => runAndStoreComparison(), "Erreur lors de l'entraînement comparatif");
+
+/** Historique des tests de comparaison (un résumé par exécution). */
+export const getComparisonHistory = handler(() => comparisonHistory(), "Erreur lors de l'historique des tests");
+
+/** Supprime un entraînement ou un test enregistré (ADMIN, DSI). */
+export const removeModel = handler(async (req) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Identifiant invalide");
+  return deleteStoredModel(id);
+}, "Erreur lors de la suppression");

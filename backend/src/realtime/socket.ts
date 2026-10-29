@@ -35,6 +35,10 @@ export function emitToUser(userId: number, event: string, payload: unknown) {
   io?.of("/").to(`user:${userId}`).emit(event, payload);
 }
 
+export function emitToAnomalyWatchers(event: string, payload: unknown) {
+  io?.of("/").to("anomaly").emit(event, payload);
+}
+
 export function emitToTracking(event: string, payload: unknown) {
   io?.of("/").to("tracking").emit(event, payload);
 }
@@ -143,6 +147,10 @@ export function initSocket(server: HttpServer): Server {
 
     if (TRACKING_ROLES.includes(socket.data.role)) {
       socket.join("tracking");
+    }
+
+    if (["ADMIN", "DIRECTION", "DSI", "COORDINATOR"].includes(socket.data.role)) {
+      socket.join("anomaly");
     }
 
     // ---- Présence en ligne (visible de l'administration) ----

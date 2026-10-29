@@ -5,6 +5,8 @@ import { db } from "../utils/db";
 import { notifyUsers } from "../utils/notify";
 import { sendError } from "../middlewares/error.middleware";
 import { getAnomalies } from "./insights.controller";
+import { emitToAnomalyWatchers } from "../realtime/socket";
+import { isAnomalyRealtimeEnabled } from "../services/anomalyRealtime.service";
 
 /* ===================================================================
  * Alertes d'anomalies : « Analyser et notifier » + suivi des analyses
@@ -309,6 +311,17 @@ export async function runAnomalyAlerts(options: {
       });
 
       logger.info(`Alertes d'anomalies (${options.source}) : ${notifications + digests} notification(s) → ${perUser.size} personne(s)`);
+
+      // Temps réel : la page « Détection d'anomalies » se rafraîchit toute seule
+      emitToAnomalyWatchers("anomaly:run", {
+        at: result.ranAt,
+        source: options.source,
+        analyzed: result.analyzed,
+        notificationsSent: notifications,
+        digestsSent: digests,
+        usersNotified: perUser.size,
+        bySeverity,
+      });
     }
 
     return result;
@@ -365,6 +378,7 @@ export async function getAlerts(_req: Request, res: Response): Promise<void> {
       data: rows.map((row) => ({ id: row.id, at: row.createdAt, ...(row.details ?? {}) })),
       config: {
         auto: MONITOR_MINUTES > 0,
+        realtime: isAnomalyRealtimeEnabled(),
         everyMinutes: MONITOR_MINUTES,
         minSeverity: DEFAULT_MIN,
         cooldownHours: COOLDOWN_HOURS,

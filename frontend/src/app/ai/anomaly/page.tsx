@@ -9,6 +9,7 @@ import { InsightHeader, LevelBadge, METHOD_NOTE, State } from "@/components/insi
 import { errorMessage } from "@/lib/crud";
 import { getStoredRole } from "@/lib/access";
 import { confirmDialog, toast } from "@/lib/toast";
+import { getSocket } from "@/lib/socket";
 
 /* ------------------------------ Types ------------------------------ */
 
@@ -46,6 +47,7 @@ interface CatalogItem {
 
 interface AlertConfig {
   auto: boolean;
+  realtime?: boolean;
   everyMinutes: number;
   minSeverity: Severity;
   cooldownHours: number;
@@ -174,6 +176,27 @@ export default function AiAnomalyPage() {
   useEffect(() => {
     if (config) setMinSeverity(config.minSeverity);
   }, [config]);
+
+  // Temps réel : une analyse automatique vient de se terminer -> on actualise la liste et le suivi
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onRun = (payload: { source?: string; notificationsSent?: number; digestsSent?: number; usersNotified?: number }) => {
+      void loadAnomalies(true);
+      void loadHistory();
+
+      const total = (payload?.notificationsSent ?? 0) + (payload?.digestsSent ?? 0);
+      if (payload?.source === "auto" && total > 0) {
+        toast.info(`Nouvelles anomalies détectées : ${total} alerte(s) envoyée(s) à ${payload.usersNotified ?? 0} personne(s).`);
+      }
+    };
+
+    socket.on("anomaly:run", onRun);
+    return () => {
+      socket.off("anomaly:run", onRun);
+    };
+  }, [loadAnomalies, loadHistory]);
 
   const openCatalog = async () => {
     const next = !showCatalog;
@@ -368,9 +391,11 @@ export default function AiAnomalyPage() {
               </p>
               <p className="mt-1 text-xs text-gray-500">
                 {config
-                  ? config.auto
-                    ? `Analyse automatique active : toutes les ${config.everyMinutes} min (seuil par défaut : ${SEVERITY_CHOICES.find(([v]) => v === config.minSeverity)?.[1].toLowerCase()}).`
-                    : "Analyse automatique désactivée : définissez ANOMALY_MONITOR_MINUTES dans le .env du backend pour l'activer (ex. 360 = toutes les 6 h)."
+                  ? config.realtime
+                    ? `Détection en temps réel active : chaque modification de données déclenche une analyse et les alertes partent aussitôt${config.auto ? ` (contrôle de sécurité toutes les ${config.everyMinutes} min)` : ""}. Seuil par défaut : ${SEVERITY_CHOICES.find(([v]) => v === config.minSeverity)?.[1].toLowerCase()}.`
+                    : config.auto
+                      ? `Analyse automatique active : toutes les ${config.everyMinutes} min (seuil par défaut : ${SEVERITY_CHOICES.find(([v]) => v === config.minSeverity)?.[1].toLowerCase()}).`
+                      : "Analyse automatique désactivée : retirez ANOMALY_REALTIME=false ou définissez ANOMALY_MONITOR_MINUTES dans le .env du backend."
                   : "Suivi indisponible pour le moment."}
               </p>
 

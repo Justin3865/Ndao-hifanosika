@@ -70,6 +70,17 @@ export interface ComparisonReport {
   disagreements: Array<{
     id: number; name: string; projectName: string; flagged: boolean; spread: number; scores: Record<string, number>;
   }>;
+  /** Ménages signalés « vulnérables » au moment du test (liste figée avec l'enregistrement) */
+  vulnerableHouseholds?: VulnerableRow[];
+}
+
+export interface VulnerableRow {
+  id: number;
+  name: string;
+  projectName: string;
+  locality: string | null;
+  ensemble: number;
+  scores: Record<string, number>;
 }
 
 /* ------------------------------ méthodes ------------------------------ */
@@ -415,6 +426,7 @@ export async function compareLearningMethods(): Promise<ComparisonReport> {
       id: h.id,
       name: h.name,
       projectName: h.projectName,
+      locality: h.locality,
       flagged: h.vulnerable,
       ensemble: Math.round(mean(values)),
       spread: Math.max(...values) - Math.min(...values),
@@ -435,6 +447,12 @@ export async function compareLearningMethods(): Promise<ComparisonReport> {
     .slice(0, 8)
     .map(({ id, name, projectName, flagged, spread, scores }) => ({ id, name, projectName, flagged, spread, scores }));
 
+  const vulnerableHouseholds: VulnerableRow[] = scored
+    .filter((s) => s.flagged)
+    .sort((a, b) => b.ensemble - a.ensemble)
+    .slice(0, 200)
+    .map(({ id, name, projectName, locality, ensemble, scores }) => ({ id, name, projectName, locality, ensemble, scores }));
+
   const best = ranking[0] ? { key: ranking[0].key, name: ranking[0].name, auc: ranking[0].auc, f1: ranking[0].f1, accuracy: ranking[0].accuracy } : null;
 
   return {
@@ -451,6 +469,7 @@ export async function compareLearningMethods(): Promise<ComparisonReport> {
     common: { inAllMethods, top: topFeatures },
     consensusHouseholds,
     disagreements,
+    vulnerableHouseholds,
   };
 }
 
@@ -504,4 +523,53 @@ export async function modelHistory() {
   });
 
   return Object.entries(series).map(([name, points]) => ({ name, points: points.slice(-30) }));
+}
+
+/** Historique des tests : chaque comparaison enregistrée (résumé), du plus récent au plus ancien. */
+export async function comparisonHistory(limit = 30) {
+  const rows = await db.aiModel.findMany({
+    where: { name: "comparison-best" },
+    orderBy: { trainedAt: "desc" },
+    take: limit,
+    select: { id: true, sampleSize: true, trainedAt: true, weights: true },
+  });
+
+  // Anciens tests (avant l'enregistrement de la liste) : on propose la liste actuelle des ménages vulnérables
+  let current: VulnerableRow[] | null = null;
+  const currentList = async (): Promise<VulnerableRow[]> => {
+    if (current) return current;
+    const households = await loadHouseholds();
+    current = households
+      .filter((h) => h.vulnerable)
+      .map((h) => ({ id: h.id, name: h.name, projectName: h.projectName, locality: h.locality, ensemble: 0, scores: {} }));
+    return current;
+  };
+
+  const out = [];
+
+  for (const r of rows as Array<{ id: number; sampleSize: number; trainedAt: Date; weights: unknown }>) {
+    const w = (r.weights ?? {}) as Partial<ComparisonReport>;
+    const saved = Array.isArray(w.vulnerableHouseholds);
+
+    out.push({
+      id: r.id,
+      at: new Date(r.trainedAt).toISOString(),
+      sampleSize: r.sampleSize,
+      positives: w.positives ?? null,
+      folds: w.folds ?? null,
+      reliability: w.reliability ?? null,
+      best: w.best ?? null,
+      ranking: (w.ranking ?? []).map((x) => ({ key: x.key, name: x.name, auc: x.auc, f1: x.f1, accuracy: x.accuracy, rank: x.rank })),
+      vulnerableSource: saved ? "saved" : "current",
+      vulnerableHouseholds: saved ? (w.vulnerableHouseholds as VulnerableRow[]) : await currentList(),
+    });
+  }
+
+  return out;
+}
+
+/** Supprime un enregistrement de la table AiModel (entraînement ou test de comparaison). */
+export async function deleteStoredModel(id: number): Promise<{ deleted: number }> {
+  const res = await db.aiModel.deleteMany({ where: { id } });
+  return { deleted: res.count };
 }

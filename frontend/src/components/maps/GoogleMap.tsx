@@ -78,7 +78,7 @@ export interface MapMarker {
   title: string;
   color: string;
   radius?: number;
-  shape?: "circle" | "square" | "triangle";
+  shape?: "circle" | "square" | "triangle" | "star";
   /** Texte brut affiché dans la bulle d'information */
   info?: string;
 }
@@ -138,6 +138,7 @@ let legacyDirectionsBlocked = false;
 const SHAPES: Record<string, string> = {
   square: "M -1 -1 L 1 -1 L 1 1 L -1 1 z",
   triangle: "M 0 -1.2 L 1 1 L -1 1 z",
+  star: "M 0 -1.3 L 0.38 -0.4 L 1.3 -0.4 L 0.55 0.15 L 0.8 1.1 L 0 0.55 L -0.8 1.1 L -0.55 0.15 L -1.3 -0.4 L -0.38 -0.4 z",
 };
 
 const escapeHtml = (value: string) =>

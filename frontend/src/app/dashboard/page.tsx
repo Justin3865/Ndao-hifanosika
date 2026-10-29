@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpRight,
   Briefcase,
+  Building2,
   ClipboardList,
   GraduationCap,
   Heart,
@@ -16,7 +17,7 @@ import {
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { StatusBadge } from "@/components/crud/StatusBadge";
-import { GoogleMap, MapMarker } from "@/components/maps/GoogleMap";
+import { GoogleMap, MapMarker, MAPS_ENABLED } from "@/components/maps/GoogleMap";
 import { getStoredRole } from "@/lib/access";
 import { fmtDate } from "@/lib/crud";
 import { roleLabel } from "@/lib/roles";
@@ -43,6 +44,28 @@ interface Zone {
   projects: number;
   beneficiaries: number;
 }
+
+interface Headquarters {
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+interface ConfiguredZone {
+  id: number;
+  name: string;
+  region?: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/** Même taille pour tous les points de la carte (siège, zones, ménages, agents, bénéficiaires). */
+const POINT_RADIUS = 9;
+
+const DEFAULT_HQ_ADDRESS = "Lot 28TB/3609, Talatamaty Ambany, Fianarantsoa 301, Madagascar";
 
 interface InternshipRow {
   id: number;
@@ -73,8 +96,14 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
   const [internships, setInternships] = useState<InternshipRow[]>([]);
+  const [hq, setHq] = useState<Headquarters | null>(null);
+  const [configuredZones, setConfiguredZones] = useState<ConfiguredZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTargets, setShowTargets] = useState(true);
+  const [showHq, setShowHq] = useState(true);
+  const [showZones, setShowZones] = useState(true);
+  const [showHouseholds, setShowHouseholds] = useState(true);
+  const [showStaff, setShowStaff] = useState(true);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -94,6 +123,22 @@ export default function DashboardPage() {
     if (REPORT_ROLES.includes(current)) {
       jobs.push(api.get("/reports/dashboard").then((r) => setData(r.data?.data ?? null)).catch(() => setData(null)));
     }
+
+    // Siège + zones configurées : visibles par tous les utilisateurs
+    jobs.push(
+      api
+        .get("/public/organization")
+        .then((r) => {
+          const org = r.data?.data;
+          const head = org?.headquarters;
+          setHq(head && Number.isFinite(Number(head.latitude)) && Number.isFinite(Number(head.longitude)) ? { ...head, latitude: Number(head.latitude), longitude: Number(head.longitude) } : null);
+          setConfiguredZones(Array.isArray(org?.zones) ? org.zones : []);
+        })
+        .catch(() => {
+          setHq(null);
+          setConfiguredZones([]);
+        }),
+    );
 
     if (ZONE_ROLES.includes(current)) {
       jobs.push(api.get("/tracking/zones").then((r) => setZones(r.data?.data ?? [])).catch(() => setZones([])));
@@ -117,15 +162,50 @@ export default function DashboardPage() {
   const { households } = useHouseholds(canTrack);
 
   const markers: MapMarker[] = useMemo(() => {
-    const zoneMarkers: MapMarker[] = zones.map((zone) => ({
-      id: `zone-${zone.city}`,
-      latitude: zone.latitude,
-      longitude: zone.longitude,
-      title: zone.city,
-      color: "#1d4ed8",
-      radius: 10 + Math.min(18, zone.activities * 2),
-      info: `${zone.projects} projet(s) · ${zone.activities} activité(s) · ${zone.beneficiaries} bénéficiaire(s)`,
-    }));
+    const hqMarkers: MapMarker[] =
+      showHq && hq
+        ? [
+            {
+              id: "hq",
+              latitude: hq.latitude,
+              longitude: hq.longitude,
+              title: `Siège : ${hq.name}`,
+              color: "#111827",
+              shape: "square" as const,
+              radius: POINT_RADIUS,
+              info: [hq.address ?? DEFAULT_HQ_ADDRESS, hq.phone, hq.email].filter(Boolean).join("\n"),
+            },
+          ]
+        : [];
+
+    const zoneMarkers: MapMarker[] = showZones
+      ? zones.map((zone) => ({
+          id: `zone-${zone.city}`,
+          latitude: zone.latitude,
+          longitude: zone.longitude,
+          title: zone.city,
+          color: "#1d4ed8",
+          radius: POINT_RADIUS,
+          info: `${zone.projects} projet(s) · ${zone.activities} activité(s) · ${zone.beneficiaries} bénéficiaire(s)`,
+        }))
+      : [];
+
+    // Zones d'intervention définies par l'administration (hors doublons avec les villes d'activité)
+    const known = new Set(zones.map((z) => z.city.trim().toLowerCase()));
+    const declaredMarkers: MapMarker[] = showZones
+      ? configuredZones
+          .filter((z) => !known.has(z.name.trim().toLowerCase()))
+          .filter((z) => !(hq && Math.abs(z.latitude - hq.latitude) < 1e-6 && Math.abs(z.longitude - hq.longitude) < 1e-6))
+          .map((z) => ({
+            id: `cfg-${z.id}`,
+            latitude: z.latitude,
+            longitude: z.longitude,
+            title: z.name,
+            color: "#60a5fa",
+            radius: POINT_RADIUS,
+            info: z.region ? `Zone d'intervention — ${z.region}` : "Zone d'intervention",
+          }))
+      : [];
 
     const targetMarkers: MapMarker[] =
       canTrack && showTargets
@@ -137,40 +217,47 @@ export default function DashboardPage() {
               longitude: t.longitude as number,
               title: `${t.firstName} ${t.lastName}`,
               color: PRESENCE_COLOR[presenceOf(t.lastSeenAt)],
-              radius: 7,
+              radius: POINT_RADIUS,
               info: `${t.project?.name ?? ""} — ${PRESENCE_LABEL[presenceOf(t.lastSeenAt)]}`,
             }))
         : [];
 
-    const staffMarkers: MapMarker[] = canTrack
-      ? staff.map((s) => ({
-          id: `staff-${s.id}`,
-          latitude: s.latitude,
-          longitude: s.longitude,
-          title: `Agent : ${s.name}`,
-          color: "#1d4ed8",
-          shape: "square" as const,
-          radius: 9,
-          info: `Altitude ${s.altitude !== null ? Math.round(s.altitude) : "?"} m`,
-        }))
-      : [];
-
-    const householdMarkers: MapMarker[] = canTrack
-      ? households
-          .filter((h) => h.latitude !== null && h.longitude !== null && (h.vulnerable || h.score >= 50))
-          .map((h) => ({
-            id: `home-${h.id}`,
-            latitude: h.latitude as number,
-            longitude: h.longitude as number,
-            title: h.name,
-            color: scoreColor(h.score),
-            radius: 7,
-            info: `${h.locality ?? ""} — score ${h.score}/100 · altitude ${h.altitude ?? "?"} m`,
+    const staffMarkers: MapMarker[] =
+      canTrack && showStaff
+        ? staff.map((s) => ({
+            id: `staff-${s.id}`,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            title: `Agent : ${s.name}`,
+            color: "#1d4ed8",
+            shape: "square" as const,
+            radius: POINT_RADIUS,
+            info: `Altitude ${s.altitude !== null ? Math.round(s.altitude) : "?"} m`,
           }))
-      : [];
+        : [];
 
-    return [...zoneMarkers, ...householdMarkers, ...staffMarkers, ...targetMarkers];
-  }, [zones, targets, staff, households, canTrack, showTargets]);
+    const householdMarkers: MapMarker[] =
+      canTrack && showHouseholds
+        ? households
+            .filter((h) => h.latitude !== null && h.longitude !== null && (h.vulnerable || h.score >= 50))
+            .map((h) => ({
+              id: `home-${h.id}`,
+              latitude: h.latitude as number,
+              longitude: h.longitude as number,
+              title: h.name,
+              color: scoreColor(h.score),
+              radius: POINT_RADIUS,
+              info: `${h.locality ?? ""} — score ${h.score}/100 · altitude ${h.altitude ?? "?"} m`,
+            }))
+        : [];
+
+    return [...zoneMarkers, ...declaredMarkers, ...householdMarkers, ...staffMarkers, ...targetMarkers, ...hqMarkers];
+  }, [zones, configuredZones, hq, targets, staff, households, canTrack, showTargets, showHq, showZones, showHouseholds, showStaff]);
+
+  const hqAddress = hq?.address || DEFAULT_HQ_ADDRESS;
+  const hqLink = hq
+    ? `https://www.google.com/maps/search/?api=1&query=${hq.latitude},${hq.longitude}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`ONG Ndao Hifanosika, ${DEFAULT_HQ_ADDRESS}`)}`;
 
   const online = targets.filter((t) => presenceOf(t.lastSeenAt) === "online").length;
   const today = new Date().toLocaleDateString("fr-FR", {
@@ -229,44 +316,6 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ---------- Adresse et carte du siège : visibles par tous les utilisateurs ---------- */}
-        <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="font-bold text-gray-900">ONG Ndao Hifanosika</h2>
-                <p className="mt-0.5 text-sm text-gray-600">
-                  Lot 28TB/3609, Talatamaty Ambany, Fianarantsoa 301, Madagascar
-                </p>
-                <p className="text-xs text-gray-500">Siège de l&apos;ONG</p>
-              </div>
-            </div>
-            <a
-              href="https://www.google.com/maps/search/?api=1&query=ONG+Ndao+Hifanosika%2C+Lot+28TB%2F3609%2C+Talatamaty+Ambany%2C+Fianarantsoa+Madagascar"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
-            >
-              <MapPin className="h-4 w-4" />
-              Ouvrir dans Google Maps
-            </a>
-          </div>
-
-          <div className="border-t border-gray-100">
-            <iframe
-              title="Localisation du siège de l'ONG Ndao Hifanosika à Fianarantsoa"
-              src="https://maps.google.com/maps?q=ONG%20Ndao%20Hifanosika%2C%20Lot%2028TB%2F3609%2C%20Talatamaty%20Ambany%2C%20Fianarantsoa%20301%2C%20Madagascar&output=embed"
-              className="block h-[260px] w-full sm:h-[320px]"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allowFullScreen
-            />
-          </div>
-        </section>
-
         {loading && <p className="text-gray-500">Chargement...</p>}
 
         {/* ---------- Indicateurs ---------- */}
@@ -288,44 +337,91 @@ export default function DashboardPage() {
           </section>
         )}
 
-        {/* ---------- Carte + répartition ---------- */}
-        {(zones.length > 0 || canTrack) && (
-          <section className="grid gap-4 xl:grid-cols-[1fr_340px]">
-            <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-2">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-blue-100 p-2.5 text-blue-700">
-                    <MapPin className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="font-semibold text-gray-900">Zones d&apos;intervention</h2>
-                    <p className="text-xs text-gray-500">Madagascar — activités et bénéficiaires par ville</p>
-                  </div>
+        {/* ---------- Carte unique : siège, zones d'intervention, terrain + répartition ---------- */}
+        <section className="grid gap-4 xl:grid-cols-[1fr_340px]">
+          <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-2">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="rounded-xl bg-amber-100 p-2.5 text-amber-700">
+                  <Building2 className="h-5 w-5" />
                 </div>
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-gray-900">Carte de l&apos;ONG Ndao Hifanosika</h2>
+                  <p className="text-xs text-gray-500">Siège, zones d&apos;intervention et présence sur le terrain</p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    <span className="font-medium text-gray-800">Siège :</span> {hqAddress}
+                  </p>
+                </div>
+              </div>
 
-                {canTrack && (
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+              <a
+                href={hqLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+              >
+                <MapPin className="h-4 w-4" />
+                Ouvrir dans Google Maps
+              </a>
+            </div>
+
+            {/* Couches affichées sur la carte */}
+            <div className="mb-3 flex flex-wrap gap-2 px-2 text-sm text-gray-600">
+              <label className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 px-3 py-1">
+                <input type="checkbox" checked={showHq} onChange={(e) => setShowHq(e.target.checked)} className="h-4 w-4" />
+                Siège
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 px-3 py-1">
+                <input type="checkbox" checked={showZones} onChange={(e) => setShowZones(e.target.checked)} className="h-4 w-4" />
+                Zones d&apos;intervention
+              </label>
+              {canTrack && (
+                <>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 px-3 py-1">
+                    <input type="checkbox" checked={showHouseholds} onChange={(e) => setShowHouseholds(e.target.checked)} className="h-4 w-4" />
+                    Ménages vulnérables
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 px-3 py-1">
+                    <input type="checkbox" checked={showStaff} onChange={(e) => setShowStaff(e.target.checked)} className="h-4 w-4" />
+                    Agents en mission
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 px-3 py-1">
                     <input type="checkbox" checked={showTargets} onChange={(e) => setShowTargets(e.target.checked)} className="h-4 w-4" />
                     <Radio className="h-4 w-4 text-green-600" /> Bénéficiaires en direct
                   </label>
-                )}
-              </div>
-
-              <GoogleMap markers={markers} height={460} />
-
-              <div className="mt-3 flex flex-wrap gap-4 px-2 text-xs text-gray-500">
-                <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-blue-700" /> Zone d&apos;intervention</span>
-                {canTrack && (
-                  <>
-                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-red-600" /> Ménage vulnérable</span>
-                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-blue-700" /> Agent en mission</span>
-                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-green-600" /> En ligne</span>
-                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-amber-500" /> Vu récemment</span>
-                    <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-gray-400" /> Hors ligne</span>
-                  </>
-                )}
-              </div>
+                </>
+              )}
             </div>
+
+            {loading ? (
+              <div className="flex h-[460px] items-center justify-center rounded-2xl bg-gray-50 text-sm text-gray-500">Chargement de la carte…</div>
+            ) : MAPS_ENABLED ? (
+              <GoogleMap markers={markers} height={460} />
+            ) : (
+              <iframe
+                title="Localisation du siège de l'ONG Ndao Hifanosika"
+                src={`https://maps.google.com/maps?q=${hq ? `${hq.latitude},${hq.longitude}` : encodeURIComponent(`ONG Ndao Hifanosika, ${DEFAULT_HQ_ADDRESS}`)}&output=embed`}
+                className="block h-[460px] w-full rounded-2xl"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+              />
+            )}
+
+            <div className="mt-3 flex flex-wrap gap-4 px-2 text-xs text-gray-500">
+              <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-gray-900" /> Siège ONG</span>
+              <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-blue-700" /> Zone d&apos;intervention</span>
+              {canTrack && (
+                <>
+                  <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-red-600" /> Ménage vulnérable</span>
+                  <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-blue-700" /> Agent en mission</span>
+                  <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-green-600" /> En ligne</span>
+                  <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-amber-500" /> Vu récemment</span>
+                  <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-full bg-gray-400" /> Hors ligne</span>
+                </>
+              )}
+            </div>
+          </div>
 
             <div className="space-y-4">
               {zones.length > 0 && (
@@ -372,7 +468,6 @@ export default function DashboardPage() {
               )}
             </div>
           </section>
-        )}
 
         {/* ---------- Stages ---------- */}
         {internships.length > 0 && (

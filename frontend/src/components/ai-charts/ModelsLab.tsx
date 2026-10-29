@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Play, Trophy } from "lucide-react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { Eye, EyeOff, Loader2, Play, Trash2, Trophy } from "lucide-react";
 import api from "@/lib/axios";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage } from "@/lib/crud";
-import { toast } from "@/lib/toast";
+import { confirmDialog, toast } from "@/lib/toast";
 import { BarChart, ChartCard, GroupedBars, Legend, LineChart, PALETTE } from "./charts";
 
 interface Metrics { accuracy: number; precision: number; recall: number; f1: number; auc: number }
@@ -43,6 +43,21 @@ interface Report {
 
 interface History { name: string; points: Array<{ at: string; auc: number | null; accuracy: number | null; sampleSize: number }> }
 
+interface TestRun {
+  id: number;
+  at: string;
+  sampleSize: number;
+  positives: number | null;
+  folds: number | null;
+  reliability: Report["reliability"] | null;
+  best: { key: string; name: string; auc: number; f1: number; accuracy: number } | null;
+  ranking: Array<{ key: string; name: string; auc: number; f1: number; accuracy: number; rank: number }>;
+  vulnerableSource: "saved" | "current";
+  vulnerableHouseholds: Array<{ id: number; name: string; projectName: string; locality: string | null; ensemble: number; scores: Record<string, number> }>;
+}
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
 const COLORS: Record<string, string> = { sgd: PALETTE.blue, mlp: PALETTE.purple, nb: PALETTE.green, knn: PALETTE.amber, ensemble: PALETTE.red };
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 const fmt = (v: number) => (Math.round(v * 100) / 100).toFixed(2);
@@ -51,20 +66,27 @@ const fmt = (v: number) => (Math.round(v * 100) / 100).toFixed(2);
  * Laboratoire de comparaison : toutes les méthodes d'apprentissage testées sur les ménages de la base,
  * courbes superposées, éléments communs, et mise en évidence du meilleur modèle.
  */
-export function ModelsLab() {
+export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
   const [report, setReport] = useState<Report | null>(null);
   const [history, setHistory] = useState<History[]>([]);
+  const [runs, setRuns] = useState<TestRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [canTrain, setCanTrain] = useState(false);
   const [selected, setSelected] = useState("");
+  const [openRun, setOpenRun] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [cmp, hist] = await Promise.all([api.get("/ai/compare"), api.get("/ai/models/history")]);
+      const [cmp, hist, tests] = await Promise.all([
+        api.get("/ai/compare"),
+        api.get("/ai/models/history"),
+        api.get("/ai/compare/history").catch(() => null),
+      ]);
       setReport(cmp.data?.data ?? null);
       setHistory(hist.data?.data ?? []);
+      setRuns(tests?.data?.data ?? []);
       setError("");
     } catch (err) {
       setError(errorMessage(err, "Comparaison indisponible."));
@@ -78,14 +100,34 @@ export function ModelsLab() {
     void load();
   }, [load]);
 
+  const removeRun = async (r: TestRun) => {
+    const ok = await confirmDialog(`Supprimer le test du ${fmtDate(r.at)} ? Cette action est définitive.`, {
+      title: "Supprimer ce test",
+      confirmLabel: "Supprimer",
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await api.delete(`/ai/models/${r.id}`);
+      toast.success("Test supprimé.");
+      if (openRun === r.id) setOpenRun(null);
+      await load();
+      onChanged?.();
+    } catch (err) {
+      toast.error(errorMessage(err, "Suppression impossible."));
+    }
+  };
+
   const run = async () => {
     setBusy(true);
     try {
       const res = await api.post("/ai/compare/run");
       setReport(res.data?.data ?? null);
       toast.success("Comparaison relancée et enregistrée.");
-      const hist = await api.get("/ai/models/history");
+      const [hist, tests] = await Promise.all([api.get("/ai/models/history"), api.get("/ai/compare/history").catch(() => null)]);
       setHistory(hist.data?.data ?? []);
+      setRuns(tests?.data?.data ?? []);
     } catch (err) {
       toast.error(errorMessage(err, "Échec de la comparaison."));
     } finally {
@@ -116,13 +158,122 @@ export function ModelsLab() {
         )}
       </div>
 
+      <ChartCard title="Historique des tests" subtitle="Chaque exécution de « Relancer les tests » est enregistrée : date, meilleur modèle et résultats (du plus récent au plus ancien).">
+        {runs.length === 0 ? (
+          <p className="text-sm text-gray-500">Aucun test enregistré pour le moment. Cliquez sur « Relancer les tests » pour en créer un.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead className="text-left text-xs text-gray-500">
+                <tr><th className="py-2">Date</th><th>Meilleur modèle</th><th>AUC</th><th>F1</th><th>Exactitude</th><th>Ménages</th><th>Fiabilité</th><th className="text-right">Action</th></tr>
+              </thead>
+              <tbody>
+                {runs.map((r, i) => {
+                  const isOpen = openRun === r.id;
+                  const count = r.vulnerableHouseholds.length;
+                  return (
+                    <Fragment key={r.id}>
+                      <tr className="border-t border-gray-100 text-gray-700">
+                        <td className="py-2 pr-2 whitespace-nowrap">{fmtDate(r.at)}{i === 0 && <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">Dernier</span>}</td>
+                        <td className="font-medium text-gray-900">{r.best ? `🏆 ${r.best.name}` : "—"}</td>
+                        <td>{r.best ? fmt(r.best.auc) : "—"}</td>
+                        <td>{r.best ? fmt(r.best.f1) : "—"}</td>
+                        <td>{r.best ? pct(r.best.accuracy) : "—"}</td>
+                        <td>
+                          {r.sampleSize}
+                          {r.positives !== null && (
+                            <button type="button" onClick={() => setOpenRun(isOpen ? null : r.id)} className="ml-1 font-medium text-sky-700 underline decoration-dotted hover:text-sky-900">
+                              ({r.positives} vulnérables)
+                            </button>
+                          )}
+                        </td>
+                        <td className="text-xs">{r.reliability ? r.reliability.toLowerCase() : "—"}</td>
+                        <td className="py-1 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setOpenRun(isOpen ? null : r.id)}
+                              title="Détails"
+                              aria-label="Détails"
+                              aria-expanded={isOpen}
+                              className="inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 p-1.5 text-sky-800 hover:bg-sky-100"
+                            >
+                              {isOpen ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                            {canTrain && (
+                              <button
+                                type="button"
+                                onClick={() => void removeRun(r)}
+                                title="Supprimer ce test"
+                                aria-label="Supprimer ce test"
+                                className="inline-flex items-center rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-700 hover:bg-red-100"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr className="border-t border-gray-100">
+                          <td colSpan={8} className="bg-gray-50 p-4">
+                            <div className="grid gap-4 lg:grid-cols-2">
+                              <div>
+                                <p className="mb-2 text-sm font-semibold text-gray-900">Ménages vulnérables ({count})</p>
+                                {r.vulnerableSource === "current" && (
+                                  <p className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-xs text-sky-800">
+                                    Ce test est ancien : la liste n&apos;avait pas été enregistrée, voici la liste actuelle. Les prochains tests la conserveront.
+                                  </p>
+                                )}
+                                {count === 0 ? (
+                                  <p className="text-xs text-gray-500">Aucun ménage vulnérable.</p>
+                                ) : (
+                                  <ul className="max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 bg-white text-sm">
+                                    {r.vulnerableHouseholds.map((h) => (
+                                      <li key={h.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                                        <span className="min-w-0">
+                                          <span className="block truncate font-medium text-gray-900">{h.name}</span>
+                                          <span className="block truncate text-xs text-gray-500">{[h.projectName, h.locality].filter(Boolean).join(" · ")}</span>
+                                        </span>
+                                        {r.vulnerableSource === "saved" && <span className="shrink-0 text-xs font-semibold text-gray-700">{h.ensemble} %</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div>
+                                <p className="mb-2 text-sm font-semibold text-gray-900">Classement des méthodes lors de ce test</p>
+                                <table className="w-full text-xs">
+                                  <thead className="text-left text-gray-500"><tr><th className="py-1">#</th><th>Méthode</th><th>AUC</th><th>F1</th><th>Exact.</th></tr></thead>
+                                  <tbody>
+                                    {r.ranking.map((x) => (
+                                      <tr key={x.key} className="border-t border-gray-100 text-gray-700">
+                                        <td className="py-1">{x.rank}</td><td>{x.name}</td><td>{fmt(x.auc)}</td><td>{fmt(x.f1)}</td><td>{pct(x.accuracy)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ChartCard>
+
       {!report?.available && (
-        <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{report?.reason ?? "Données insuffisantes pour comparer les méthodes."} <Link href="/ai/vulnerability" className="font-semibold underline">Voir les ménages</Link></p>
+        <p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">{report?.reason ?? "Données insuffisantes pour comparer les méthodes."} <Link href="/ai/vulnerability" className="font-semibold underline">Voir les ménages</Link></p>
       )}
 
       {report?.available && report.best && (
         <>
-          <div className="flex flex-wrap items-center gap-4 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-600 p-6 text-white shadow-lg">
+          <div className="flex flex-wrap items-center gap-4 rounded-3xl bg-blue-800 p-6 text-white shadow-lg">
             <Trophy className="h-10 w-10 shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide opacity-90">Meilleur modèle (résultat le plus élevé aux tests)</p>
@@ -132,7 +283,7 @@ export function ModelsLab() {
           </div>
 
           {report.reliability !== "CORRECTE" && (
-            <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+            <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-medium text-sky-800">
               Fiabilité {report.reliability.toLowerCase()} : l&apos;échantillon est petit, les écarts entre méthodes peuvent être dus au hasard. Plus il y aura de ménages enquêtés, plus le classement sera fiable.
             </p>
           )}
@@ -245,7 +396,7 @@ export function ModelsLab() {
                 Variables classées dans le top 5 par <strong>toutes</strong> les méthodes : <strong>{report.common.inAllMethods.join(", ")}</strong>. Ce sont les facteurs de vulnérabilité les plus robustes.
               </p>
             ) : (
-              <p className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Aucune variable n&apos;est dans le top 5 de toutes les méthodes : les méthodes ne s&apos;accordent pas encore (échantillon petit).</p>
+              <p className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">Aucune variable n&apos;est dans le top 5 de toutes les méthodes : les méthodes ne s&apos;accordent pas encore (échantillon petit).</p>
             )}
             <GroupedBars
               max={Math.max(0.3, ...report.common.top.flatMap((t) => Object.values(t.perMethod)))}
@@ -295,6 +446,8 @@ export function ModelsLab() {
           </div>
         </>
       )}
+
+
 
       {history.length > 0 && (
         <ChartCard title="Évolution des résultats dans la base de données" subtitle="AUC de chaque entraînement enregistré (table AiModel) : les modèles s'améliorent-ils avec plus de données ?">
