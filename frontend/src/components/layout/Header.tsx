@@ -19,6 +19,7 @@ interface Me {
   firstName: string;
   lastName: string;
   role: string;
+  email?: string | null;
   avatarUrl?: string | null;
 }
 
@@ -167,14 +168,20 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-                  <div className="flex items-center gap-3 border-b border-gray-100 p-4">
-                    <Avatar me={me} size={44} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900">
+                <div className="absolute right-0 z-50 mt-2 w-72 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                  <div className="flex items-start gap-3 border-b border-gray-100 p-4">
+                    <div className="shrink-0">
+                      <Avatar me={me} size={44} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        title={me ? `${me.firstName} ${me.lastName}` : ""}
+                        className="break-words text-sm font-semibold leading-snug text-gray-900"
+                      >
                         {me ? `${me.firstName} ${me.lastName}` : ""}
                       </p>
-                      <p className="text-xs text-gray-500">{roleLabel(me?.role)}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{roleLabel(me?.role)}</p>
+                      {me?.email && <p className="break-all text-xs text-gray-400">{me.email}</p>}
                     </div>
                   </div>
 

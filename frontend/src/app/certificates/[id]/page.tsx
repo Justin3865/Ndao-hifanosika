@@ -26,6 +26,8 @@ interface Certificate {
   holderBirthDate?: string | null;
   holderBirthPlace?: string | null;
   missionLocation?: string | null;
+  mention?: string | null;
+  finalScore?: number | null;
   holderCin?: string | null;
   holderCinIssuedAt?: string | null;
   holderCinIssuedPlace?: string | null;
@@ -317,8 +319,19 @@ export default function CertificatePage() {
                     )}
                     {item.missionLocation && (
                       <div className="min-w-[200px] flex-1 px-4 py-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1B9AA0]">Lieu de mission</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1B9AA0]">{item.type === "INTERNSHIP" ? "Lieu de stage" : "Lieu de mission"}</p>
                         <p className="text-sm font-semibold text-gray-800">{item.missionLocation}</p>
+                      </div>
+                    )}
+                    {item.mention && (
+                      <div className="min-w-[200px] flex-1 px-4 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#0F6BA0]">Mention</p>
+                        <p className="text-sm font-bold text-gray-900">
+                          {item.mention}
+                          {typeof item.finalScore === "number" && (
+                            <span className="ml-1 text-xs font-semibold text-gray-500">({item.finalScore.toFixed(1).replace(".", ",")}/20)</span>
+                          )}
+                        </p>
                       </div>
                     )}
                   </div>

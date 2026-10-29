@@ -1,5 +1,6 @@
 "use client";
 
+import { MENTIONS, MENTION_TONE, type Mention } from "@/lib/mention";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Database, Loader2, Search, ShieldAlert, X } from "lucide-react";
@@ -34,6 +35,30 @@ interface Candidate {
   status: string | null;
   subtitle: string | null;
 }
+
+/** Lieu de stage, note finale /20 et mention proposés par le suivi & évaluation */
+interface CertificateSuggestion {
+  theme: string;
+  missionLocation: string | null;
+  locationSource: "ACTIVITES" | "GPS" | "DEPARTEMENT" | null;
+  finalScoreOn20: number | null;
+  mention: Mention | null;
+  breakdown: {
+    tasks: number | null;
+    reports: number | null;
+    evaluations: number | null;
+    presence: number | null;
+    evaluationAverageOn20: number | null;
+    progress: number | null;
+    gpsCheckins: number;
+  };
+}
+
+const LOCATION_SOURCE_LABEL: Record<string, string> = {
+  ACTIVITES: "les activités du projet",
+  GPS: "la position GPS du stagiaire",
+  DEPARTEMENT: "le département du projet",
+};
 
 /** Informations que la base de données peut fournir */
 type DbField =
@@ -146,6 +171,8 @@ export default function CreateCertificatePage() {
   const [type, setType] = useState("INTERNSHIP");
   const [internships, setInternships] = useState<InternshipOption[]>([]);
   const [internshipId, setInternshipId] = useState("");
+  const [suggestion, setSuggestion] = useState<CertificateSuggestion | null>(null);
+  const [mention, setMention] = useState(""); // vide = automatique
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -281,6 +308,8 @@ export default function CreateCertificatePage() {
     if (!internshipId) {
       setSelected(null);
       setDbValues({});
+      setSuggestion(null);
+      setMention("");
       return;
     }
 
@@ -289,7 +318,16 @@ export default function CreateCertificatePage() {
     api
       .get(`/certificates/lookup/internship/${internshipId}`)
       .then((res) => {
-        if (!cancelled && res.data?.data) applyCandidate(res.data.data as Candidate, true);
+        if (cancelled) return;
+        if (res.data?.data) applyCandidate(res.data.data as Candidate, true);
+
+        // Lieu de stage et mention : remplis automatiquement depuis le suivi & évaluation
+        const auto = (res.data?.suggestion ?? null) as CertificateSuggestion | null;
+        setSuggestion(auto);
+        setMention("");
+        if (auto?.missionLocation) {
+          setForm((cur) => ({ ...cur, missionLocation: cur.missionLocation || (auto.missionLocation as string) }));
+        }
       })
       .catch(() => undefined);
 
@@ -367,7 +405,7 @@ export default function CreateCertificatePage() {
         specialCase,
         specialCaseNote: specialCase ? specialCaseNote.trim() : undefined,
         // La base de données se complète toute seule (champs vides uniquement) pour un compte utilisateur
-        saveToProfile: !specialCase && !!selected && saveToProfile,
+        saveToProfile: !specialCase && selected?.source === "USER" && saveToProfile,
       };
 
       const payload = isInternship
@@ -376,6 +414,7 @@ export default function CreateCertificatePage() {
             internshipId: Number(internshipId),
             title: form.title || undefined,
             description: form.description || undefined,
+            mention: mention || suggestion?.mention || undefined,
             ...personal,
           }
         : {
@@ -388,7 +427,6 @@ export default function CreateCertificatePage() {
             endDate: clean(form.endDate),
             expiresAt: clean(form.expiresAt),
             userId: !specialCase && selected?.source === "USER" ? selected.id : undefined,
-            beneficiaryId: !specialCase && selected?.source === "BENEFICIARY" ? selected.id : undefined,
             ...personal,
           };
 
@@ -557,7 +595,9 @@ export default function CreateCertificatePage() {
               {missingInDb.length > 0 ? (
                 <p className="mt-1 text-xs">
                   Absentes de la base : {missingInDb.map((f) => DB_LABELS[f]).join(", ")}.
-                  {" Saisissez-les ci-dessous : elles seront enregistrées dans la fiche à la délivrance."}
+                  {selected.source === "USER"
+                    ? " Saisissez-les ci-dessous : elles seront enregistrées dans la fiche à la délivrance."
+                    : " La fiche d'un bénéficiaire ne stocke que le nom, le téléphone et l'e-mail : rien n'est écrit dans la base."}
                 </p>
               ) : (
                 <p className="mt-1 text-xs">Toutes les informations nécessaires existent déjà dans la base de données.</p>
@@ -633,8 +673,7 @@ export default function CreateCertificatePage() {
                 inputMode="numeric"
                 placeholder="12 chiffres"
                 value={form.holderCin}
-                maxLength={12}
-                onChange={(e) => set("holderCin", e.target.value.replace(/\D/g, "").slice(0, 12))}
+                onChange={(e) => set("holderCin", e.target.value)}
               />,
             )}
             {field(
@@ -668,8 +707,13 @@ export default function CreateCertificatePage() {
             )}
 
             <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-3">
-              Lieu de mission
+              {isInternship ? "Lieu de stage" : "Lieu de mission"}
               <input className={inputClass} placeholder="Ex. Siège — Fianarantsoa" value={form.missionLocation} onChange={(e) => set("missionLocation", e.target.value)} />
+              {isInternship && suggestion?.missionLocation && form.missionLocation === suggestion.missionLocation && (
+                <span className="block text-xs font-normal text-emerald-700">
+                  ✓ Rempli automatiquement d&apos;après {LOCATION_SOURCE_LABEL[suggestion.locationSource ?? ""] ?? "le suivi & évaluation"}.
+                </span>
+              )}
             </label>
 
             <p className="text-xs text-gray-500 md:col-span-3">
@@ -679,7 +723,7 @@ export default function CreateCertificatePage() {
             </p>
           </div>
 
-          {selected && !specialCase && (
+          {selected?.source === "USER" && !specialCase && (
             <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={saveToProfile} onChange={(e) => setSaveToProfile(e.target.checked)} className="mt-0.5 h-4 w-4" />
               <span>
@@ -689,10 +733,55 @@ export default function CreateCertificatePage() {
             </label>
           )}
 
-          <label className="block space-y-1 text-sm font-medium text-gray-700">
-            Mention complémentaire (optionnel)
-            <textarea rows={3} className={inputClass} value={form.description} onChange={(e) => set("description", e.target.value)} />
-          </label>
+          {isInternship ? (
+            <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <label className="block space-y-1 text-sm font-medium text-gray-700">
+                Mention
+                <select className={inputClass} value={mention} onChange={(e) => setMention(e.target.value)} disabled={!internshipId}>
+                  <option value="">
+                    {suggestion?.mention
+                      ? `Automatique — ${suggestion.mention} (${suggestion.finalScoreOn20?.toFixed(1)}/20)`
+                      : "Automatique — note indisponible (aucune donnée de suivi)"}
+                  </option>
+                  {MENTIONS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </label>
+
+              {suggestion && (
+                <div className="space-y-2 text-xs text-gray-600">
+                  <p className="flex flex-wrap items-center gap-2">
+                    Note finale du suivi &amp; évaluation :
+                    <b className="text-sm text-gray-900">
+                      {suggestion.finalScoreOn20 === null ? "Note indisponible" : `${suggestion.finalScoreOn20.toFixed(1).replace(".", ",")}/20`}
+                    </b>
+                    {(mention || suggestion.mention) && (
+                      <span className={`rounded-full px-2.5 py-0.5 font-semibold ${MENTION_TONE[(mention || suggestion.mention) as Mention]}`}>
+                        {mention || suggestion.mention}
+                      </span>
+                    )}
+                    {mention && <span className="text-amber-700">(choisie manuellement)</span>}
+                  </p>
+                  <p>
+                    Tâches {suggestion.breakdown.tasks === null ? "—" : `${Math.round(suggestion.breakdown.tasks)} %`} · Rapports{" "}
+                    {suggestion.breakdown.reports === null ? "—" : `${Math.round(suggestion.breakdown.reports)} %`} · Évaluations du tuteur{" "}
+                    {suggestion.breakdown.evaluationAverageOn20 === null ? "—" : `${suggestion.breakdown.evaluationAverageOn20.toFixed(1)}/20`} · Présence{" "}
+                    {suggestion.breakdown.presence === null ? "—" : `${Math.round(suggestion.breakdown.presence)} %`} ({suggestion.breakdown.gpsCheckins} check-in GPS)
+                  </p>
+                </div>
+              )}
+
+              {internshipId && !suggestion?.mention && (
+                <p className="text-xs text-amber-700">Aucune donnée de suivi pour ce stage : choisissez la mention manuellement.</p>
+              )}
+            </div>
+          ) : (
+            <label className="block space-y-1 text-sm font-medium text-gray-700">
+              Mention complémentaire (optionnel)
+              <textarea rows={3} className={inputClass} value={form.description} onChange={(e) => set("description", e.target.value)} />
+            </label>
+          )}
 
           <div className="flex justify-end">
             <button type="submit" disabled={busy} className="rounded-xl bg-blue-800 px-6 py-3 font-medium text-white hover:bg-blue-900 disabled:opacity-60">

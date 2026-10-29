@@ -288,15 +288,6 @@ model Beneficiary {
   childrenUnder5 Int?
   hasDisability  Boolean @default(false)
 
-  // Identité (certificats automatiques)
-  birthDate      DateTime?
-  birthPlace     String?
-  cinNumber      String?
-  cinIssuedAt    DateTime?
-  cinIssuedPlace String?
-  cinDuplicata   Boolean   @default(false)
-  cinDuplicataAt DateTime?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -536,6 +527,10 @@ model Certificate {
   holderBirthDate  DateTime?
   holderBirthPlace String?
   missionLocation  String?
+
+  /// Mention de fin de stage et note finale /20 (calculée par le suivi & évaluation)
+  mention    String?
+  finalScore Float?
 
   // ▼▼▼ AJOUTÉ : identité complémentaire (CIN) + cas particulier ▼▼▼
   holderPhone          String?

@@ -1,3 +1,5 @@
+import { getInternshipCertificateSuggestion } from "../services/certificateSuggestion.service";
+import { isValidMention, MENTIONS } from "../utils/mention";
 import { Request, Response, Router } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
@@ -88,13 +90,13 @@ function toBeneficiaryCandidate(b: Json) {
     name: `${b.firstName} ${b.lastName}`.trim(),
     email: b.email ?? null,
     phone: b.phone ?? null,
-    birthDate: b.birthDate ?? null,
-    birthPlace: b.birthPlace ?? null,
-    cinNumber: b.cinNumber ?? null,
-    cinIssuedAt: b.cinIssuedAt ?? null,
-    cinIssuedPlace: b.cinIssuedPlace ?? null,
-    cinDuplicata: Boolean(b.cinDuplicata),
-    cinDuplicataAt: b.cinDuplicataAt ?? null,
+    birthDate: null,
+    birthPlace: null,
+    cinNumber: null,
+    cinIssuedAt: null,
+    cinIssuedPlace: null,
+    cinDuplicata: false,
+    cinDuplicataAt: null,
     role: null,
     status: null,
     subtitle: b.project?.name ?? null,
@@ -145,12 +147,7 @@ router.get("/lookup", authorizeRoles(...ISSUERS), async (req: Request, res: Resp
       }),
       db.beneficiary.findMany({
         where: { OR: [nameFilter(), ...(beneficiaryPhoneIds.length ? [{ id: { in: beneficiaryPhoneIds } }] : [])] },
-        select: {
-          id: true, firstName: true, lastName: true, email: true, phone: true,
-          birthDate: true, birthPlace: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true,
-          cinDuplicata: true, cinDuplicataAt: true,
-          project: { select: { name: true } },
-        },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true, project: { select: { name: true } } },
         orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
         take: 10,
       }),
@@ -179,7 +176,15 @@ router.get("/lookup/internship/:id", authorizeRoles(...ISSUERS), async (req: Req
 
     const student = await db.user.findUnique({ where: { id: internship.student.id }, select: USER_LOOKUP_SELECT });
 
-    res.json({ success: true, data: student ? toUserCandidate(student) : null });
+    // Lieu de stage, note finale /20 et mention proposés automatiquement (suivi & évaluation)
+    let suggestion = null;
+    try {
+      suggestion = await getInternshipCertificateSuggestion(id);
+    } catch (error) {
+      logger.error("Erreur suggestion certificat", error);
+    }
+
+    res.json({ success: true, data: student ? toUserCandidate(student) : null, suggestion, mentions: MENTIONS });
   } catch (error) {
     logger.error("Erreur fiche stagiaire", error);
     res.status(500).json({ success: false, message: "Erreur serveur" });
@@ -242,7 +247,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
     let holderBirthDate: Date | null = body.holderBirthDate ? new Date(body.holderBirthDate) : null;
     let holderBirthPlace: string | null = body.holderBirthPlace ? String(body.holderBirthPlace).trim() || null : null;
-    const missionLocation: string | null = body.missionLocation ? String(body.missionLocation).trim() || null : null;
+    let missionLocation: string | null = body.missionLocation ? String(body.missionLocation).trim() || null : null;
 
     // Identité complémentaire (CIN) + cas particulier
     let holderPhone: string | null = body.holderPhone ? String(body.holderPhone).trim().slice(0, 30) || null : null;
@@ -268,6 +273,9 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     if (holderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(holderEmail)) {
       return res.status(400).json({ success: false, message: "Adresse e-mail invalide" });
     }
+
+    let finalScore: number | null = null;
+    let mention: string | null = null;
 
     if (type === "INTERNSHIP") {
       if (!internshipId) return res.status(400).json({ success: false, message: "Stage obligatoire" });
@@ -320,27 +328,23 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       title = title || internship.title;
       startDate = internship.startDate ?? startDate;
       endDate = internship.endDate ?? endDate;
+
+      // Lieu de stage, note finale et mention : calculés par le suivi & évaluation
+      const suggestion = await getInternshipCertificateSuggestion(internshipId);
+      if (suggestion) {
+        missionLocation = missionLocation ?? suggestion.missionLocation;
+        finalScore = suggestion.finalScoreOn20;
+        mention = suggestion.mention;
+      }
     }
 
-    // Bénéficiaire : la fiche en base complète ce qui n'a pas été saisi
-    if (beneficiaryId && type !== "INTERNSHIP" && !specialCase) {
-      const beneficiaryRow: Json = await db.beneficiary.findUnique({
-        where: { id: beneficiaryId },
-        select: { firstName: true, lastName: true, email: true, phone: true, birthDate: true, birthPlace: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
-      });
-
-      if (!beneficiaryRow) return res.status(404).json({ success: false, message: "Bénéficiaire introuvable" });
-
-      if (!holderName) holderName = `${beneficiaryRow.firstName} ${beneficiaryRow.lastName}`.trim();
-      holderEmail = holderEmail || beneficiaryRow.email?.trim() || null;
-      holderPhone = holderPhone || beneficiaryRow.phone?.trim() || null;
-      holderBirthDate = holderBirthDate ?? beneficiaryRow.birthDate ?? null;
-      holderBirthPlace = holderBirthPlace || beneficiaryRow.birthPlace?.trim() || null;
-      holderCin = holderCin || beneficiaryRow.cinNumber?.trim() || null;
-      holderCinIssuedAt = holderCinIssuedAt ?? beneficiaryRow.cinIssuedAt ?? null;
-      holderCinIssuedPlace = holderCinIssuedPlace || beneficiaryRow.cinIssuedPlace?.trim() || null;
-      holderCinDuplicata = holderCinDuplicata || Boolean(beneficiaryRow.cinDuplicata);
-      holderCinDuplicataAt = holderCinDuplicataAt ?? beneficiaryRow.cinDuplicataAt ?? null;
+    // Mention choisie manuellement par l'administrateur (prioritaire sur le calcul automatique)
+    const requestedMention = body.mention ? String(body.mention).trim() : "";
+    if (requestedMention) {
+      if (!isValidMention(requestedMention)) {
+        return res.status(400).json({ success: false, message: "Mention invalide" });
+      }
+      mention = requestedMention;
     }
 
     if (!holderName || !title) {
@@ -359,8 +363,8 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: "La date d'expiration doit être dans le futur" });
     }
 
-    if (holderCin && !/^\d{12}$/.test(holderCin)) {
-      return res.status(400).json({ success: false, message: "Le numéro de CIN doit contenir exactement 12 chiffres" });
+    if (holderCin && !/^[A-Za-z0-9]{6,20}$/.test(holderCin)) {
+      return res.status(400).json({ success: false, message: "Numéro de CIN invalide (6 à 20 caractères, sans symboles)" });
     }
 
     if (holderCinIssuedAt && holderCinIssuedAt.getTime() > Date.now()) {
@@ -395,6 +399,8 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
             holderBirthDate,
             holderBirthPlace,
             missionLocation,
+            mention,
+            finalScore,
             holderPhone,
             holderCin,
             holderCinIssuedAt,
@@ -476,44 +482,6 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
         }
       } catch (error) {
         logger.error("Mise à jour du profil depuis le certificat impossible", error);
-      }
-    }
-
-    // Même principe pour la fiche d'un bénéficiaire : seuls les champs vides sont remplis
-    if (beneficiaryId && !userId && saveToProfile && type !== "INTERNSHIP") {
-      try {
-        const current: Json = await db.beneficiary.findUnique({
-          where: { id: beneficiaryId },
-          select: { birthDate: true, birthPlace: true, phone: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
-        });
-
-        if (current) {
-          const patch: Record<string, unknown> = {};
-          const has = (v: unknown) => v !== null && v !== undefined && v !== "";
-          const fill = (key: string, label: string, value: unknown, existing: unknown) => {
-            if (has(value) && !has(existing)) {
-              patch[key] = value;
-              profileUpdated.push(label);
-            }
-          };
-
-          fill("birthDate", "date de naissance", holderBirthDate, current.birthDate);
-          fill("birthPlace", "lieu de naissance", holderBirthPlace, current.birthPlace);
-          fill("phone", "téléphone", holderPhone, current.phone);
-          fill("cinNumber", "numéro de CIN", holderCin, current.cinNumber);
-          fill("cinIssuedAt", "date de délivrance du CIN", holderCinIssuedAt, current.cinIssuedAt);
-          fill("cinIssuedPlace", "lieu de délivrance du CIN", holderCinIssuedPlace, current.cinIssuedPlace);
-          fill("cinDuplicataAt", "date du duplicata", holderCinDuplicataAt, current.cinDuplicataAt);
-
-          if (holderCinDuplicata && !current.cinDuplicata) {
-            patch.cinDuplicata = true;
-            profileUpdated.push("duplicata du CIN");
-          }
-
-          if (Object.keys(patch).length > 0) await db.beneficiary.update({ where: { id: beneficiaryId }, data: patch });
-        }
-      } catch (error) {
-        logger.error("Mise à jour de la fiche bénéficiaire depuis le certificat impossible", error);
       }
     }
 
