@@ -9,6 +9,13 @@ export interface ApiUser {
   lastName: string;
   email: string;
   phone?: string | null;
+  birthDate?: string | null;
+  birthPlace?: string | null;
+  cinNumber?: string | null;
+  cinIssuedAt?: string | null;
+  cinIssuedPlace?: string | null;
+  cinDuplicata?: boolean;
+  cinDuplicataAt?: string | null;
   role: string;
   status: string;
   departmentId?: number | null;
@@ -28,6 +35,13 @@ export interface UserPayload {
   lastName: string;
   email: string;
   phone?: string;
+  birthDate?: string;
+  birthPlace?: string;
+  cinNumber?: string;
+  cinIssuedAt?: string;
+  cinIssuedPlace?: string;
+  cinDuplicata?: boolean;
+  cinDuplicataAt?: string;
   password?: string;
   role?: string;
   status?: string;

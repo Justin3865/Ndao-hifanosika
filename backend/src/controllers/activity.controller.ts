@@ -1,3 +1,4 @@
+import { recordSnapshot } from "../services/monitoring.service";
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
@@ -683,6 +684,14 @@ export async function updateActivity(
       });
     }
 
+    // S&E : l'avancement suit le statut quand celui-ci est modifié manuellement
+    if (data.status === "COMPLETED") {
+      data.progress = 100;
+      data.actualEndDate = new Date();
+    } else if (data.status === "PLANNED") {
+      data.progress = 0;
+    }
+
     const activity = await prisma.activity.update({
       where: {
         id,
@@ -704,6 +713,8 @@ export async function updateActivity(
         },
       },
     });
+
+    void recordSnapshot(activity.projectId);
 
     return res.status(200).json({
       success: true,

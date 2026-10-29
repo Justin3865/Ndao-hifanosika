@@ -39,6 +39,153 @@ type Json = any;
 
 router.use(authenticate);
 
+/* ------------------------------------------------------------------ */
+/* Recherche d'un titulaire dans la base de données (nom, e-mail, téléphone) */
+/* ------------------------------------------------------------------ */
+
+const USER_LOOKUP_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  phone: true,
+  birthDate: true,
+  birthPlace: true,
+  cinNumber: true,
+  cinIssuedAt: true,
+  cinIssuedPlace: true,
+  cinDuplicata: true,
+  cinDuplicataAt: true,
+  role: true,
+  status: true,
+  department: { select: { name: true } },
+} as const;
+
+function toUserCandidate(u: Json) {
+  return {
+    source: "USER" as const,
+    id: u.id,
+    name: `${u.firstName} ${u.lastName}`.trim(),
+    email: u.email ?? null,
+    phone: u.phone ?? null,
+    birthDate: u.birthDate ?? null,
+    birthPlace: u.birthPlace ?? null,
+    cinNumber: u.cinNumber ?? null,
+    cinIssuedAt: u.cinIssuedAt ?? null,
+    cinIssuedPlace: u.cinIssuedPlace ?? null,
+    cinDuplicata: Boolean(u.cinDuplicata),
+    cinDuplicataAt: u.cinDuplicataAt ?? null,
+    role: u.role ?? null,
+    status: u.status ?? null,
+    subtitle: u.department?.name ?? null,
+  };
+}
+
+function toBeneficiaryCandidate(b: Json) {
+  return {
+    source: "BENEFICIARY" as const,
+    id: b.id,
+    name: `${b.firstName} ${b.lastName}`.trim(),
+    email: b.email ?? null,
+    phone: b.phone ?? null,
+    birthDate: b.birthDate ?? null,
+    birthPlace: b.birthPlace ?? null,
+    cinNumber: b.cinNumber ?? null,
+    cinIssuedAt: b.cinIssuedAt ?? null,
+    cinIssuedPlace: b.cinIssuedPlace ?? null,
+    cinDuplicata: Boolean(b.cinDuplicata),
+    cinDuplicataAt: b.cinDuplicataAt ?? null,
+    role: null,
+    status: null,
+    subtitle: b.project?.name ?? null,
+  };
+}
+
+/** Cherche par nom (tous les mots), e-mail ou téléphone (+261 34…, 034…, avec ou sans espaces). */
+router.get("/lookup", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q ?? "").trim().slice(0, 80);
+
+    if (q.length < 2) return res.json({ success: true, data: [] });
+
+    const tokens = q.split(/\s+/).filter(Boolean).slice(0, 4);
+    const digits = q.replace(/\D/g, "");
+    const core = digits.replace(/^(261|0)/, "");
+
+    const nameFilter = (extra: Json[] = []) => ({
+      AND: tokens.map((token) => ({
+        OR: [
+          { firstName: { contains: token, mode: "insensitive" } },
+          { lastName: { contains: token, mode: "insensitive" } },
+          { email: { contains: token, mode: "insensitive" } },
+          ...extra,
+        ],
+      })),
+    });
+
+    let userPhoneIds: number[] = [];
+    let beneficiaryPhoneIds: number[] = [];
+
+    if (core.length >= 4) {
+      const like = `%${core}%`;
+
+      const users = await prisma.$queryRaw<Array<{ id: number }>>`SELECT id FROM "User" WHERE regexp_replace(COALESCE("phone", ''), '\\D', '', 'g') LIKE ${like} LIMIT 20`;
+      const beneficiaries = await prisma.$queryRaw<Array<{ id: number }>>`SELECT id FROM "Beneficiary" WHERE regexp_replace(COALESCE("phone", ''), '\\D', '', 'g') LIKE ${like} LIMIT 20`;
+
+      userPhoneIds = users.map((row) => row.id);
+      beneficiaryPhoneIds = beneficiaries.map((row) => row.id);
+    }
+
+    const [users, beneficiaries]: [Json[], Json[]] = await Promise.all([
+      db.user.findMany({
+        where: { status: { not: "REJECTED" }, OR: [nameFilter(), ...(userPhoneIds.length ? [{ id: { in: userPhoneIds } }] : [])] },
+        select: USER_LOOKUP_SELECT,
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        take: 15,
+      }),
+      db.beneficiary.findMany({
+        where: { OR: [nameFilter(), ...(beneficiaryPhoneIds.length ? [{ id: { in: beneficiaryPhoneIds } }] : [])] },
+        select: {
+          id: true, firstName: true, lastName: true, email: true, phone: true,
+          birthDate: true, birthPlace: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true,
+          cinDuplicata: true, cinDuplicataAt: true,
+          project: { select: { name: true } },
+        },
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        take: 10,
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: [...users.map(toUserCandidate), ...beneficiaries.map(toBeneficiaryCandidate)],
+    });
+  } catch (error) {
+    logger.error("Erreur recherche titulaire", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
+
+/** Fiche (base de données) de la personne qui a effectué un stage. */
+router.get("/lookup/internship/:id", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ success: false, message: "Stage invalide" });
+
+    const internship = await prisma.internship.findUnique({ where: { id }, select: { id: true, student: { select: { id: true } } } });
+
+    if (!internship) return res.status(404).json({ success: false, message: "Stage introuvable" });
+
+    const student = await db.user.findUnique({ where: { id: internship.student.id }, select: USER_LOOKUP_SELECT });
+
+    res.json({ success: true, data: student ? toUserCandidate(student) : null });
+  } catch (error) {
+    logger.error("Erreur fiche stagiaire", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
+
 router.get("/", async (req: Request, res: Response) => {
   try {
     const user = getReqUser(req);
@@ -90,14 +237,27 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     let endDate: Date | null = body.endDate ? new Date(body.endDate) : null;
     let expiresAt: Date | null = body.expiresAt ? new Date(body.expiresAt) : null;
     const internshipId = body.internshipId ? Number(body.internshipId) : null;
+    const projectId = body.projectId ? Number(body.projectId) : null;
+    const beneficiaryId = body.beneficiaryId ? Number(body.beneficiaryId) : null;
 
     let holderBirthDate: Date | null = body.holderBirthDate ? new Date(body.holderBirthDate) : null;
     let holderBirthPlace: string | null = body.holderBirthPlace ? String(body.holderBirthPlace).trim() || null : null;
     const missionLocation: string | null = body.missionLocation ? String(body.missionLocation).trim() || null : null;
 
+    // Identité complémentaire (CIN) + cas particulier
+    let holderPhone: string | null = body.holderPhone ? String(body.holderPhone).trim().slice(0, 30) || null : null;
+    let holderCin: string | null = body.holderCin ? String(body.holderCin).replace(/[\s.\-]/g, "") || null : null;
+    let holderCinIssuedAt: Date | null = body.holderCinIssuedAt ? new Date(body.holderCinIssuedAt) : null;
+    let holderCinIssuedPlace: string | null = body.holderCinIssuedPlace ? String(body.holderCinIssuedPlace).trim().slice(0, 120) || null : null;
+    let holderCinDuplicata = body.holderCinDuplicata === true || body.holderCinDuplicata === "true";
+    let holderCinDuplicataAt: Date | null = body.holderCinDuplicataAt ? new Date(body.holderCinDuplicataAt) : null;
+    const specialCase = body.specialCase === true || body.specialCase === "true";
+    const specialCaseNote: string | null = body.specialCaseNote ? String(body.specialCaseNote).trim().slice(0, 500) || null : null;
+    const saveToProfile = !specialCase && body.saveToProfile !== false && body.saveToProfile !== "false";
+
     const invalid = (d: Date | null) => d !== null && Number.isNaN(d.getTime());
 
-    if (invalid(startDate) || invalid(endDate) || invalid(expiresAt) || invalid(holderBirthDate)) {
+    if (invalid(startDate) || invalid(endDate) || invalid(expiresAt) || invalid(holderBirthDate) || invalid(holderCinIssuedAt) || invalid(holderCinDuplicataAt)) {
       return res.status(400).json({ success: false, message: "Date invalide" });
     }
 
@@ -145,9 +305,42 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
       holderBirthDate = internship.student.birthDate ?? holderBirthDate;
       holderBirthPlace = internship.student.birthPlace?.trim() || holderBirthPlace;
+
+      const profile = await db.user.findUnique({
+        where: { id: internship.student.id },
+        select: { phone: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
+      });
+
+      holderPhone = profile?.phone?.trim() || holderPhone;
+      holderCin = profile?.cinNumber?.trim() || holderCin;
+      holderCinIssuedAt = profile?.cinIssuedAt ?? holderCinIssuedAt;
+      holderCinIssuedPlace = profile?.cinIssuedPlace?.trim() || holderCinIssuedPlace;
+      holderCinDuplicata = Boolean(profile?.cinDuplicata) || holderCinDuplicata;
+      holderCinDuplicataAt = profile?.cinDuplicataAt ?? holderCinDuplicataAt;
       title = title || internship.title;
       startDate = internship.startDate ?? startDate;
       endDate = internship.endDate ?? endDate;
+    }
+
+    // Bénéficiaire : la fiche en base complète ce qui n'a pas été saisi
+    if (beneficiaryId && type !== "INTERNSHIP" && !specialCase) {
+      const beneficiaryRow: Json = await db.beneficiary.findUnique({
+        where: { id: beneficiaryId },
+        select: { firstName: true, lastName: true, email: true, phone: true, birthDate: true, birthPlace: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
+      });
+
+      if (!beneficiaryRow) return res.status(404).json({ success: false, message: "Bénéficiaire introuvable" });
+
+      if (!holderName) holderName = `${beneficiaryRow.firstName} ${beneficiaryRow.lastName}`.trim();
+      holderEmail = holderEmail || beneficiaryRow.email?.trim() || null;
+      holderPhone = holderPhone || beneficiaryRow.phone?.trim() || null;
+      holderBirthDate = holderBirthDate ?? beneficiaryRow.birthDate ?? null;
+      holderBirthPlace = holderBirthPlace || beneficiaryRow.birthPlace?.trim() || null;
+      holderCin = holderCin || beneficiaryRow.cinNumber?.trim() || null;
+      holderCinIssuedAt = holderCinIssuedAt ?? beneficiaryRow.cinIssuedAt ?? null;
+      holderCinIssuedPlace = holderCinIssuedPlace || beneficiaryRow.cinIssuedPlace?.trim() || null;
+      holderCinDuplicata = holderCinDuplicata || Boolean(beneficiaryRow.cinDuplicata);
+      holderCinDuplicataAt = holderCinDuplicataAt ?? beneficiaryRow.cinDuplicataAt ?? null;
     }
 
     if (!holderName || !title) {
@@ -164,6 +357,24 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
     if (expiresAt && expiresAt.getTime() <= Date.now()) {
       return res.status(400).json({ success: false, message: "La date d'expiration doit être dans le futur" });
+    }
+
+    if (holderCin && !/^\d{12}$/.test(holderCin)) {
+      return res.status(400).json({ success: false, message: "Le numéro de CIN doit contenir exactement 12 chiffres" });
+    }
+
+    if (holderCinIssuedAt && holderCinIssuedAt.getTime() > Date.now()) {
+      return res.status(400).json({ success: false, message: "La date de délivrance du CIN ne peut pas être dans le futur" });
+    }
+
+    if (holderCinDuplicataAt && holderCinDuplicataAt.getTime() > Date.now()) {
+      return res.status(400).json({ success: false, message: "La date du duplicata ne peut pas être dans le futur" });
+    }
+
+    if (holderCinDuplicataAt) holderCinDuplicata = true;
+
+    if (specialCase && (!specialCaseNote || specialCaseNote.length < 5)) {
+      return res.status(400).json({ success: false, message: "Précisez le motif du cas particulier (5 caractères minimum)" });
     }
 
     let row: Awaited<ReturnType<typeof db.certificate.create>> | null = null;
@@ -184,7 +395,17 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
             holderBirthDate,
             holderBirthPlace,
             missionLocation,
+            holderPhone,
+            holderCin,
+            holderCinIssuedAt,
+            holderCinIssuedPlace,
+            holderCinDuplicata,
+            holderCinDuplicataAt,
+            specialCase,
+            specialCaseNote: specialCase ? specialCaseNote : null,
             internshipId,
+            projectId,
+            beneficiaryId,
             userId,
             issuedById: getReqUser(req)?.id ?? null,
           },
@@ -214,7 +435,89 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       );
     }
 
-    res.status(201).json({ success: true, data: row });
+    // La base de données se complète toute seule : on remplit uniquement les champs encore vides du profil
+    const profileUpdated: string[] = [];
+
+    if (userId && saveToProfile) {
+      try {
+        const current = await db.user.findUnique({
+          where: { id: userId },
+          select: { birthDate: true, birthPlace: true, phone: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
+        });
+
+        if (current) {
+          const patch: Record<string, unknown> = {};
+
+          const fill = (key: string, label: string, value: unknown, existing: unknown) => {
+            const has = (v: unknown) => v !== null && v !== undefined && v !== "";
+
+            if (has(value) && !has(existing)) {
+              patch[key] = value;
+              profileUpdated.push(label);
+            }
+          };
+
+          fill("birthDate", "date de naissance", holderBirthDate, current.birthDate);
+          fill("birthPlace", "lieu de naissance", holderBirthPlace, current.birthPlace);
+          fill("phone", "téléphone", holderPhone, current.phone);
+          fill("cinNumber", "numéro de CIN", holderCin, current.cinNumber);
+          fill("cinIssuedAt", "date de délivrance du CIN", holderCinIssuedAt, current.cinIssuedAt);
+          fill("cinIssuedPlace", "lieu de délivrance du CIN", holderCinIssuedPlace, current.cinIssuedPlace);
+          fill("cinDuplicataAt", "date du duplicata", holderCinDuplicataAt, current.cinDuplicataAt);
+
+          if (holderCinDuplicata && !current.cinDuplicata) {
+            patch.cinDuplicata = true;
+            profileUpdated.push("duplicata du CIN");
+          }
+
+          if (Object.keys(patch).length > 0) {
+            await db.user.update({ where: { id: userId }, data: patch });
+          }
+        }
+      } catch (error) {
+        logger.error("Mise à jour du profil depuis le certificat impossible", error);
+      }
+    }
+
+    // Même principe pour la fiche d'un bénéficiaire : seuls les champs vides sont remplis
+    if (beneficiaryId && !userId && saveToProfile && type !== "INTERNSHIP") {
+      try {
+        const current: Json = await db.beneficiary.findUnique({
+          where: { id: beneficiaryId },
+          select: { birthDate: true, birthPlace: true, phone: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
+        });
+
+        if (current) {
+          const patch: Record<string, unknown> = {};
+          const has = (v: unknown) => v !== null && v !== undefined && v !== "";
+          const fill = (key: string, label: string, value: unknown, existing: unknown) => {
+            if (has(value) && !has(existing)) {
+              patch[key] = value;
+              profileUpdated.push(label);
+            }
+          };
+
+          fill("birthDate", "date de naissance", holderBirthDate, current.birthDate);
+          fill("birthPlace", "lieu de naissance", holderBirthPlace, current.birthPlace);
+          fill("phone", "téléphone", holderPhone, current.phone);
+          fill("cinNumber", "numéro de CIN", holderCin, current.cinNumber);
+          fill("cinIssuedAt", "date de délivrance du CIN", holderCinIssuedAt, current.cinIssuedAt);
+          fill("cinIssuedPlace", "lieu de délivrance du CIN", holderCinIssuedPlace, current.cinIssuedPlace);
+          fill("cinDuplicataAt", "date du duplicata", holderCinDuplicataAt, current.cinDuplicataAt);
+
+          if (holderCinDuplicata && !current.cinDuplicata) {
+            patch.cinDuplicata = true;
+            profileUpdated.push("duplicata du CIN");
+          }
+
+          if (Object.keys(patch).length > 0) await db.beneficiary.update({ where: { id: beneficiaryId }, data: patch });
+        }
+      } catch (error) {
+        logger.error("Mise à jour de la fiche bénéficiaire depuis le certificat impossible", error);
+      }
+    }
+
+    res.status(201).json({ success: true, data: row, profileUpdated });
   } catch (error) {
     logger.error("Erreur délivrance certificat", error);
     res.status(500).json({ success: false, message: "Erreur serveur" });

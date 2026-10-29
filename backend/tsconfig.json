@@ -30,6 +30,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "prisma"
+    "prisma",
+    "src/jobs/reminders.ts",
+    "src/routes/security.ts"
   ]
 }

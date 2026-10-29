@@ -129,6 +129,7 @@ const ACCESS_RULES: AccessRule[] = [
 
   // Rapports
   { pattern: /^\/reports(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "RH", "COMMUNICATION", "COORDINATOR"] },
+  { pattern: /^\/suivi-evaluation(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COORDINATOR", "RH", "COMMUNICATION", "DSI", "TUTEUR_L3", "TUTEUR_M2"] },
 
   // IA
   { pattern: /^\/ai(\/|$)/, roles: ["ADMIN", "DIRECTION", "DSI", "COORDINATOR"] },

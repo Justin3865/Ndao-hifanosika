@@ -19,7 +19,7 @@ chatRouter.post("/chat", async (req: Request, res: Response) => {
   const q = norm(message);
 
   const [stats, ml] = await Promise.all([computeZoneStats(), mlZoneScores()]);
-  const zones = stats.map((z) => ({ ...z, final: ml?.[z.id] != null ? Math.round(z.score * 0.5 + ml[z.id] * 0.5) : z.score }));
+  const zones = stats.map((z) => ({ ...z, final: ml?.scores[z.id] != null ? Math.round(z.score * 0.5 + ml.scores[z.id] * 0.5) : z.score }));
   if (!zones.length) {
     return res.json({ success: true, data: { answer: "Aucune zone d'intervention n'est enregistrée pour le moment.", zones: [] } });
   }
@@ -40,7 +40,7 @@ chatRouter.post("/chat", async (req: Request, res: Response) => {
   } else if (mentioned.length === 1) {
     const z = mentioned[0];
     list = [z];
-    answer = `${z.name} : ${z.vulnerable} ménage(s) vulnérable(s) sur ${z.total} (${z.rate} %), altitude ${z.altitude ?? "non renseignée"} m, indice de vulnérabilité ${z.final}/100${z.mlScore != null ? "" : ""}.`;
+    answer = `${z.name} : ${z.vulnerable} ménage(s) vulnérable(s) sur ${z.total} (${z.rate} %), altitude ${z.altitude ?? "non renseignée"} m, indice de vulnérabilité ${z.final}/100.`;
   } else if (wantsAlt) {
     list = zones.slice().sort((a, b) => (b.altitude ?? 0) - (a.altitude ?? 0)).slice(0, 5);
     answer = "Zones classées par altitude : " + list.map((z) => `${z.name} (${z.altitude ?? "?"} m)`).join(", ") + ".";

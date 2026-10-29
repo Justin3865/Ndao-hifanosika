@@ -11,6 +11,7 @@ import {
 } from "./config/database";
 import { logger } from "./config/logger";
 import { startActivityReminders } from "./services/activityReminders.service";
+import { startReminderScheduler } from "./services/reminders.service";
 
 async function startServer() {
   try {
@@ -19,6 +20,7 @@ async function startServer() {
     const server = http.createServer(app);
     initSocket(server);
     void ensureDefaultZones();
+    startReminderScheduler();
     startActivityReminders();
     startFieldJobs();
     startScheduledMessageWorker();

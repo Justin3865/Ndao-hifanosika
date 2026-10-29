@@ -141,3 +141,58 @@ def status(force: bool = False) -> dict[str, Any]:
 
     _status_cache.update(at=now, value=value)
     return value
+
+
+def fetch_project_dataset(project_id: int) -> dict[str, Any] | None:
+    """Toutes les données S&E d'un projet (activités, jalons, indicateurs, historique)."""
+    pid = int(project_id)  # entier garanti : pas d'injection SQL possible
+
+    with connect() as connection:
+        projects = _rows(
+            connection,
+            'SELECT id, name, code, status::text AS status, budget, "budgetSpent", "startDate", "endDate", '
+            f'"beneficiaryTarget" FROM "Project" WHERE id = {pid}',
+        )
+        if not projects:
+            return None
+
+        objectives = _rows(connection, f'SELECT id, title, "order" FROM "ProjectObjective" WHERE "projectId" = {pid} ORDER BY "order", id')
+        results = _rows(
+            connection,
+            'SELECT r.id, r."objectiveId", r.title, r.progress FROM "ProjectResult" r '
+            f'JOIN "ProjectObjective" o ON o.id = r."objectiveId" WHERE o."projectId" = {pid} ORDER BY r."order", r.id',
+        )
+        indicators = _rows(
+            connection,
+            'SELECT i.id, i."resultId", i.name, i.baseline, i.target, i."currentValue", i."lastCollectedAt" '
+            'FROM "ProjectIndicator" i JOIN "ProjectResult" r ON r.id = i."resultId" '
+            f'JOIN "ProjectObjective" o ON o.id = r."objectiveId" WHERE o."projectId" = {pid} ORDER BY i.id',
+        )
+
+        by_result: dict[int, list[dict[str, Any]]] = {}
+        for ind in indicators:
+            by_result.setdefault(ind["resultId"], []).append(ind)
+        by_objective: dict[int, list[dict[str, Any]]] = {}
+        for res in results:
+            by_objective.setdefault(res["objectiveId"], []).append({**res, "indicators": by_result.get(res["id"], [])})
+
+        return {
+            "project": projects[0],
+            "activities": _rows(
+                connection,
+                'SELECT id, title, status::text AS status, progress, "startDate", "endDate", budget, "budgetSpent", "updatedAt" '
+                f'FROM "Activity" WHERE "projectId" = {pid}',
+            ),
+            "milestones": _rows(connection, f'SELECT id, title, progress, "dueDate", "completedAt" FROM "Milestone" WHERE "projectId" = {pid}'),
+            "beneficiaries": _rows(
+                connection,
+                'SELECT id, "firstName", "lastName", phone, gender::text AS gender, age, vulnerable '
+                f'FROM "Beneficiary" WHERE "projectId" = {pid}',
+            ),
+            "evaluations": _rows(connection, f'SELECT id, title, score, status::text AS status FROM "Evaluation" WHERE "projectId" = {pid}'),
+            "objectives": [{**o, "results": by_objective.get(o["id"], [])} for o in objectives],
+            "snapshots": _rows(
+                connection,
+                f'SELECT "recordedAt", "plannedProgress", "actualProgress" FROM "ProjectMonitoringSnapshot" WHERE "projectId" = {pid} ORDER BY "recordedAt"',
+            ),
+        }

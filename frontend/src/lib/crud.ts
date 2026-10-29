@@ -14,7 +14,9 @@ export type FieldType =
   | "date"
   | "select"
   | "checkbox"
-  | "geo";
+  | "geo"
+  | "identity"
+  | "newperson";
 
 export interface Option {
   value: string;
@@ -46,6 +48,12 @@ export interface FieldDef {
   min?: number;
   max?: number;
   full?: boolean;
+  /** type "text" : n'accepte que des chiffres, au plus N */
+  digitsOnly?: number;
+  /** type "identity" : nom du champ « select » qui contient l'identifiant de la personne */
+  identityOf?: string;
+  /** Champ obligatoire SAUF si le bloc « newperson » de ce nom est rempli */
+  requiredUnless?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

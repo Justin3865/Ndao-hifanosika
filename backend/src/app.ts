@@ -24,6 +24,7 @@ import aiRoutes from "./routes/ai.routes";
 import aiExtraRoutes from "./routes/aiExtra.routes";
 import lookupsRoutes from "./routes/lookups.routes";
 import profileRoutes from "./routes/profile.routes";
+import settingsRoutes from "./routes/settings.routes";
 import auditRoutes from "./routes/audit.routes";
 import zonesRoutes, { publicOrganizationRouter } from "./routes/zones.routes";
 import certificatesRoutes, { publicCertificateRouter } from "./routes/certificates.routes";
@@ -33,6 +34,7 @@ import { vulnerabilityRouter, serviceRouter } from "./routes/vulnerability.route
 import { eventNotifier } from "./middlewares/eventNotifier.middleware";
 
 import activitySpaceRoutes from "./routes/activitySpace.routes";
+import monitoringRoutes from "./routes/monitoring.routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
 
@@ -77,6 +79,7 @@ app.use("/api/departements", departementsRoutes);
 app.use("/api/projects", projectsRoutes);
 app.use("/api/activities", activitiesRoutes);
 app.use("/api/activity-space", activitySpaceRoutes);
+app.use("/api/monitoring", monitoringRoutes);
 app.use("/api/milestones", milestonesRoutes);
 app.use("/api/members", membersRoutes);
 app.use("/api/beneficiaries", beneficiariesRoutes);
@@ -90,6 +93,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/ai", aiExtraRoutes);
 app.use("/api/lookups", lookupsRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/settings", settingsRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/zones", zonesRoutes);
 app.use("/api/certificates", certificatesRoutes);

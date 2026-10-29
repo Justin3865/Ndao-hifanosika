@@ -60,7 +60,7 @@ async function currentAnomalies(req?: Request): Promise<{ anomalies: AnomalyLike
   // Même requête que celle de l'utilisateur (identité, en-têtes), avec « fresh » pour ignorer tout cache
   const request = { ...(req ?? {}), query: { fresh: "1" }, params: {}, body: {} } as unknown as Request;
 
-  await getAnomalies(request, fake as unknown as Response, (() => undefined) as NextFunction);
+  await getAnomalies(request, fake as unknown as Response);
 
   const result = box.value;
 

@@ -19,6 +19,8 @@ import {
 import { confirmDialog, toast } from "@/lib/toast";
 import { GeoPicker } from "@/components/maps/GeoPicker";
 import { getStoredRole } from "@/lib/access";
+import { IDENTITY_KEYS, IdentityFields, identityName } from "@/components/crud/IdentityFields";
+import { NEW_PERSON_KEYS, NewPersonFields, newPersonFilled, newPersonName } from "@/components/crud/NewPersonFields";
 
 type Values = Record<string, string | boolean>;
 
@@ -32,6 +34,14 @@ const geoKeys = (field: FieldDef) => ({
 });
 
 function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
+  if (field.type === "newperson") {
+    return NEW_PERSON_KEYS.map((key): [string, string | boolean] => [newPersonName(key), key === "role" ? "STAGIAIRE_L3" : ""]);
+  }
+
+  if (field.type === "identity") {
+    return IDENTITY_KEYS.map((key): [string, string | boolean] => [identityName(key), key === "cinDuplicata" ? false : ""]);
+  }
+
   if (field.type === "geo") {
     const k = geoKeys(field);
     return [[k.lat, ""], [k.lng, ""], [k.alt, ""]];
@@ -41,6 +51,8 @@ function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
 }
 
 function loadedEntries(field: FieldDef, item: Record<string, unknown>): Array<[string, string | boolean]> {
+  if (field.type === "identity" || field.type === "newperson") return initialEntries(field);
+
   if (field.type === "geo") {
     const k = geoKeys(field);
     return [k.lat, k.lng, k.alt].map((key) => [key, item?.[key] === null || item?.[key] === undefined ? "" : String(item[key])]);
@@ -135,8 +147,14 @@ export function ResourceFormPage({
 
     for (const field of fields) {
       if (field.required && field.type !== "checkbox") {
-        if (String(values[field.name] ?? "").trim() === "") {
-          setError(`Le champ « ${field.label} » est obligatoire.`);
+        const alternative = field.requiredUnless ? newPersonFilled(values) : false;
+
+        if (String(values[field.name] ?? "").trim() === "" && !alternative) {
+          setError(
+            field.requiredUnless
+              ? `Choisissez « ${field.label} » ou renseignez le prénom, le nom et l'e-mail du nouveau stagiaire.`
+              : `Le champ « ${field.label} » est obligatoire.`,
+          );
           return;
         }
       }
@@ -145,6 +163,38 @@ export function ResourceFormPage({
     const payload: Record<string, unknown> = {};
 
     for (const field of fields) {
+      if (field.type === "newperson") {
+        if (String(values[field.identityOf ?? ""] ?? "") === "" && newPersonFilled(values)) {
+          payload.newStudent = Object.fromEntries(
+            NEW_PERSON_KEYS.map((key) => [key, String(values[newPersonName(key)] ?? "").trim()]),
+          );
+        }
+
+        continue;
+      }
+
+      if (field.type === "identity") {
+        const identity: Record<string, unknown> = {};
+
+        for (const key of IDENTITY_KEYS) {
+          const raw = values[identityName(key)];
+
+          if (key === "cinDuplicata") identity[key] = Boolean(raw);
+          else if (String(raw ?? "").trim() !== "") identity[key] = String(raw).trim();
+        }
+
+        const cin = String(identity.cinNumber ?? "").replace(/[\s.\-]/g, "");
+
+        if (cin && !/^\d{12}$/.test(cin)) {
+          setError("Le numéro de CIN doit contenir exactement 12 chiffres.");
+          return;
+        }
+
+        if (String(values[field.identityOf ?? ""] ?? "") !== "" || newPersonFilled(values)) payload.identity = identity;
+
+        continue;
+      }
+
       if (field.type === "geo") {
         const k = geoKeys(field);
 
@@ -175,6 +225,27 @@ export function ResourceFormPage({
 
   const renderField = (field: FieldDef) => {
     const value = values[field.name];
+
+    if (field.type === "newperson") {
+      return (
+        <NewPersonFields
+          disabled={String(values[field.identityOf ?? ""] ?? "") !== ""}
+          values={values}
+          setValue={setValue}
+        />
+      );
+    }
+
+    if (field.type === "identity") {
+      return (
+        <IdentityFields
+          personId={String(values[field.identityOf ?? ""] ?? "")}
+          values={values}
+          setValue={setValue}
+          setMany={(patch) => setValues((cur) => ({ ...cur, ...patch }))}
+        />
+      );
+    }
 
     if (field.type === "geo") {
       const k = geoKeys(field);
@@ -272,9 +343,13 @@ export function ResourceFormPage({
           type={field.type}
           min={field.min}
           max={field.max}
+          maxLength={field.digitsOnly}
+          inputMode={field.digitsOnly ? "numeric" : undefined}
           className={inputClass}
           value={String(value)}
-          onChange={(e) => setValue(field.name, e.target.value)}
+          onChange={(e) =>
+            setValue(field.name, field.digitsOnly ? e.target.value.replace(/\D/g, "").slice(0, field.digitsOnly) : e.target.value)
+          }
         />
       );
     }

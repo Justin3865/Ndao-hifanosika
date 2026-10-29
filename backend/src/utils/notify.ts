@@ -1,16 +1,48 @@
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { emitToUser } from "../realtime/socket";
+import { db } from "./db";
 import { isEmailConfigured, sendEmail } from "./mailer";
 import { isSmsConfigured, sendSms } from "./sms";
 import { pushToUser } from "./webpush";
 
 export type NotificationKind = "INFO" | "SUCCESS" | "WARNING" | "ERROR";
 
+/** Famille de rappel : l'utilisateur peut la désactiver dans Paramètres > Notifications. */
+export type ReminderKind = "evaluations" | "projects" | "reports";
+
 interface Payload {
   title: string;
   message: string;
   type?: NotificationKind;
+  /** "app" = notification dans l'application + système seulement (pas d'e-mail / SMS). */
+  channels?: "all" | "app";
+  /** Rappel automatique : ignoré pour les personnes qui ont désactivé ce type de rappel. */
+  reminder?: ReminderKind;
+}
+
+const REMINDER_FIELD: Record<ReminderKind, string> = {
+  evaluations: "evaluationReminders",
+  projects: "projectReminders",
+  reports: "reportReminders",
+};
+
+/** Retire les destinataires qui ont désactivé ce type de rappel. */
+async function withoutOptedOut(ids: number[], reminder?: ReminderKind): Promise<number[]> {
+  if (!reminder || ids.length === 0) return ids;
+
+  try {
+    const off = (await db.userPreference.findMany({
+      where: { userId: { in: ids }, [REMINDER_FIELD[reminder]]: false },
+      select: { userId: true },
+    })) as Array<{ userId: number }>;
+
+    const blocked = new Set(off.map((row) => row.userId));
+    return ids.filter((id) => !blocked.has(id));
+  } catch (error) {
+    logger.warn("Préférences de rappel illisibles : rappel envoyé par défaut", error instanceof Error ? error.message : error);
+    return ids;
+  }
 }
 
 // SMS : par défaut seulement les messages importants (coût). SMS_NOTIFY_LEVEL=all pour tout envoyer.
@@ -50,12 +82,15 @@ export async function notifyUsers(
   payload: Payload,
   excludeUserId?: number,
 ): Promise<void> {
-  const ids = Array.from(
-    new Set(
-      userIds.filter(
-        (id): id is number => typeof id === "number" && id !== excludeUserId,
+  const ids = await withoutOptedOut(
+    Array.from(
+      new Set(
+        userIds.filter(
+          (id): id is number => typeof id === "number" && id !== excludeUserId,
+        ),
       ),
     ),
+    payload.reminder,
   );
 
   for (const userId of ids) {
@@ -80,9 +115,11 @@ export async function notifyUsers(
       });
 
       // L'envoi externe ne bloque jamais la requête
-      deliverExternal(userId, payload).catch((error) =>
-        logger.error("Erreur envoi externe notification", error),
-      );
+      if (payload.channels !== "app") {
+        deliverExternal(userId, payload).catch((error) =>
+          logger.error("Erreur envoi externe notification", error),
+        );
+      }
     } catch (error) {
       logger.error("Erreur création notification", error);
     }

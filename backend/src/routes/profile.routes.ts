@@ -3,7 +3,9 @@ import { Request, Response, Router } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 import { authenticate } from "../middlewares/auth.middleware";
+import { authorizeRoles } from "../middlewares/role.middleware";
 import { getReqUser } from "../utils/dataScope";
+import { identitySelect, missingIdentity, parseIdentity } from "../utils/identity";
 
 import { sendError } from "../middlewares/error.middleware";
 /** Profil de l'utilisateur CONNECTÉ (jamais d'id dans l'URL). */
@@ -19,6 +21,11 @@ const profileSelect = {
   phone: true,
   birthDate: true,
   birthPlace: true,
+  cinNumber: true,
+  cinIssuedAt: true,
+  cinIssuedPlace: true,
+  cinDuplicata: true,
+  cinDuplicataAt: true,
   notifyEmail: true,
   notifySms: true,
   gender: true,
@@ -29,6 +36,26 @@ const profileSelect = {
   lastLoginAt: true,
   department: { select: { id: true, name: true } },
 } as const;
+
+/** Identité d'un utilisateur (stagiaire…) : préremplit les formulaires de l'encadrement */
+router.get("/identity/:userId", authorizeRoles("ADMIN", "DIRECTION", "RH", "COORDINATOR"), async (req: Request, res: Response) => {
+  try {
+    const userId = Number(req.params.userId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ success: false, message: "Utilisateur invalide" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: identitySelect });
+
+    if (!user) return res.status(404).json({ success: false, message: "Utilisateur introuvable" });
+
+    return res.json({ success: true, data: user, missing: missingIdentity(user) });
+  } catch (error) {
+    logger.error("Lecture de l'identité impossible", error);
+    return res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
 
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -43,7 +70,7 @@ router.get("/", async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Utilisateur introuvable" });
     }
 
-    res.json({ success: true, data: user });
+    res.json({ success: true, data: user, missing: missingIdentity(user) });
   } catch (error) {
     logger.error("Erreur profil", error);
     sendError(res, error, "Erreur serveur");
@@ -66,6 +93,13 @@ router.put("/", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Date de naissance invalide" });
     }
 
+    // CIN : numéro (12 chiffres), délivrance, duplicata (champs facultatifs, ignorés s'ils sont absents)
+    const identity = parseIdentity(req.body, { birth: false });
+
+    if (identity.error) {
+      return res.status(400).json({ success: false, message: identity.error });
+    }
+
     const user = await prisma.user.update({
       where: { id: me!.id },
       data: {
@@ -74,6 +108,7 @@ router.put("/", async (req: Request, res: Response) => {
         phone: phone ? String(phone).trim() : null,
         birthDate: birth,
         birthPlace: birthPlace ? String(birthPlace).trim() || null : null,
+        ...identity.data,
       },
       select: profileSelect,
     });

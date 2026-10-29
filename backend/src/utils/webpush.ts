@@ -53,6 +53,13 @@ export async function pushToUser(userId: number, payload: PushPayload): Promise<
     const wp = init();
     if (!wp) return;
 
+    // Paramètres > Notifications push : désactivé = aucun appareil de ce compte ne reçoit de notification système
+    const preference = (await db.userPreference
+      .findUnique({ where: { userId }, select: { pushNotifications: true } })
+      .catch(() => null)) as { pushNotifications: boolean } | null;
+
+    if (preference && preference.pushNotifications === false) return;
+
     const subscriptions = (await db.pushSubscription.findMany({
       where: { userId },
       select: { endpoint: true, p256dh: true, auth: true },

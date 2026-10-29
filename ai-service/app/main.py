@@ -4,15 +4,18 @@ from pydantic import BaseModel, Field
 from . import config  # noqa: F401  (charge DATABASE_URL / AI_SERVICE_KEY depuis backend/.env si besoin)
 from . import db
 from .routes_insights import router as insights_router
+from .routes_monitoring import router as monitoring_router
 
 app = FastAPI(
     title="Ndao Hifanosika AI Service",
-    version="0.3.0",
+    version="0.4.0",
     description="Santé, statistiques et analyses de pilotage (anomalies, performance, risque d'abandon, synthèse, tableau de bord).",
 )
 
 # Anomalies, insights, tableau de bord, lecture directe de la base
 app.include_router(insights_router)
+# Suivi & Évaluation : avancement, risque, prévision, anomalies par projet
+app.include_router(monitoring_router)
 
 
 class HealthResponse(BaseModel):
@@ -36,7 +39,7 @@ def health():
         "status": "ok",
         "service": "ndao-hifanosika-ai",
         "ml_ready": False,
-        "features": ["insights", "anomalies", "dashboard", "live-database"],
+        "features": ["insights", "anomalies", "dashboard", "live-database", "monitoring"],
         "database": database,
     }
 

@@ -19,6 +19,14 @@ import {
 import { sendError } from "../middlewares/error.middleware";
 import { getReqUser } from "../utils/dataScope";
 import { prisma } from "../config/database";
+import { parseIdentity } from "../utils/identity";
+
+/** Naissance + CIN saisis par l'administrateur (champs absents ignorés) */
+async function applyIdentity(user: any, body: Record<string, unknown>) {
+  const identity = parseIdentity(body);
+  if (identity.error || !user?.id || Object.keys(identity.data).length === 0) return user;
+  return prisma.user.update({ where: { id: user.id }, data: identity.data as any, include: { department: true } });
+}
 function sanitizeUser(user: any) {
   if (!user) {
     return user;
@@ -236,6 +244,12 @@ export async function createUser(
       }
     }
 
+    const identityCheck = parseIdentity(req.body);
+
+    if (identityCheck.error) {
+      return res.status(400).json({ success: false, message: identityCheck.error });
+    }
+
     const user =
       await createUserService({
         firstName: String(
@@ -261,7 +275,7 @@ export async function createUser(
       success: true,
       message:
         "Utilisateur créé avec succès.",
-      user: sanitizeUser(user),
+      user: sanitizeUser(await applyIdentity(user, req.body)),
     });
   } catch (error) {
     if (
@@ -447,6 +461,12 @@ export async function updateUser(
       }
     }
 
+    const identityCheck = parseIdentity(req.body);
+
+    if (identityCheck.error) {
+      return res.status(400).json({ success: false, message: identityCheck.error });
+    }
+
     const user =
       await updateUserService(
         id,
@@ -500,7 +520,7 @@ export async function updateUser(
       success: true,
       message:
         "Utilisateur mis à jour avec succès.",
-      user: sanitizeUser(user),
+      user: sanitizeUser(await applyIdentity(user, req.body)),
     });
   } catch (error) {
     if (

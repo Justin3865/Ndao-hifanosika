@@ -75,55 +75,90 @@ enum ApplicationStatus {
   REJECTED
 }
 
+enum PartnerType {
+  FUNDING_PARTNER
+  IMPLEMENTING_PARTNER
+  TECHNICAL_PARTNER
+  INSTITUTIONAL_PARTNER
+  OTHER
+}
+
+enum InternshipTaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+  CANCELLED
+}
+
 model User {
-  id                 Int        @id @default(autoincrement())
-  firstName          String
-  lastName           String
-  email              String     @unique
-  password           String
-  phone              String?
-  gender             Gender?
-  
-  birthDate          DateTime?
-  birthPlace         String?
+  id        Int     @id @default(autoincrement())
+  firstName String
+  lastName  String
+  email     String  @unique
+  password  String
+  phone     String?
+  gender    Gender?
 
-  role               UserRole   @default(STAGIAIRE_L3)
-  status             UserStatus @default(PENDING)
-  departmentId       Int?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-  lastLoginAt        DateTime?
-  avatarUrl          String?
+  birthDate  DateTime?
+  birthPlace String?
 
-  notifyEmail        Boolean    @default(true)
-  notifySms          Boolean    @default(true)
+  // ▼▼▼ AJOUTÉ : CIN (carte d'identité nationale) : numéro, délivrance, duplicata ▼▼▼
+  cinNumber      String?
+  cinIssuedAt    DateTime?
+  cinIssuedPlace String?
+  cinDuplicata   Boolean   @default(false)
+  cinDuplicataAt DateTime?
+  // ▲▲▲
 
-  latitude           Float?
-  longitude          Float?
-  altitude           Float?
-  locationUpdatedAt  DateTime?
-  sharingLocation    Boolean    @default(false)
+  role         UserRole   @default(STAGIAIRE_L3)
+  status       UserStatus @default(PENDING)
+  departmentId Int?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  lastLoginAt  DateTime?
+  avatarUrl    String?
 
-  department         Department? @relation(fields: [departmentId], references: [id])
+  notifyEmail Boolean @default(true)
+  notifySms   Boolean @default(true)
 
-  projectsCreated    Project[]  @relation("ProjectCreator")
-  activitiesCreated  Activity[] @relation("ActivityCreator")
+  // ▼▼▼ AJOUTÉ : double authentification (TOTP) + réglages du compte ▼▼▼
+  twoFactorEnabled     Boolean  @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String[] @default([])
+  settings             Json?
+  // ▲▲▲
+
+  latitude          Float?
+  longitude         Float?
+  altitude          Float?
+  locationUpdatedAt DateTime?
+  sharingLocation   Boolean   @default(false)
+
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  projectsCreated    Project[]    @relation("ProjectCreator")
+  activitiesCreated  Activity[]   @relation("ActivityCreator")
   evaluationsCreated Evaluation[] @relation("EvaluationCreator")
 
-  internships        Internship[] @relation("InternshipStudent")
+  internships           Internship[] @relation("InternshipStudent")
   supervisedInternships Internship[] @relation("InternshipSupervisor")
 
   internshipApplications InternshipApplication[]
 
-  auditLogs           AuditLog[]
-  passwordResetTokens PasswordResetToken[]
-  notifications       Notification[] @relation("NotificationRecipient")
-  sentNotifications   Notification[] @relation("NotificationSender")
-  notificationFiles   NotificationAttachment[] @relation("AttachmentUploader")
-  pushSubscriptions   PushSubscription[] @relation("UserPushSubscriptions")
-  missions            Mission[]  @relation("MissionAgent")
-  scheduledMessages   ScheduledMessage[] @relation("ScheduledSender")
-  surveys             Survey[]   @relation("SurveyAgent")
+  auditLogs             AuditLog[]
+  passwordResetTokens   PasswordResetToken[]
+  notifications         Notification[]           @relation("NotificationRecipient")
+  sentNotifications     Notification[]           @relation("NotificationSender")
+  notificationFiles     NotificationAttachment[] @relation("AttachmentUploader")
+  pushSubscriptions     PushSubscription[]       @relation("UserPushSubscriptions")
+  missions              Mission[]                @relation("MissionAgent")
+  scheduledMessages     ScheduledMessage[]       @relation("ScheduledSender")
+  surveys               Survey[]                 @relation("SurveyAgent")
+  internshipEvaluations InternshipEvaluation[]   @relation("InternshipEvaluator")
+  responsibleIndicators ProjectIndicator[]       @relation("IndicatorResponsible")
+  preference            UserPreference?          @relation("UserPreferenceOwner")
+  twoFactor             UserTwoFactor?           @relation("UserTwoFactorOwner")
 
   @@index([departmentId])
   @@index([role])
@@ -138,36 +173,41 @@ model Department {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  users       User[]
-  projects    Project[]
+  users    User[]
+  projects Project[]
 
   @@index([name])
 }
 
 model Project {
-  id             Int           @id @default(autoincrement())
-  name           String
-  code           String        @unique
-  description    String?
-  objective      String?
-  startDate      DateTime?
-  endDate        DateTime?
-  status         ProjectStatus @default(DRAFT)
-  budget         Decimal?      @db.Decimal(15, 2)
+  id                Int           @id @default(autoincrement())
+  name              String
+  code              String        @unique
+  description       String?
+  objective         String?
+  startDate         DateTime?
+  endDate           DateTime?
+  status            ProjectStatus @default(DRAFT)
+  budget            Decimal?      @db.Decimal(15, 2)
+  budgetSpent       Decimal?      @db.Decimal(15, 2)
   beneficiaryTarget Int?
-  departmentId   Int?
-  createdById    Int
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  departmentId      Int?
+  createdById       Int
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
-  department     Department?   @relation(fields: [departmentId], references: [id])
-  createdBy      User          @relation("ProjectCreator", fields: [createdById], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  createdBy  User        @relation("ProjectCreator", fields: [createdById], references: [id])
 
-  activities     Activity[]
-  milestones     Milestone[]
-  evaluations    Evaluation[]
-  beneficiaries  Beneficiary[]
-  internships    Internship[]
+  activities          Activity[]
+  milestones          Milestone[]
+  evaluations         Evaluation[]
+  beneficiaries       Beneficiary[]
+  internships         Internship[]
+  objectives          ProjectObjective[]
+  partnerLinks        ProjectPartner[]
+  monitoringSnapshots ProjectMonitoringSnapshot[]
+  certificates        Certificate[]
 
   @@index([departmentId])
   @@index([createdById])
@@ -184,12 +224,17 @@ model Activity {
   endDate     DateTime?
   status      ActivityStatus @default(PLANNED)
   budget      Decimal?       @db.Decimal(15, 2)
+  budgetSpent Decimal?       @db.Decimal(15, 2)
+  /// Avancement réel 0-100 (S&E) ; le statut en est déduit automatiquement
+  progress        Int       @default(0)
+  actualStartDate DateTime?
+  actualEndDate   DateTime?
   createdById Int
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy   User           @relation("ActivityCreator", fields: [createdById], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("ActivityCreator", fields: [createdById], references: [id])
 
   @@index([projectId])
   @@index([createdById])
@@ -197,31 +242,31 @@ model Activity {
 }
 
 model Milestone {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   projectId   Int
   title       String
   description String?
   dueDate     DateTime?
   completedAt DateTime?
-  progress    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  progress    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
 }
 
 model Beneficiary {
-  id          Int      @id @default(autoincrement())
-  projectId   Int
-  firstName   String
-  lastName    String
-  gender      Gender?
-  age         Int?
-  phone       String?
-  email       String?
-  vulnerable  Boolean  @default(false)
+  id         Int     @id @default(autoincrement())
+  projectId  Int
+  firstName  String
+  lastName   String
+  gender     Gender?
+  age        Int?
+  phone      String?
+  email      String?
+  vulnerable Boolean @default(false)
 
   latitude         Float?
   longitude        Float?
@@ -231,8 +276,8 @@ model Beneficiary {
   trackingEnabled  Boolean   @default(false)
   consentAt        DateTime?
 
-  altitude    Float?
-  zoneId      Int?
+  altitude Float?
+  zoneId   Int?
 
   locality       String?
   homeLatitude   Float?
@@ -243,12 +288,23 @@ model Beneficiary {
   childrenUnder5 Int?
   hasDisability  Boolean @default(false)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Identité (certificats automatiques)
+  birthDate      DateTime?
+  birthPlace     String?
+  cinNumber      String?
+  cinIssuedAt    DateTime?
+  cinIssuedPlace String?
+  cinDuplicata   Boolean   @default(false)
+  cinDuplicataAt DateTime?
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  zone        Zone?    @relation(fields: [zoneId], references: [id], onDelete: SetNull)
-  surveys     Survey[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  zone         Zone?                @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  surveys      Survey[]
+  partnerLinks BeneficiaryPartner[]
+  certificates Certificate[]
 
   @@index([projectId])
   @@index([gender])
@@ -268,11 +324,11 @@ model Evaluation {
   updatedAt   DateTime         @updatedAt
 
   // ▼▼▼ NOVOAKO : Nampiana ny altitude ▼▼▼
-  altitude    Float?
+  altitude Float?
   // ▲▲▲
 
-  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy   User             @relation("EvaluationCreator", fields: [createdById], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("EvaluationCreator", fields: [createdById], references: [id])
 
   @@index([projectId])
   @@index([createdById])
@@ -280,22 +336,24 @@ model Evaluation {
 }
 
 model Internship {
-  id             Int              @id @default(autoincrement())
-  projectId      Int?
-  studentId      Int
-  supervisorId   Int?
-  title          String
-  institution    String?
-  startDate      DateTime
-  endDate        DateTime?
-  status         InternshipStatus @default(PENDING)
-  description    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id           Int              @id @default(autoincrement())
+  projectId    Int?
+  studentId    Int
+  supervisorId Int?
+  title        String
+  institution  String?
+  startDate    DateTime
+  endDate      DateTime?
+  status       InternshipStatus @default(PENDING)
+  description  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
-  project        Project?         @relation(fields: [projectId], references: [id])
-  student        User             @relation("InternshipStudent", fields: [studentId], references: [id])
-  supervisor     User?            @relation("InternshipSupervisor", fields: [supervisorId], references: [id])
+  project     Project?               @relation(fields: [projectId], references: [id])
+  student     User                   @relation("InternshipStudent", fields: [studentId], references: [id])
+  supervisor  User?                  @relation("InternshipSupervisor", fields: [supervisorId], references: [id])
+  tasks       InternshipTask[]
+  evaluations InternshipEvaluation[]
 
   @@index([projectId])
   @@index([studentId])
@@ -334,8 +392,8 @@ model InternshipApplication {
   status     ApplicationStatus @default(PENDING)
   createdAt  DateTime          @default(now())
 
-  offer      InternshipOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer InternshipOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([offerId, userId])
   @@index([offerId])
@@ -344,17 +402,17 @@ model InternshipApplication {
 }
 
 model AuditLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int?
-  action     String
-  entity     String?
-  entityId   Int?
-  details    Json?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  entity    String?
+  entityId  Int?
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
 
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([entity])
@@ -362,14 +420,14 @@ model AuditLog {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    Int
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
-  attempts  Int      @default(0)
+  attempts  Int       @default(0)
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
 }
@@ -384,22 +442,22 @@ model RevokedRefreshToken {
 }
 
 model Notification {
-  id        Int              @id @default(autoincrement())
-  userId    Int
-  senderId  Int?
-  replyToId Int?
-  title     String
-  message   String
-  type      NotificationType @default(INFO)
-  read      Boolean          @default(false)
-  archived  Boolean          @default(false)
-  batchId   String?
-  groupSize Int?
+  id         Int              @id @default(autoincrement())
+  userId     Int
+  senderId   Int?
+  replyToId  Int?
+  title      String
+  message    String
+  type       NotificationType @default(INFO)
+  read       Boolean          @default(false)
+  archived   Boolean          @default(false)
+  batchId    String?
+  groupSize  Int?
   receivedAt DateTime?
-  latitude  Float?
-  longitude Float?
-  accuracy  Float?
-  createdAt DateTime         @default(now())
+  latitude   Float?
+  longitude  Float?
+  accuracy   Float?
+  createdAt  DateTime         @default(now())
 
   user        User                     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
   sender      User?                    @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
@@ -415,18 +473,18 @@ model Notification {
 }
 
 model NotificationAttachment {
-  id            Int      @id @default(autoincrement())
-  uploaderId    Int
-  name          String
-  mime          String
-  kind          String
-  size          Int
-  data          Bytes
-  createdAt     DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  uploaderId Int
+  name       String
+  mime       String
+  kind       String
+  size       Int
+  data       Bytes
+  createdAt  DateTime @default(now())
 
   notifications Notification[]
   scheduled     ScheduledMessage[] @relation("ScheduledAttachments")
-  uploader      User           @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+  uploader      User               @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
 
   @@index([uploaderId])
 }
@@ -441,14 +499,14 @@ model PushSubscription {
   userAgent String?
   createdAt DateTime @default(now())
 
-  user      User     @relation("UserPushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("UserPushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model Zone {
-  id             Int           @id @default(autoincrement())
-  name           String        @unique
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
   region         String?
   latitude       Float
   longitude      Float
@@ -456,35 +514,259 @@ model Zone {
   address        String?
   phone          String?
   email          String?
-  isHeadquarters Boolean       @default(false)
-  isActive       Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  isHeadquarters Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  beneficiaries  Beneficiary[]
+  beneficiaries Beneficiary[]
 }
 
 model Certificate {
-  id           Int       @id @default(autoincrement())
-  code         String    @unique
-  type         String
-  holderName   String
-  holderEmail  String?
-  title        String
-  description  String?
-  startDate    DateTime?
-  endDate      DateTime?
-  
-  holderBirthDate DateTime?
-  holderBirthPlace String?
-  missionLocation String?
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  type        String
+  holderName  String
+  holderEmail String?
+  title       String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
 
-  internshipId Int?
-  userId       Int?
+  holderBirthDate  DateTime?
+  holderBirthPlace String?
+  missionLocation  String?
+
+  // ▼▼▼ AJOUTÉ : identité complémentaire (CIN) + cas particulier ▼▼▼
+  holderPhone          String?
+  holderCin            String?
+  holderCinIssuedAt    DateTime?
+  holderCinIssuedPlace String?
+  holderCinDuplicata   Boolean   @default(false)
+  holderCinDuplicataAt DateTime?
+  specialCase          Boolean   @default(false)
+  specialCaseNote      String?
+  // ▲▲▲
+
+  internshipId  Int?
+  projectId     Int?
+  beneficiaryId Int?
+  userId        Int?
+
+  project      Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  beneficiary  Beneficiary?         @relation(fields: [beneficiaryId], references: [id], onDelete: SetNull)
+  partnerLinks CertificatePartner[]
   issuedById   Int?
   revokedAt    DateTime?
   expiresAt    DateTime?
+  createdAt    DateTime             @default(now())
+}
+
+model Partner {
+  id          Int         @id @default(autoincrement())
+  name        String
+  type        PartnerType @default(OTHER)
+  slogan      String?
+  logoUrl     String?
+  website     String?
+  description String?
+  email       String?
+  phone       String?
+  address     String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  projects      ProjectPartner[]
+  beneficiaries BeneficiaryPartner[]
+  certificates  CertificatePartner[]
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model ProjectPartner {
+  id           Int       @id @default(autoincrement())
+  projectId    Int
+  partnerId    Int
+  role         String?
+  contribution String?
+  startDate    DateTime?
+  endDate      DateTime?
   createdAt    DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, partnerId])
+  @@index([projectId])
+  @@index([partnerId])
+}
+
+model BeneficiaryPartner {
+  id            Int       @id @default(autoincrement())
+  beneficiaryId Int
+  partnerId     Int
+  role          String?
+  supportType   String?
+  startDate     DateTime?
+  endDate       DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+
+  beneficiary Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  partner     Partner     @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([beneficiaryId, partnerId])
+  @@index([beneficiaryId])
+  @@index([partnerId])
+}
+
+model ProjectObjective {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  title       String
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  results ProjectResult[]
+
+  @@index([projectId, order])
+}
+
+model ProjectResult {
+  id          Int      @id @default(autoincrement())
+  objectiveId Int
+  title       String
+  description String?
+  progress    Int      @default(0)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  objective  ProjectObjective   @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  indicators ProjectIndicator[]
+
+  @@index([objectiveId, order])
+}
+
+model ProjectIndicator {
+  id              Int       @id @default(autoincrement())
+  resultId        Int
+  name            String
+  description     String?
+  unit            String?
+  baseline        Float?
+  target          Float?
+  currentValue    Float?
+  source          String?
+  frequency       String?
+  responsibleId   Int?
+  lastCollectedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  measurements IndicatorMeasurement[]
+  result      ProjectResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  responsible User?         @relation("IndicatorResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  @@index([resultId])
+  @@index([responsibleId])
+}
+
+/// Historique des collectes d'un indicateur (valeur mesurée à une date donnée)
+model IndicatorMeasurement {
+  id            Int      @id @default(autoincrement())
+  indicatorId   Int
+  value         Float
+  collectedAt   DateTime @default(now())
+  collectedById Int?
+  note          String?
+  createdAt     DateTime @default(now())
+
+  indicator ProjectIndicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+
+  @@index([indicatorId, collectedAt])
+}
+
+model ProjectMonitoringSnapshot {
+  id              Int      @id @default(autoincrement())
+  projectId       Int
+  plannedProgress Int
+  actualProgress  Int
+  gap             Int
+  recordedAt      DateTime @default(now())
+  note            String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, recordedAt])
+}
+
+model InternshipTask {
+  id           Int                  @id @default(autoincrement())
+  internshipId Int
+  title        String
+  description  String?
+  status       InternshipTaskStatus @default(TODO)
+  progress     Int                  @default(0)
+  dueDate      DateTime?
+  completedAt  DateTime?
+  report       String?              @db.Text
+  evidenceName String?
+  evidenceMime String?
+  evidenceSize Int?
+  evidenceData Bytes?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@index([internshipId])
+  @@index([status])
+}
+
+model InternshipEvaluation {
+  id                 Int       @id @default(autoincrement())
+  internshipId       Int
+  evaluatorId        Int
+  title              String
+  technicalScore     Float?
+  qualityScore       Float?
+  autonomyScore      Float?
+  punctualityScore   Float?
+  communicationScore Float?
+  overallScore       Float?
+  comments           String?   @db.Text
+  evaluatedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  evaluator  User       @relation("InternshipEvaluator", fields: [evaluatorId], references: [id])
+
+  @@index([internshipId])
+  @@index([evaluatorId])
+}
+
+model CertificatePartner {
+  id             Int     @id @default(autoincrement())
+  certificateId  Int
+  partnerId      Int
+  role           String?
+  displayOrder   Int     @default(0)
+  nameSnapshot   String
+  sloganSnapshot String?
+  logoSnapshot   String?
+
+  certificate Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  partner     Partner     @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([certificateId])
+  @@index([partnerId])
 }
 
 model AiModel {
@@ -615,35 +897,35 @@ model ScheduledMessage {
 
 /// Participation d'un stagiaire à une activité (demande, décision, rapport, preuve, présence, note du tuteur)
 model ActivityParticipation {
-  id               Int       @id @default(autoincrement())
-  activityId       Int
-  userId           Int
-  status           String    @default("PENDING") // PENDING | ACCEPTED | REJECTED
-  message          String?
-  decidedById      Int?
-  decidedAt        DateTime?
+  id          Int       @id @default(autoincrement())
+  activityId  Int
+  userId      Int
+  status      String    @default("PENDING") // PENDING | ACCEPTED | REJECTED
+  message     String?
+  decidedById Int?
+  decidedAt   DateTime?
 
-  report           String?   @db.Text
-  reportAt         DateTime?
-  proofName        String?
-  proofMime        String?
-  proofSize        Int?
-  proofData        Bytes?
+  report    String?   @db.Text
+  reportAt  DateTime?
+  proofName String?
+  proofMime String?
+  proofSize Int?
+  proofData Bytes?
 
   checkedInAt      DateTime?
   checkInLatitude  Float?
   checkInLongitude Float?
 
-  rating           Int?
-  ratingComment    String?
-  ratedById        Int?
-  ratedAt          DateTime?
+  rating        Int?
+  ratingComment String?
+  ratedById     Int?
+  ratedAt       DateTime?
 
   remindedStartAt  DateTime?
   remindedReportAt DateTime?
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([activityId, userId])
   @@index([userId])
@@ -680,4 +962,44 @@ model MeritSnapshot {
   @@unique([period, userId])
   @@index([period])
   @@index([userId])
+}
+
+/// Paramètres personnels (page « Paramètres »), synchronisés sur tous les appareils
+model UserPreference {
+  userId              Int      @id
+  emailNotifications  Boolean  @default(true)
+  pushNotifications   Boolean  @default(true)
+  evaluationReminders Boolean  @default(true)
+  projectReminders    Boolean  @default(true)
+  reportReminders     Boolean  @default(true)
+  sessionTimeout      Int      @default(30)
+  theme               String   @default("Système")
+  compactMode         Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+
+  user User @relation("UserPreferenceOwner", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Authentification à deux facteurs TOTP (clé chiffrée AES-256-GCM, codes de secours hachés)
+model UserTwoFactor {
+  userId       Int       @id
+  secret       String
+  enabled      Boolean   @default(false)
+  enabledAt    DateTime?
+  backupCodes  Json      @default("[]")
+  lastUsedStep Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation("UserTwoFactorOwner", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Rappels déjà envoyés (évite d'envoyer deux fois le même rappel)
+model ReminderLog {
+  id     Int      @id @default(autoincrement())
+  key    String   @unique
+  kind   String
+  sentAt DateTime @default(now())
+
+  @@index([sentAt])
 }

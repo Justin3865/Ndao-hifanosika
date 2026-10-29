@@ -17,6 +17,11 @@ interface Profile {
   phone?: string | null;
   birthDate?: string | null;
   birthPlace?: string | null;
+  cinNumber?: string | null;
+  cinIssuedAt?: string | null;
+  cinIssuedPlace?: string | null;
+  cinDuplicata?: boolean;
+  cinDuplicataAt?: string | null;
   notifyEmail?: boolean;
   notifySms?: boolean;
   role: string;
@@ -52,7 +57,25 @@ const toForm = (data: Profile) => ({
   phone: data.phone ?? "",
   birthDate: data.birthDate ? data.birthDate.slice(0, 10) : "",
   birthPlace: data.birthPlace ?? "",
+  cinNumber: data.cinNumber ?? "",
+  cinIssuedAt: data.cinIssuedAt ? data.cinIssuedAt.slice(0, 10) : "",
+  cinIssuedPlace: data.cinIssuedPlace ?? "",
+  cinDuplicata: Boolean(data.cinDuplicata),
+  cinDuplicataAt: data.cinDuplicataAt ? data.cinDuplicataAt.slice(0, 10) : "",
 });
+
+/** Informations encore vides et nécessaires pour remplir automatiquement un certificat */
+const missingForCertificate = (data: Profile): string[] => {
+  const list: string[] = [];
+  if (!data.phone) list.push("Téléphone");
+  if (!data.birthDate) list.push("Date de naissance");
+  if (!data.birthPlace) list.push("Lieu de naissance");
+  if (!data.cinNumber) list.push("N° CIN");
+  if (!data.cinIssuedAt) list.push("Date de délivrance du CIN");
+  if (!data.cinIssuedPlace) list.push("Lieu de délivrance du CIN");
+  if (data.cinDuplicata && !data.cinDuplicataAt) list.push("Date du duplicata");
+  return list;
+};
 
 export default function ProfilePage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -60,7 +83,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", birthDate: "", birthPlace: "" });
+  const [form, setForm] = useState(toForm({ firstName: "", lastName: "" } as Profile));
   const [pwd, setPwd] = useState({ currentPassword: "", newPassword: "", confirm: "" });
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState("");
@@ -102,10 +125,18 @@ export default function ProfilePage() {
 
   const saveInfo = async (event: FormEvent) => {
     event.preventDefault();
+
+    const cin = form.cinNumber.replace(/[\s.-]/g, "");
+
+    if (cin && !/^\d{12}$/.test(cin)) {
+      flash("err", "Le numéro de CIN doit contenir exactement 12 chiffres.");
+      return;
+    }
+
     setBusy("info");
 
     try {
-      const res = await api.put("/profile", form);
+      const res = await api.put("/profile", { ...form, cinNumber: cin });
       sync(res.data.data);
       toast.success("Informations enregistrées.");
 
@@ -344,9 +375,79 @@ export default function ProfilePage() {
                   </label>
                 </div>
 
-                <p className="text-xs text-gray-500">
-                  La date et le lieu de naissance sont utilisés pour vos certificats (stage, bénévolat...).
-                </p>
+                <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+                  <h4 className="text-sm font-semibold text-gray-900">Carte d&apos;identité nationale (CIN)</h4>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <label className="space-y-1 text-sm font-medium text-gray-700">
+                      N° CIN
+                      <input
+                        className={inputClass}
+                        inputMode="numeric"
+                        maxLength={12}
+                        placeholder="12 chiffres"
+                        value={form.cinNumber}
+                        onChange={(e) => setForm({ ...form, cinNumber: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm font-medium text-gray-700">
+                      Date de délivrance
+                      <input
+                        type="date"
+                        className={inputClass}
+                        value={form.cinIssuedAt}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setForm({ ...form, cinIssuedAt: e.target.value })}
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm font-medium text-gray-700">
+                      Lieu de délivrance
+                      <input
+                        className={inputClass}
+                        placeholder="Ex. Antananarivo"
+                        value={form.cinIssuedPlace}
+                        onChange={(e) => setForm({ ...form, cinIssuedPlace: e.target.value })}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5"
+                        checked={form.cinDuplicata}
+                        onChange={(e) =>
+                          setForm({ ...form, cinDuplicata: e.target.checked, cinDuplicataAt: e.target.checked ? form.cinDuplicataAt : "" })
+                        }
+                      />
+                      Mon CIN est un duplicata
+                    </label>
+
+                    {form.cinDuplicata && (
+                      <label className="space-y-1 text-sm font-medium text-gray-700">
+                        Date du duplicata
+                        <input
+                          type="date"
+                          className={inputClass}
+                          value={form.cinDuplicataAt}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setForm({ ...form, cinDuplicataAt: e.target.value })}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                {profile && missingForCertificate(profile).length > 0 ? (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                    Pour que vos certificats soient remplis automatiquement, complétez : {missingForCertificate(profile).join(", ")}.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    Ces informations (naissance, téléphone, CIN) sont reprises automatiquement sur vos certificats.
+                  </p>
+                )}
 
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button

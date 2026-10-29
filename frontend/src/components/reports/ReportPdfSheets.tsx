@@ -102,11 +102,15 @@ interface PageProps {
   total: number;
   /** Page de mesure (hors écran) : pas exportée */
   probe?: boolean;
+  /** Étiquette sous le titre (défaut : Bailleurs) */
+  badge?: string;
+  /** Phrase du pied de page */
+  footer?: string;
   children: ReactNode;
 }
 
 /** Page A4 (portrait) avec le même cadre que le certificat : liseré bleu, filet turquoise, coins roses. */
-function Page({ title, issued, number, total, probe = false, children }: PageProps) {
+function Page({ title, issued, number, total, probe = false, badge = "Bailleurs", footer = "Rapport destiné au suivi du financement et des résultats", children }: PageProps) {
   const pageAttr = probe ? { "data-probe-page": "" } : { "data-report-page": "" };
   const bodyAttr = probe ? { "data-probe-body": "" } : {};
 
@@ -147,14 +151,14 @@ function Page({ title, issued, number, total, probe = false, children }: PagePro
               </div>
               {/* Date + heure d'édition : toujours affichées */}
               <p className="mx-auto mt-2 w-fit rounded-full bg-[#0F6BA0]/10 px-4 py-0.5 text-xs font-semibold text-[#0A4A70]">
-                Bailleurs — édité le {issued.date} à <span className="font-mono">{issued.time}</span>
+                {badge} — édité le {issued.date} à <span className="font-mono">{issued.time}</span>
               </p>
             </div>
 
             <div {...bodyAttr} className="mt-8 flex-1 space-y-8">{children}</div>
 
             <p className="mt-6 border-t border-gray-200 pt-3 text-center text-[11px] text-gray-500">
-              {ORG.name} · Rapport destiné au suivi du financement et des résultats · Page {number}/{total}
+              {ORG.name} · {footer} · Page {number}/{total}
             </p>
             <p className="mt-0.5 text-center text-[11px] text-gray-500">
               Édité le {issued.date} à <span className="font-mono">{issued.time}</span>
@@ -351,6 +355,46 @@ export function ImpactReport({ dashboard, evaluation, zones }: Data & { zones: Z
           </Page>
         </div>
       ))}
+    </>
+  );
+}
+
+/** Rapport d'impact : même rendu que ImpactReport (utilisé par « Télécharger tout »). */
+export const ImpactPage = ImpactReport;
+
+/** Rapport général : vue d'ensemble + évaluations, sur une page A4 (utilisé par « Télécharger tout »). */
+export function OverviewPage({ dashboard, evaluation }: Data) {
+  const [issuedAt] = useState(() => new Date().toISOString());
+  const issued = formatIssued(issuedAt);
+  const entries = Object.entries({ ...(dashboard?.totals ?? {}), ...(dashboard?.status ?? {}) }) as [string, number][];
+
+  return (
+    <>
+      <style>{LIGHT_SHEET_CSS}</style>
+      <div className="report-page-wrap">
+        <Page title="Rapport général" issued={issued} number={1} total={1} badge="Rapports" footer="Données agrégées en temps réel">
+          <section>
+            <Heading>Vue d&apos;ensemble</Heading>
+            <div className="grid grid-cols-3 gap-4">
+              {entries.map(([key, value]) => (
+                <Tile key={key} label={REPORT_LABELS[key] ?? key} value={value} />
+              ))}
+            </div>
+          </section>
+          {evaluation && (
+            <section>
+              <Heading>Évaluations</Heading>
+              <div className="grid grid-cols-3 gap-4">
+                <Tile label="Total" value={evaluation.total} />
+                <Tile label="Score moyen" value={evaluation.averageScore !== null && evaluation.averageScore !== undefined ? evaluation.averageScore.toFixed(1) : "—"} />
+                <Tile label="Brouillons" value={evaluation.byStatus?.draft ?? 0} />
+                <Tile label="Soumises" value={evaluation.byStatus?.submitted ?? 0} />
+                <Tile label="Validées" value={evaluation.byStatus?.validated ?? 0} />
+              </div>
+            </section>
+          )}
+        </Page>
+      </div>
     </>
   );
 }

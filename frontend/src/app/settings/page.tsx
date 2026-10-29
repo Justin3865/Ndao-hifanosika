@@ -13,18 +13,21 @@ import {
   Save,
   CheckCircle,
   ArrowLeft,
-  Lock,
   Mail,
   Smartphone,
   Moon,
   Sun,
   Monitor,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 
 import {
   useSettings,
   type SettingsData,
 } from "@/components/providers/settings-provider";
+
+import { TwoFactorPanel } from "@/components/settings/TwoFactorPanel";
 
 export default function SettingsPage() {
   const {
@@ -33,6 +36,9 @@ export default function SettingsPage() {
     saveSettings,
     resetSettings,
     saved,
+    syncing,
+    syncError,
+    pushHint,
   } = useSettings();
 
   return (
@@ -200,8 +206,9 @@ export default function SettingsPage() {
                       </p>
 
                       <p className="text-xs text-slate-500">
-                        Les paramètres sont enregistrés
-                        automatiquement dans votre navigateur.
+                        Vos paramètres sont enregistrés
+                        automatiquement dans votre compte et
+                        retrouvés sur tous vos appareils.
                       </p>
 
                     </div>
@@ -279,6 +286,12 @@ export default function SettingsPage() {
                     )
                   }
                 />
+
+                {pushHint && (
+                  <p className="-mt-2 rounded-lg bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                    {pushHint}
+                  </p>
+                )}
 
                 <SettingToggle
                   icon={
@@ -368,28 +381,21 @@ export default function SettingsPage() {
 
               <div className="space-y-5 p-6">
 
-                <SettingToggle
-                  icon={
-                    <Lock className="h-5 w-5" />
-                  }
-                  title="Authentification à deux facteurs"
-                  description="Renforcer la sécurité avec une deuxième étape d'authentification."
-                  checked={
-                    settings.twoFactorAuth
-                  }
-                  onChange={(value) =>
-                    updateSetting(
-                      "twoFactorAuth",
-                      value,
-                    )
-                  }
-                />
+                <div className="-mx-6 -mt-5 border-b border-slate-100">
+                  <TwoFactorPanel />
+                </div>
 
                 <div>
 
                   <label className="mb-2 block text-sm font-medium text-slate-700">
                     Expiration de session
                   </label>
+
+                  <p className="mb-2 text-xs text-slate-500">
+                    Déconnexion automatique après cette durée sans
+                    aucune activité (un avertissement s'affiche
+                    une minute avant).
+                  </p>
 
                   <select
                     value={
@@ -539,7 +545,7 @@ export default function SettingsPage() {
                     <Settings className="h-5 w-5" />
                   }
                   title="Mode compact"
-                  description="Réduire l'espacement des éléments dans les tableaux."
+                  description="Réduire la taille de l'interface (textes et espacements) pour afficher plus de contenu."
                   checked={
                     settings.compactMode
                   }
@@ -573,7 +579,23 @@ export default function SettingsPage() {
 
                 <div className="flex items-center gap-3">
 
-                  {saved && (
+                  {syncing && (
+                    <span className="flex items-center gap-2 text-sm text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+
+                      Enregistrement…
+                    </span>
+                  )}
+
+                  {syncError && !syncing && (
+                    <span className="flex items-center gap-2 text-sm font-medium text-red-600">
+                      <AlertTriangle className="h-4 w-4" />
+
+                      {syncError}
+                    </span>
+                  )}
+
+                  {saved && !syncing && !syncError && (
                     <span className="flex items-center gap-2 text-sm font-medium text-green-600">
                       <CheckCircle className="h-4 w-4" />
 

@@ -31,6 +31,10 @@ export interface ComposerPayload {
 }
 
 interface Props {
+  /** Appelée quand le brouillon retrouvé est effacé (le parent remet son formulaire à zéro). */
+  onDiscardDraft?: () => void;
+  /** Programmation de l'envoi : gérée par la page qui utilise le composeur (accepté ici pour le typage). */
+  allowSchedule?: boolean;
   /** Envoie le message ; lever une Error pour afficher un message d'erreur. */
   onSubmit: (payload: ComposerPayload) => Promise<void>;
   onCancel?: () => void;
@@ -134,6 +138,7 @@ export function MessageComposer({
   rows = 3,
   draftKey,
   allowVoice = true,
+  onDiscardDraft,
 }: Props) {
   const [text, setText] = useState("");
   const [staged, setStaged] = useState<Staged[]>([]);
@@ -708,6 +713,7 @@ export function MessageComposer({
               setLocation(null);
               setText("");
               setRestored(false);
+              onDiscardDraft?.();
             }}
           >
             Effacer

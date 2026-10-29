@@ -12,6 +12,7 @@ import {
 } from "../controllers/auth.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
+import { twoFactorGate } from "../middlewares/twoFactorGate.middleware";
 
 const router = Router();
 
@@ -19,8 +20,11 @@ const router = Router();
  * POST /api/auth/login
  *
  * Public
+ *
+ * twoFactorGate : si le compte a activé l'authentification à deux facteurs, réclame le code
+ * de l'application d'authentification avant de laisser le contrôleur ouvrir la session.
  */
-router.post("/login", login);
+router.post("/login", twoFactorGate, login);
 
 /**
  * POST /api/auth/register

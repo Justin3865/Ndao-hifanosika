@@ -82,6 +82,28 @@ export async function trainExternalMl(): Promise<Record<string, unknown> | null>
   }
 }
 
+/**
+ * Analyse globale (anomalies + performance) par le service Python, à partir des données envoyées.
+ * Retourne null si le service est absent ou en erreur : l'appelant bascule alors sur le calcul TypeScript.
+ */
+export async function analyzeWithPython(payload: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  const url = baseUrl("AI_SERVICE_URL");
+  if (!url) return null;
+
+  try {
+    const response = await fetch(`${url}/v1/insights`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-service-key": process.env.AI_SERVICE_KEY ?? "" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export interface AnomalyServiceResult {
   ready: boolean;
   reason?: string;

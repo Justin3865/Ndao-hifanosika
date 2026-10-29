@@ -228,6 +228,13 @@ export const beneficiariesConfig: ResourceConfig = {
     { name: "monthlyIncome", label: "Revenu mensuel du ménage (Ar)", type: "number", min: 0 },
     { name: "childrenUnder5", label: "Enfants de moins de 5 ans", type: "number", min: 0, max: 20 },
     { name: "hasDisability", label: "Personne en situation de handicap dans le ménage", type: "checkbox" },
+    { name: "birthDate", label: "Date de naissance (certificat)", type: "date" },
+    { name: "birthPlace", label: "Lieu de naissance (certificat)", type: "text" },
+    { name: "cinNumber", label: "N° CIN (12 chiffres)", type: "text", digitsOnly: 12 },
+    { name: "cinIssuedAt", label: "Date de délivrance du CIN", type: "date" },
+    { name: "cinIssuedPlace", label: "Lieu de délivrance du CIN", type: "text" },
+    { name: "cinDuplicata", label: "CIN délivré en duplicata", type: "checkbox" },
+    { name: "cinDuplicataAt", label: "Date du duplicata", type: "date" },
     { name: "home", label: "Domicile du ménage (carte)", type: "geo", full: true },
   ],
   detail: (b) => [
@@ -242,6 +249,12 @@ export const beneficiariesConfig: ResourceConfig = {
     { label: "Revenu mensuel", value: fmtMoney(b.monthlyIncome) },
     { label: "Enfants < 5 ans", value: b.childrenUnder5 ?? "—" },
     { label: "Handicap", value: b.hasDisability ? "Oui" : "Non" },
+    { label: "Date de naissance", value: b.birthDate ? fmtDate(b.birthDate) : "—" },
+    { label: "Lieu de naissance", value: b.birthPlace || "—" },
+    { label: "N° CIN", value: b.cinNumber || "—" },
+    { label: "CIN délivré le", value: b.cinIssuedAt ? fmtDate(b.cinIssuedAt) : "—" },
+    { label: "CIN délivré à", value: b.cinIssuedPlace || "—" },
+    { label: "Duplicata", value: b.cinDuplicata ? (b.cinDuplicataAt ? "Oui, le " + fmtDate(b.cinDuplicataAt) : "Oui") : "Non" },
     {
       label: "Domicile (GPS)",
       value:
@@ -342,12 +355,14 @@ export const internshipsConfig: ResourceConfig = {
   fields: [
     { name: "title", label: "Intitulé du stage", type: "text", required: true },
     { name: "projectId", label: "Projet", type: "select", lookup: "projects" },
-    { name: "studentId", label: "Stagiaire", type: "select", lookup: "students", required: true },
+    { name: "studentId", label: "Stagiaire", type: "select", lookup: "students", required: true, requiredUnless: "newPerson" },
+    { name: "newPerson", label: "Nouveau stagiaire", type: "newperson", identityOf: "studentId", hideOnEdit: true, full: true },
+    { name: "identity", label: "Informations du stagiaire", type: "identity", identityOf: "studentId", full: true },
     { name: "supervisorId", label: "Tuteur", type: "select", lookup: "tutors" },
     { name: "institution", label: "Établissement", type: "text" },
     { name: "startDate", label: "Date de début", type: "date" },
     { name: "endDate", label: "Date de fin", type: "date" },
-    { name: "status", label: "Statut", type: "select", options: statusOptions(INTERNSHIP_STATUS) },
+    { name: "status", label: "Statut", type: "select", options: statusOptions(INTERNSHIP_STATUS), defaultValue: "IN_PROGRESS" },
     { name: "description", label: "Description", type: "textarea" },
   ],
   detail: (i) => [

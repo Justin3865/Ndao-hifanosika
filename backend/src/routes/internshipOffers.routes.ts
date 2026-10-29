@@ -25,8 +25,8 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-function parseId(value: string) {
-  const id = Number(value);
+function parseId(value: string | string[] | undefined) {
+  const id = Number(Array.isArray(value) ? value[0] : value);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 

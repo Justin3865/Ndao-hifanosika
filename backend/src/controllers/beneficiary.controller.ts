@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import { parseIdentity } from "../utils/identity";
 
 import { sendError } from "../middlewares/error.middleware";
 export async function getBeneficiaries(
@@ -138,6 +139,13 @@ function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
   if (body.hasDisability !== undefined) {
     data.hasDisability = body.hasDisability === true || body.hasDisability === "true";
   }
+
+  // Naissance + CIN (validés : 12 chiffres, dates passées)
+  const identity = parseIdentity(body);
+
+  if (identity.error) return { ok: false, message: identity.error };
+
+  Object.assign(data, identity.data);
 
   return { ok: true, data };
 }
