@@ -60,7 +60,7 @@ export async function loginUser(
 }
 
 export async function registerUser(data: {
-  firstName: string;
+  firstName?: string;
   lastName: string;
   email: string;
   password: string;
@@ -90,7 +90,7 @@ export async function registerUser(data: {
 
   return prisma.user.create({
     data: {
-      firstName: data.firstName.trim(),
+      firstName: (data.firstName ?? "").trim(),
       lastName: data.lastName.trim(),
       email: normalizedEmail,
       password: hashedPassword,

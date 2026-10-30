@@ -102,6 +102,13 @@ export default function InternshipMonitoringPage() {
               </p>
               <h1 className="text-2xl font-bold text-slate-900">{fullName(data.student)}</h1>
               <p className="text-sm text-slate-600">{data.title}</p>
+              {data.theme && (
+                <p className="mt-1 text-sm font-semibold text-blue-800">
+                  Thème : « {data.theme} »
+                  {data.department ? <span className="font-normal text-slate-500"> · Département {data.department.name}</span> : null}
+                  <span className="font-normal text-slate-500"> · Avancement du thème {data.actualProgress === null ? "—" : `${Math.round(data.actualProgress)} %`}</span>
+                </p>
+              )}
               <p className="mt-1 text-xs text-slate-500">Tuteur : {fullName(data.supervisor)}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

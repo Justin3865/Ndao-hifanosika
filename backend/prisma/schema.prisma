@@ -173,8 +173,9 @@ model Department {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  users    User[]
-  projects Project[]
+  users       User[]
+  projects    Project[]
+  internships Internship[]
 
   @@index([name])
 }
@@ -185,6 +186,8 @@ model Project {
   code              String        @unique
   description       String?
   objective         String?
+  /// Slogan du projet : imprimé sur les certificats des bénéficiaires
+  slogan            String?
   startDate         DateTime?
   endDate           DateTime?
   status            ProjectStatus @default(DRAFT)
@@ -288,6 +291,15 @@ model Beneficiary {
   childrenUnder5 Int?
   hasDisability  Boolean @default(false)
 
+  // Identité complète (naissance + CIN) : colonnes créées par la migration 20261030010000_identite_beneficiaires
+  birthDate      DateTime?
+  birthPlace     String?
+  cinNumber      String?
+  cinIssuedAt    DateTime?
+  cinIssuedPlace String?
+  cinDuplicata   Boolean   @default(false)
+  cinDuplicataAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -337,10 +349,15 @@ model Internship {
   endDate      DateTime?
   status       InternshipStatus @default(PENDING)
   description  String?
+  /// Thème du stage (sujet du stagiaire) : imprimé sur le certificat et suivi par le S&E
+  theme        String?
+  /// Département d'affectation du stagiaire (ex. « Suivi et Évaluation »)
+  departmentId Int?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   project     Project?               @relation(fields: [projectId], references: [id])
+  department  Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   student     User                   @relation("InternshipStudent", fields: [studentId], references: [id])
   supervisor  User?                  @relation("InternshipSupervisor", fields: [supervisorId], references: [id])
   tasks       InternshipTask[]
@@ -350,6 +367,7 @@ model Internship {
   @@index([studentId])
   @@index([supervisorId])
   @@index([status])
+  @@index([departmentId])
 }
 
 model InternshipOffer {
@@ -532,6 +550,11 @@ model Certificate {
   mention    String?
   finalScore Float?
 
+  /// Thème du stage + département, figés à la délivrance
+  /// (« a effectué avec sérieux son stage dans le département : X intitulé « thème » »)
+  theme          String?
+  departmentName String?
+
   // ▼▼▼ AJOUTÉ : identité complémentaire (CIN) + cas particulier ▼▼▼
   holderPhone          String?
   holderCin            String?
@@ -542,6 +565,9 @@ model Certificate {
   specialCase          Boolean   @default(false)
   specialCaseNote      String?
   // ▲▲▲
+
+  /// Slogan du projet figé à la délivrance (reste identique même si le projet change)
+  slogan String?
 
   internshipId  Int?
   projectId     Int?

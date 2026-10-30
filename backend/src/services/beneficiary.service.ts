@@ -33,7 +33,7 @@ export async function findBeneficiaryById(id: number) {
 
 export async function createBeneficiary(data: {
   projectId: number;
-  firstName: string;
+  firstName?: string;
   lastName: string;
   gender?: any;
   age?: number;
@@ -44,7 +44,7 @@ export async function createBeneficiary(data: {
   return prisma.beneficiary.create({
     data: {
       projectId: data.projectId,
-      firstName: data.firstName,
+      firstName: data.firstName ?? "",
       lastName: data.lastName,
       gender: data.gender,
       age: data.age,

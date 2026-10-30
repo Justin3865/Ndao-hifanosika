@@ -215,7 +215,7 @@ export const beneficiariesConfig: ResourceConfig = {
   ],
   fields: [
     { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true },
-    { name: "firstName", label: "Prénom", type: "text", required: true },
+    { name: "firstName", label: "Prénom (facultatif)", type: "text" },
     { name: "lastName", label: "Nom", type: "text", required: true },
     { name: "gender", label: "Genre", type: "select", options: GENDERS },
     { name: "age", label: "Âge", type: "number", min: 0, max: 120 },
@@ -400,7 +400,7 @@ export const membersConfig: ResourceConfig = {
     { header: "Statut", render: (m) => <StatusBadge status={m.status} /> },
   ],
   fields: [
-    { name: "firstName", label: "Prénom", type: "text", required: true },
+    { name: "firstName", label: "Prénom (facultatif)", type: "text" },
     { name: "lastName", label: "Nom", type: "text", required: true },
     { name: "email", label: "Email", type: "email", required: true },
     { name: "phone", label: "Téléphone", type: "text" },

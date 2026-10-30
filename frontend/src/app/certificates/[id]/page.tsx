@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Download, FileText, Loader2, Printer, X } from "lucide-react";
 import api from "@/lib/axios";
@@ -10,6 +10,7 @@ import { ORG, orgContactLine } from "@/lib/org";
 import { Logo } from "@/components/brand/Logo";
 import { QrCode } from "@/components/ui/QrCode";
 import { errorMessage, fmtDate } from "@/lib/crud";
+import { isSameName } from "@/lib/names";
 
 interface Certificate {
   id: number;
@@ -26,6 +27,9 @@ interface Certificate {
   holderBirthDate?: string | null;
   holderBirthPlace?: string | null;
   missionLocation?: string | null;
+  /** Thème du stagiaire + département (figés à la délivrance) */
+  theme?: string | null;
+  departmentName?: string | null;
   mention?: string | null;
   finalScore?: number | null;
   holderCin?: string | null;
@@ -33,6 +37,14 @@ interface Certificate {
   holderCinIssuedPlace?: string | null;
   holderCinDuplicata?: boolean;
   holderCinDuplicataAt?: string | null;
+  slogan?: string | null;
+  project?: { id: number; name: string; slogan?: string | null } | null;
+  partnerLinks?: Array<{
+    id: number;
+    nameSnapshot: string;
+    sloganSnapshot?: string | null;
+    logoSnapshot?: string | null;
+  }>;
 }
 
 const HEADLINE: Record<string, string> = {
@@ -40,7 +52,54 @@ const HEADLINE: Record<string, string> = {
   VOLUNTEER: "Certificat de bénévolat",
   STAFF: "Certificat de travail",
   TRAINING: "Attestation de formation",
+  BENEFICIARY: "Certificat de participation",
 };
+
+/** Phrase d'introduction selon le type de certificat */
+const WORDING: Record<string, { project: string; title: string; none: string; place: string; dept: string; theme: string }> = {
+  INTERNSHIP: {
+    dept: "a effectué avec sérieux son stage dans le département :",
+    theme: "a effectué avec sérieux son stage intitulé",
+    project: "a effectué avec sérieux son stage dans le cadre du projet",
+    title: "a effectué avec sérieux le stage suivant :",
+    none: "a effectué avec sérieux son stage au sein de l'ONG Ndao Hifanosika.",
+    place: "Lieu de stage",
+  },
+  VOLUNTEER: {
+    dept: "a accompli avec dévouement une mission de bénévolat dans le département :",
+    theme: "a accompli avec dévouement une mission de bénévolat intitulée",
+    project: "a accompli avec dévouement une mission de bénévolat dans le cadre du projet",
+    title: "a accompli avec dévouement la mission de bénévolat suivante :",
+    none: "a accompli avec dévouement une mission de bénévolat au sein de l'ONG Ndao Hifanosika.",
+    place: "Lieu de mission",
+  },
+  STAFF: {
+    dept: "a accompli avec sérieux sa mission dans le département :",
+    theme: "a accompli avec sérieux sa mission intitulée",
+    project: "a accompli avec sérieux la mission du projet",
+    title: "a accompli avec sérieux la mission suivante :",
+    none: "a accompli avec sérieux sa mission au sein de l'ONG Ndao Hifanosika.",
+    place: "Lieu de mission",
+  },
+  TRAINING: {
+    dept: "a suivi avec assiduité une formation dans le département :",
+    theme: "a suivi avec assiduité une formation intitulée",
+    project: "a suivi avec assiduité la formation dans le cadre du projet",
+    title: "a suivi avec assiduité la formation suivante :",
+    none: "a suivi avec assiduité une formation organisée par l'ONG Ndao Hifanosika.",
+    place: "Lieu de formation",
+  },
+  BENEFICIARY: {
+    dept: "a bénéficié des actions du département :",
+    theme: "a bénéficié de l'action intitulée",
+    project: "a bénéficié du projet",
+    title: "a bénéficié de l'action suivante :",
+    none: "a bénéficié des actions de l'ONG Ndao Hifanosika.",
+    place: "Localité",
+  },
+};
+
+const DEFAULT_WORDING = WORDING.STAFF;
 
 type PdfFormat = "A4" | "A3";
 
@@ -159,6 +218,29 @@ export default function CertificatePage() {
       .catch((err) => setError(errorMessage(err, "Certificat introuvable.")));
   }, [params.id]);
 
+  /**
+   * Mission liée à un projet : « nom du projet : slogan ».
+   * Vrai pour un bénéficiaire, ou quand l'intitulé est vide, le nom du titulaire ou celui du projet.
+   */
+  const projectMission = (() => {
+    if (!item) return null;
+
+    const name = item.title?.trim();
+    const projectName = item.project?.name?.trim();
+    const isProjectTitle =
+      item.type === "BENEFICIARY" || !name || isSameName(name, item.holderName) || (!!projectName && name.startsWith(projectName));
+
+    if (!isProjectTitle) return null;
+
+    const label = name && !isSameName(name, item.holderName) ? name : projectName;
+    return label ? `${label}${item.slogan ? ` : ${item.slogan}` : ""}` : null;
+  })();
+
+  /** Département et/ou thème saisis : phrase « … dans le département : X intitulé « thème » » (sauf bénéficiaire) */
+  const deptName = item?.departmentName?.trim() || "";
+  const themeText = item?.theme?.trim() || "";
+  const hasDeptTheme = !!item && item.type !== "BENEFICIARY" && (!!deptName || !!themeText);
+
   const verifyUrl = item ? `${origin}/verification/${item.code}` : "";
 
   /** Impression : on applique le format choisi (A4/A3) à la page d'impression, puis on ouvre la fenêtre d'impression */
@@ -262,7 +344,36 @@ export default function CertificatePage() {
 
                 <div className="relative z-10">
                   {/* En-tête */}
-                  <div className="flex justify-center"><Logo print size={56} /></div>
+                  {/* Logos alignés sur une même ligne : Ndao Hifanosika à gauche, puis les partenaires vers la droite */}
+                  <div className="flex flex-wrap items-start justify-center gap-x-8 gap-y-4">
+                    <div className="flex w-[150px] flex-col items-center">
+                      <div className="flex h-14 items-center justify-center">
+                        <Logo print size={56} withText={false} />
+                      </div>
+                      <p className="mt-1 text-[11px] font-semibold text-[#0A4A70]">Ndao Hifanosika</p>
+                      <p className="text-[10px] text-gray-500">Suivi &amp; Évaluation</p>
+                    </div>
+
+                    {item.partnerLinks?.map((partner) => (
+                      <Fragment key={partner.id}>
+                        <span className="h-14 w-px self-start bg-[#1B9AA0]/40" aria-hidden="true" />
+                        <div className="flex w-[150px] flex-col items-center">
+                          <div className="flex h-14 w-full items-center justify-center">
+                            {partner.logoSnapshot ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={partner.logoSnapshot} alt={partner.nameSnapshot} className="max-h-14 max-w-[130px] object-contain" />
+                            ) : (
+                              <span className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-[#0F6BA0] text-lg font-bold text-[#0F6BA0]">
+                                {partner.nameSnapshot.slice(0, 2).toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[11px] font-semibold text-gray-800">{partner.nameSnapshot}</p>
+                          {partner.sloganSnapshot && <p className="text-[10px] italic text-gray-500">« {partner.sloganSnapshot} »</p>}
+                        </div>
+                      </Fragment>
+                    ))}
+                  </div>
                   <p className="mt-2 text-[11px] text-gray-500">{ORG.name} — {ORG.address}</p>
                   {orgContactLine() && <p className="text-[11px] text-gray-500">{orgContactLine()}</p>}
 
@@ -278,6 +389,9 @@ export default function CertificatePage() {
                   <p className="mx-auto mt-2 w-fit rounded-full bg-[#0F6BA0]/10 px-4 py-0.5 font-mono text-xs font-semibold text-[#0A4A70]">
                     N° {item.code}
                   </p>
+                  {item.slogan && !projectMission && (
+                    <p className="mx-auto mt-2 max-w-2xl font-serif text-sm italic text-[#1B9AA0]">« {item.slogan} »</p>
+                  )}
 
                   {/* Titulaire */}
                   <p className="mt-4 text-sm text-gray-600">L&apos;ONG Ndao Hifanosika certifie que</p>
@@ -302,10 +416,38 @@ export default function CertificatePage() {
                   )}
 
                   {/* Mission : sans cadre ni remplissage */}
-                  <p className="mt-3 text-sm text-gray-600">a accompli avec sérieux la mission suivante :</p>
-                  <p className="mx-auto mt-1 max-w-2xl px-5 py-2 text-lg font-bold text-[#0A4A70]">
-                    « {item.title} »
-                  </p>
+                  {/* Si l'intitulé n'est que le nom du titulaire, on ne le répète pas */}
+                  {hasDeptTheme ? (
+                    <>
+                      <p className="mt-3 text-sm text-gray-600">
+                        {deptName ? (WORDING[item.type] ?? DEFAULT_WORDING).dept : (WORDING[item.type] ?? DEFAULT_WORDING).theme}
+                      </p>
+                      {deptName && <p className="mx-auto mt-1 max-w-2xl px-5 text-lg font-bold text-[#0A4A70]">{deptName}</p>}
+                      {deptName && themeText && <p className="mt-1 text-sm text-gray-600">intitulé</p>}
+                      {themeText && <p className="mx-auto mt-1 max-w-2xl px-5 pb-1 text-lg font-bold text-[#0A4A70]">« {themeText} »</p>}
+                      {projectMission && (
+                        <p className="mx-auto mt-1 max-w-2xl text-xs text-gray-500">
+                          Projet : <span className="font-semibold text-gray-700">« {projectMission} »</span>
+                        </p>
+                      )}
+                    </>
+                  ) : projectMission ? (
+                    <>
+                      <p className="mt-3 text-sm text-gray-600">{(WORDING[item.type] ?? DEFAULT_WORDING).project}</p>
+                      <p className="mx-auto mt-1 max-w-2xl px-5 py-2 text-lg font-bold text-[#0A4A70]">
+                        « {projectMission} »
+                      </p>
+                    </>
+                  ) : item.title && !isSameName(item.title, item.holderName) ? (
+                    <>
+                      <p className="mt-3 text-sm text-gray-600">{(WORDING[item.type] ?? DEFAULT_WORDING).title}</p>
+                      <p className="mx-auto mt-1 max-w-2xl px-5 py-2 text-lg font-bold text-[#0A4A70]">
+                        « {item.title} »
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-600">{(WORDING[item.type] ?? DEFAULT_WORDING).none}</p>
+                  )}
 
                   {/* Détails : période · lieu de mission (sans contour) */}
                   <div className="mx-auto mt-3 flex max-w-2xl flex-wrap items-stretch justify-center gap-6">
@@ -319,8 +461,8 @@ export default function CertificatePage() {
                     )}
                     {item.missionLocation && (
                       <div className="min-w-[200px] flex-1 px-4 py-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1B9AA0]">{item.type === "INTERNSHIP" ? "Lieu de stage" : "Lieu de mission"}</p>
-                        <p className="text-sm font-semibold text-gray-800">{item.missionLocation}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1B9AA0]">{(WORDING[item.type] ?? DEFAULT_WORDING).place}</p>
+                        <p className="text-sm font-semibold text-gray-800">{item.missionLocation.replace(/\s+[—–-]\s+/g, " / ")}</p>
                       </div>
                     )}
                     {item.mention && (

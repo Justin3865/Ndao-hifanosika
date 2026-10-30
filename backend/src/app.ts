@@ -1,3 +1,4 @@
+import partnersRoutes from "./routes/partners.routes";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -79,6 +80,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/departements", departementsRoutes);
 app.use("/api/projects", projectsRoutes);
+app.use("/api/partners", partnersRoutes);
 app.use("/api/activities", activitiesRoutes);
 app.use("/api/activity-space", activitySpaceRoutes);
 app.use("/api/monitoring", monitoringRoutes);

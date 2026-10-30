@@ -157,8 +157,8 @@ export async function createUser(
       departmentId,
     } = req.body;
 
+    // Le prénom est facultatif (certaines personnes n'en ont pas)
     if (
-      !firstName ||
       !lastName ||
       !email ||
       !password
@@ -166,7 +166,7 @@ export async function createUser(
       return res.status(400).json({
         success: false,
         message:
-          "Les champs obligatoires sont manquants.",
+          "Les champs obligatoires sont manquants (nom, e-mail, mot de passe).",
       });
     }
 
@@ -253,7 +253,7 @@ export async function createUser(
     const user =
       await createUserService({
         firstName: String(
-          firstName,
+          firstName ?? "",
         ),
         lastName: String(
           lastName,
@@ -473,7 +473,7 @@ export async function updateUser(
         {
           firstName:
             firstName !== undefined
-              ? String(firstName)
+              ? String(firstName ?? "")
               : undefined,
 
           lastName:

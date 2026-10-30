@@ -226,7 +226,7 @@ export default function ProfilePage() {
   };
 
   const initials = profile
-    ? `${profile.firstName[0] ?? ""}${profile.lastName[0] ?? ""}`.toUpperCase()
+    ? `${profile.firstName?.[0] ?? ""}${profile.lastName[0] ?? ""}`.toUpperCase()
     : "?";
 
   return (
@@ -339,7 +339,7 @@ export default function ProfilePage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-1 text-sm font-medium text-gray-700">
-                    Prénom
+                    Prénom (facultatif)
                     <input className={inputClass} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
                   </label>
                   <label className="space-y-1 text-sm font-medium text-gray-700">

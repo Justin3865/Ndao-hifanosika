@@ -103,7 +103,7 @@ export async function findUserById(
 }
 
 export async function createUser(data: {
-  firstName: string;
+  firstName?: string;
   lastName: string;
   email: string;
   password: string;
@@ -157,7 +157,7 @@ export async function createUser(data: {
 
   return prisma.user.create({
     data: {
-      firstName: data.firstName.trim(),
+      firstName: (data.firstName ?? "").trim(),
       lastName: data.lastName.trim(),
       email: normalizedEmail,
       password: hashedPassword,
@@ -203,7 +203,7 @@ export async function updateUser(
 
   if (data.firstName !== undefined) {
     updateData.firstName =
-      data.firstName.trim();
+      (data.firstName ?? "").trim();
   }
 
   if (data.lastName !== undefined) {

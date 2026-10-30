@@ -12,9 +12,9 @@ export type NewPersonKey = (typeof NEW_PERSON_KEYS)[number];
 
 export const newPersonName = (key: NewPersonKey) => `newPerson.${key}`;
 
-/** Prénom, nom et e-mail renseignés : un nouveau compte stagiaire est demandé. */
+/** Nom et e-mail renseignés : un nouveau compte stagiaire est demandé (le prénom est facultatif : certaines personnes n'en ont pas). */
 export const newPersonFilled = (values: Values): boolean =>
-  (["firstName", "lastName", "email"] as const).every((key) => String(values[newPersonName(key)] ?? "").trim() !== "");
+  (["lastName", "email"] as const).every((key) => String(values[newPersonName(key)] ?? "").trim() !== "");
 
 const inputClass =
   "w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
@@ -55,7 +55,7 @@ export function NewPersonFields({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {field("firstName", "Prénom *")}
+        {field("firstName", "Prénom (facultatif)")}
         {field("lastName", "Nom *")}
         {field("email", "E-mail *", "email", "prenom.nom@exemple.com")}
 

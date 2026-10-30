@@ -70,8 +70,8 @@ export function UserEditorForm({
     event.preventDefault();
     setLocalError("");
 
-    if (!form.firstName || !form.lastName || !form.email) {
-      setLocalError("Prénom, nom et email sont obligatoires.");
+    if (!form.lastName || !form.email) {
+      setLocalError("Le nom et l'e-mail sont obligatoires (le prénom est facultatif).");
       return;
     }
 
@@ -140,7 +140,7 @@ export function UserEditorForm({
 
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm font-medium text-gray-700">
-          Prénom *
+          Prénom (facultatif)
           <input className={inputClass} value={form.firstName} onChange={(e) => set("firstName", e.target.value)} />
         </label>
 

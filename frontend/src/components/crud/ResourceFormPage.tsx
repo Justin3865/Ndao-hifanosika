@@ -152,7 +152,7 @@ export function ResourceFormPage({
         if (String(values[field.name] ?? "").trim() === "" && !alternative) {
           setError(
             field.requiredUnless
-              ? `Choisissez « ${field.label} » ou renseignez le prénom, le nom et l'e-mail du nouveau stagiaire.`
+              ? `Choisissez « ${field.label} » ou renseignez le nom et l'e-mail du nouveau stagiaire (le prénom est facultatif).`
               : `Le champ « ${field.label} » est obligatoire.`,
           );
           return;
@@ -208,6 +208,7 @@ export function ResourceFormPage({
 
       const value = toPayloadValue(field, values[field.name]);
       if (value !== undefined) payload[field.name] = value;
+      else if (field.name === "firstName") payload.firstName = ""; // prénom facultatif : permet aussi de l'effacer
     }
 
     setSubmitting(true);

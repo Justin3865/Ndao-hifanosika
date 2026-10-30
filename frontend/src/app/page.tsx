@@ -393,8 +393,8 @@ export default function HomePage() {
     const prenom = registerPrenom.trim();
     const email = registerEmail.trim().toLowerCase();
 
-    if (!nom || !prenom) {
-      openResult("error", "Veuillez renseigner votre nom et votre prénom.");
+    if (!nom) {
+      openResult("error", "Veuillez renseigner votre nom (le prénom est facultatif).");
       return;
     }
 
@@ -1073,7 +1073,7 @@ export default function HomePage() {
                       </div>
                     </div>
                     <div>
-                      <label className={authLabel}>Prénom</label>
+                      <label className={authLabel}>Prénom (facultatif)</label>
                       <div className={authInputWrap}>
                         <input value={registerPrenom} onChange={(e) => setRegisterPrenom(e.target.value)} placeholder="Votre prénom" className={authInput} />
                       </div>

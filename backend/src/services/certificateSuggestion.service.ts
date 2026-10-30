@@ -4,16 +4,23 @@ import { mentionFromScore20, type Mention } from "../utils/mention";
 
 /**
  * Données proposées automatiquement pour le certificat d'un stagiaire :
- *  - lieu de stage : activités du projet, sinon position GPS, sinon département
+ *  - lieu de stage : un TOERANA (activités du projet, sinon position GPS, sinon ville du siège).
+ *    Le département n'est JAMAIS un lieu : il a son propre champ (departmentName).
+ *  - thème : thème saisi dans le stage (sinon l'intitulé du stage)
+ *  - département : département du stage, sinon celui du tuteur / stagiaire / projet
  *  - note finale /20 : calculée par le suivi & évaluation (tâches, rapports,
  *    évaluations du tuteur, présence / GPS)
  *  - mention : déduite de la note finale
  */
 
-export type LocationSource = "ACTIVITES" | "GPS" | "DEPARTEMENT";
+export type LocationSource = "ACTIVITES" | "GPS" | "SIEGE";
+
+/** Ville du siège : lieu de stage par défaut quand aucune activité ni position GPS n'existe. */
+const ORG_CITY = process.env.ORG_CITY || "Fianarantsoa";
 
 export interface CertificateSuggestion {
   theme: string;
+  departmentName: string | null;
   missionLocation: string | null;
   locationSource: LocationSource | null;
   finalScoreOn20: number | null;
@@ -97,7 +104,7 @@ export async function getInternshipCertificateSuggestion(internshipId: number): 
         const km = distanceKm(lat, lng, z.latitude, z.longitude);
         if (km <= 50 && km < bestKm) {
           bestKm = km;
-          bestLabel = z.region ? `${z.name} — ${z.region}` : z.name;
+          bestLabel = z.region ? `${z.name} / ${z.region}` : z.name;
         }
       }
 
@@ -108,20 +115,34 @@ export async function getInternshipCertificateSuggestion(internshipId: number): 
     }
   }
 
-  // 3) à défaut : département du projet
-  if (!missionLocation && internship.projectId) {
-    const project = await prisma.project.findUnique({
-      where: { id: internship.projectId },
-      select: { department: { select: { name: true } } },
-    });
-    if (project?.department?.name) {
-      missionLocation = project.department.name;
-      locationSource = "DEPARTEMENT";
-    }
+  // 3) à défaut : ville du siège (un lieu, jamais un département)
+  if (!missionLocation) {
+    missionLocation = ORG_CITY;
+    locationSource = "SIEGE";
   }
 
+  // --- département du stagiaire (champ séparé du lieu) ---
+  const detail = await prisma.internship.findUnique({
+    where: { id: internshipId },
+    select: {
+      theme: true,
+      department: { select: { name: true } },
+      supervisor: { select: { department: { select: { name: true } } } },
+      student: { select: { department: { select: { name: true } } } },
+      project: { select: { department: { select: { name: true } } } },
+    },
+  });
+
+  const departmentName =
+    detail?.department?.name?.trim() ||
+    detail?.supervisor?.department?.name?.trim() ||
+    detail?.student?.department?.name?.trim() ||
+    detail?.project?.department?.name?.trim() ||
+    null;
+
   return {
-    theme: internship.title,
+    theme: detail?.theme?.trim() || internship.title,
+    departmentName,
     missionLocation,
     locationSource,
     finalScoreOn20,

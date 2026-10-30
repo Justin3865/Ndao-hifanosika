@@ -117,7 +117,7 @@ export async function updateMember(
     const member = await prisma.user.update({
       where: { id },
       data: {
-        firstName,
+        firstName: firstName === null ? "" : firstName,
         lastName,
         email,
         phone,

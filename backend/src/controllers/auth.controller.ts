@@ -223,13 +223,18 @@ export async function register(
         .trim()
         .split(/\s+/);
 
-      finalFirstName = nameParts[0] || "";
-      finalLastName =
-        nameParts.slice(1).join(" ") || "";
+      // Un seul mot = nom de famille (le prénom est facultatif)
+      if (nameParts.length === 1) {
+        finalFirstName = "";
+        finalLastName = nameParts[0] || "";
+      } else {
+        finalFirstName = nameParts[0] || "";
+        finalLastName =
+          nameParts.slice(1).join(" ") || "";
+      }
     }
 
     if (
-      !finalFirstName ||
       !finalLastName ||
       !email ||
       !password
@@ -237,7 +242,7 @@ export async function register(
       return res.status(400).json({
         success: false,
         message:
-          "Le prénom, le nom, l'adresse e-mail et le mot de passe sont obligatoires.",
+          "Le nom, l'adresse e-mail et le mot de passe sont obligatoires (le prénom est facultatif).",
       });
     }
 
@@ -310,7 +315,7 @@ export async function register(
 
     const user = await prisma.user.create({
       data: {
-        firstName: String(finalFirstName).trim(),
+        firstName: String(finalFirstName ?? "").trim(),
         lastName: String(finalLastName).trim(),
         email: normalizedEmail,
         password: hashedPassword,

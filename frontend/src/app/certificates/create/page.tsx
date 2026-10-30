@@ -1,17 +1,19 @@
 "use client";
 
 import { MENTIONS, MENTION_TONE, type Mention } from "@/lib/mention";
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Database, Loader2, Search, ShieldAlert, X } from "lucide-react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
-import { errorMessage } from "@/lib/crud";
+import { errorMessage, fetchLookup, type LookupItem } from "@/lib/crud";
 import { roleLabel } from "@/lib/roles";
+import { PartnersField, parseIds } from "@/components/crud/PartnersField";
 import { toast } from "@/lib/toast";
 
 interface InternshipOption {
   id: number;
+  projectId?: number | null;
   title: string;
   status: string;
   student?: { firstName: string; lastName: string };
@@ -21,6 +23,7 @@ interface InternshipOption {
 interface Candidate {
   source: "USER" | "BENEFICIARY";
   id: number;
+  projectId?: number | null;
   name: string;
   email: string | null;
   phone: string | null;
@@ -31,16 +34,43 @@ interface Candidate {
   cinIssuedPlace: string | null;
   cinDuplicata: boolean;
   cinDuplicataAt: string | null;
+  /** Fiche du bénéficiaire (mêmes champs que « Ajouter un bénéficiaire ») */
+  beneficiary?: {
+    projectName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    gender: string | null;
+    age: number | null;
+    vulnerable: boolean;
+    locality: string | null;
+    zoneName: string | null;
+    householdSize: number | null;
+    monthlyIncome: number | null;
+    childrenUnder5: number | null;
+    hasDisability: boolean;
+  };
   role: string | null;
   status: string | null;
   subtitle: string | null;
+  /** Lus dans la base de données */
+  departmentName?: string | null;
+  theme?: string | null;
+}
+
+/** Slogan + partenaires du projet (imprimés sur le certificat) */
+interface ProjectBranding {
+  id: number;
+  name: string;
+  slogan: string | null;
+  partners: Array<{ id: number; name: string; slogan?: string | null; logoUrl?: string | null }>;
 }
 
 /** Lieu de stage, note finale /20 et mention proposés par le suivi & évaluation */
 interface CertificateSuggestion {
   theme: string;
+  departmentName: string | null;
   missionLocation: string | null;
-  locationSource: "ACTIVITES" | "GPS" | "DEPARTEMENT" | null;
+  locationSource: "ACTIVITES" | "GPS" | "SIEGE" | null;
   finalScoreOn20: number | null;
   mention: Mention | null;
   breakdown: {
@@ -57,7 +87,7 @@ interface CertificateSuggestion {
 const LOCATION_SOURCE_LABEL: Record<string, string> = {
   ACTIVITES: "les activités du projet",
   GPS: "la position GPS du stagiaire",
-  DEPARTEMENT: "le département du projet",
+  SIEGE: "la ville du siège de l'ONG",
 };
 
 /** Informations que la base de données peut fournir */
@@ -69,7 +99,9 @@ type DbField =
   | "holderBirthPlace"
   | "holderCin"
   | "holderCinIssuedAt"
-  | "holderCinIssuedPlace";
+  | "holderCinIssuedPlace"
+  | "departmentName"
+  | "theme";
 
 type Presence = "found" | "missing" | "changed" | "manual" | null;
 
@@ -90,6 +122,10 @@ interface FormState {
   holderCinDuplicata: boolean;
   holderCinDuplicataAt: string;
   missionLocation: string;
+  /** Thème du stagiaire / de la mission (imprimé : « intitulé « thème » ») */
+  theme: string;
+  /** Département (imprimé : « dans le département : … ») */
+  departmentName: string;
 }
 
 const TYPES = [
@@ -97,7 +133,45 @@ const TYPES = [
   { value: "VOLUNTEER", label: "Bénévolat" },
   { value: "STAFF", label: "Mission / emploi à l'ONG" },
   { value: "TRAINING", label: "Formation suivie" },
+  { value: "BENEFICIARY", label: "Bénéficiaire d'un projet (données lues dans sa fiche)" },
 ];
+
+const GENDER_LABEL: Record<string, string> = { MALE: "Homme", FEMALE: "Femme", OTHER: "Autre" };
+
+/** Fiche du bénéficiaire lue dans la base de données (lecture seule) */
+function BeneficiarySheet({ b, phone, email }: { b: NonNullable<Candidate["beneficiary"]>; phone: string | null; email: string | null }) {
+  const yesNo = (v: boolean) => (v ? "Oui" : "Non");
+  const rows: Array<[string, string]> = [
+    ["Projet", b.projectName ?? "—"],
+    ["Prénom", b.firstName ?? "—"],
+    ["Nom", b.lastName ?? "—"],
+    ["Genre", b.gender ? GENDER_LABEL[b.gender] ?? b.gender : "—"],
+    ["Âge", b.age !== null ? `${b.age} ans` : "—"],
+    ["Téléphone", phone ?? "—"],
+    ["Email", email ?? "—"],
+    ["Personne vulnérable", yesNo(b.vulnerable)],
+    ["Localité / fokontany", b.locality ?? "—"],
+    ["Zone d'intervention", b.zoneName ?? "—"],
+    ["Taille du ménage", b.householdSize !== null ? `${b.householdSize} personne(s)` : "—"],
+    ["Revenu mensuel du ménage", b.monthlyIncome !== null ? `${b.monthlyIncome.toLocaleString("fr-FR")} Ar` : "—"],
+    ["Enfants de moins de 5 ans", b.childrenUnder5 !== null ? String(b.childrenUnder5) : "—"],
+    ["Handicap dans le ménage", yesNo(b.hasDisability)],
+  ];
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-green-200 bg-green-50/50 p-4">
+      <p className="text-sm font-semibold text-gray-800">Fiche du bénéficiaire (lue dans la base de données)</p>
+      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-xs font-medium text-gray-500">{label}</dt>
+            <dd className="font-semibold text-gray-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 const DB_LABELS: Record<DbField, string> = {
   holderName: "nom",
@@ -108,6 +182,8 @@ const DB_LABELS: Record<DbField, string> = {
   holderCin: "numéro de CIN",
   holderCinIssuedAt: "date de délivrance du CIN",
   holderCinIssuedPlace: "lieu de délivrance du CIN",
+  departmentName: "département",
+  theme: "thème",
 };
 
 const EMPTY_FORM: FormState = {
@@ -127,6 +203,21 @@ const EMPTY_FORM: FormState = {
   holderCinDuplicata: false,
   holderCinDuplicataAt: "",
   missionLocation: "",
+  theme: "",
+  departmentName: "",
+};
+
+/** Informations personnelles remplies depuis la base de données */
+const PERSON_RESET = {
+  holderEmail: "",
+  holderPhone: "",
+  holderBirthDate: "",
+  holderBirthPlace: "",
+  holderCin: "",
+  holderCinIssuedAt: "",
+  holderCinIssuedPlace: "",
+  holderCinDuplicata: false,
+  holderCinDuplicataAt: "",
 };
 
 const inputClass =
@@ -146,6 +237,8 @@ function valuesOf(c: Candidate): Partial<Record<DbField, string>> {
     holderCin: c.cinNumber ?? "",
     holderCinIssuedAt: toDateInput(c.cinIssuedAt),
     holderCinIssuedPlace: c.cinIssuedPlace ?? "",
+    departmentName: c.departmentName ?? "",
+    theme: c.theme ?? "",
   };
 }
 
@@ -173,6 +266,10 @@ export default function CreateCertificatePage() {
   const [internshipId, setInternshipId] = useState("");
   const [suggestion, setSuggestion] = useState<CertificateSuggestion | null>(null);
   const [mention, setMention] = useState(""); // vide = automatique
+  const [projects, setProjects] = useState<LookupItem[]>([]);
+  const [projectIds, setProjectIds] = useState<string[]>([]); // vide = « Aucun projet »
+  const [brandings, setBrandings] = useState<ProjectBranding[]>([]);
+  const [partnerIds, setPartnerIds] = useState(""); // partenaires imprimés (modifiables)
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -191,6 +288,7 @@ export default function CreateCertificatePage() {
   const [specialCaseNote, setSpecialCaseNote] = useState("");
 
   const isInternship = type === "INTERNSHIP";
+  const isBeneficiary = type === "BENEFICIARY";
 
   useEffect(() => {
     api
@@ -200,9 +298,74 @@ export default function CreateCertificatePage() {
       )
       .catch(() => setInternships([]));
 
+    fetchLookup("projects").then(setProjects).catch(() => setProjects([]));
+
     const preset = new URLSearchParams(window.location.search).get("internshipId");
     if (preset) setInternshipId(preset);
   }, []);
+
+  // Projets choisis : on lit leurs slogans et leurs partenaires pour l'aperçu
+  const projectKey = projectIds.join(",");
+
+  useEffect(() => {
+    if (projectIds.length === 0) {
+      setBrandings([]);
+      setPartnerIds("");
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all(
+      projectIds.map((id) =>
+        api
+          .get(`/certificates/project-branding/${id}`)
+          .then((res) => (res.data?.data ?? null) as ProjectBranding | null)
+          .catch(() => null),
+      ),
+    ).then((list) => {
+      if (cancelled) return;
+      const found = list.filter((b): b is ProjectBranding => b !== null);
+      setBrandings(found);
+
+      // Par défaut : tous les partenaires des projets choisis, sans doublon (on peut ensuite en retirer)
+      const ids = new Set<number>();
+      found.forEach((b) => b.partners.forEach((p) => ids.add(p.id)));
+      setPartnerIds(Array.from(ids).join(","));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectKey]);
+
+  /** Partenaires de tous les projets choisis (sans doublon) */
+  const partnerOptions = useMemo(() => {
+    const seen = new Set<number>();
+    const list: ProjectBranding["partners"] = [];
+
+    brandings.forEach((b) =>
+      b.partners.forEach((p) => {
+        if (!seen.has(p.id)) {
+          seen.add(p.id);
+          list.push(p);
+        }
+      }),
+    );
+
+    return list;
+  }, [brandings]);
+
+  const toggleProject = (id: string) =>
+    setProjectIds((cur) => (cur.includes(id) ? cur.filter((v) => v !== id) : [...cur, id]));
+
+  // Stage choisi : le projet du stage est sélectionné automatiquement
+  useEffect(() => {
+    if (!isInternship || !internshipId) return;
+    const linked = internships.find((i) => String(i.id) === internshipId)?.projectId;
+    if (linked) setProjectIds([String(linked)]);
+  }, [isInternship, internshipId, internships]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((cur) => ({ ...cur, [key]: value }));
 
@@ -216,19 +379,35 @@ export default function CreateCertificatePage() {
     setDbValues(values);
     setSaveToProfile(true);
 
-    setForm((cur) => ({
-      ...cur,
-      holderName: fromInternship ? cur.holderName : values.holderName || cur.holderName,
-      holderEmail: values.holderEmail || cur.holderEmail,
-      holderPhone: values.holderPhone || cur.holderPhone,
-      holderBirthDate: values.holderBirthDate || cur.holderBirthDate,
-      holderBirthPlace: values.holderBirthPlace || cur.holderBirthPlace,
-      holderCin: values.holderCin || cur.holderCin,
-      holderCinIssuedAt: values.holderCinIssuedAt || cur.holderCinIssuedAt,
-      holderCinIssuedPlace: values.holderCinIssuedPlace || cur.holderCinIssuedPlace,
-      holderCinDuplicata: candidate.cinDuplicata || cur.holderCinDuplicata,
-      holderCinDuplicataAt: toDateInput(candidate.cinDuplicataAt) || cur.holderCinDuplicataAt,
-    }));
+    // Bénéficiaire : son projet (donc le slogan et les partenaires) est choisi automatiquement
+    if (candidate.source === "BENEFICIARY" && candidate.projectId) setProjectIds([String(candidate.projectId)]);
+
+    // Stage : tout vient de la base de données (aucune valeur d'un stagiaire précédent ne reste)
+    setForm((cur) => {
+      const keep = (fromDb: string, current: string) => (fromInternship ? fromDb : fromDb || current);
+
+      return {
+        ...cur,
+        holderName: fromInternship ? cur.holderName : values.holderName || cur.holderName,
+        holderEmail: keep(values.holderEmail ?? "", cur.holderEmail),
+        holderPhone: keep(values.holderPhone ?? "", cur.holderPhone),
+        holderBirthDate: keep(values.holderBirthDate ?? "", cur.holderBirthDate),
+        holderBirthPlace: keep(values.holderBirthPlace ?? "", cur.holderBirthPlace),
+        holderCin: keep(values.holderCin ?? "", cur.holderCin),
+        holderCinIssuedAt: keep(values.holderCinIssuedAt ?? "", cur.holderCinIssuedAt),
+        holderCinIssuedPlace: keep(values.holderCinIssuedPlace ?? "", cur.holderCinIssuedPlace),
+        holderCinDuplicata: fromInternship ? candidate.cinDuplicata : candidate.cinDuplicata || cur.holderCinDuplicata,
+        holderCinDuplicataAt: keep(toDateInput(candidate.cinDuplicataAt), cur.holderCinDuplicataAt),
+        // Département + thème : lus dans la base de données (compte, dernier stage ou projet)
+        departmentName: keep(values.departmentName ?? "", cur.departmentName),
+        theme: keep(values.theme ?? "", cur.theme),
+        // Bénéficiaire : lieu de mission = localité + zone d'intervention de sa fiche
+        missionLocation:
+          candidate.source === "BENEFICIARY"
+            ? [candidate.beneficiary?.locality, candidate.beneficiary?.zoneName].filter(Boolean).join(" / ") || cur.missionLocation
+            : cur.missionLocation,
+      };
+    });
   };
 
   /** Oublie la personne choisie et vide ses informations personnelles. */
@@ -280,7 +459,7 @@ export default function CreateCertificatePage() {
 
     const timer = window.setTimeout(() => {
       api
-        .get("/certificates/lookup", { params: { q: term } })
+        .get("/certificates/lookup", { params: { q: term, only: isBeneficiary ? "BENEFICIARY" : undefined } })
         .then((res) => {
           if (!cancelled) setResults(res.data?.data ?? []);
         })
@@ -299,7 +478,7 @@ export default function CreateCertificatePage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query, isInternship, specialCase, selected]);
+  }, [query, isInternship, isBeneficiary, specialCase, selected]);
 
   // Stage choisi : on lit la fiche du stagiaire dans la base de données
   useEffect(() => {
@@ -310,6 +489,7 @@ export default function CreateCertificatePage() {
       setDbValues({});
       setSuggestion(null);
       setMention("");
+      setForm((cur) => ({ ...cur, ...PERSON_RESET, missionLocation: "", theme: "", departmentName: "" }));
       return;
     }
 
@@ -324,10 +504,16 @@ export default function CreateCertificatePage() {
         // Lieu de stage et mention : remplis automatiquement depuis le suivi & évaluation
         const auto = (res.data?.suggestion ?? null) as CertificateSuggestion | null;
         setSuggestion(auto);
+        setDbValues((cur) => ({ ...cur, departmentName: auto?.departmentName ?? "", theme: auto?.theme ?? "" }));
         setMention("");
-        if (auto?.missionLocation) {
-          setForm((cur) => ({ ...cur, missionLocation: cur.missionLocation || (auto.missionLocation as string) }));
-        }
+        // Lieu de stage : toujours celui du stage choisi (jamais celui d'un stage précédent)
+        // Thème et département : ceux du stage choisi (modifiables avant la délivrance)
+        setForm((cur) => ({
+          ...cur,
+          missionLocation: auto?.missionLocation ?? "",
+          theme: auto?.theme ?? "",
+          departmentName: auto?.departmentName ?? "",
+        }));
       })
       .catch(() => undefined);
 
@@ -362,8 +548,8 @@ export default function CreateCertificatePage() {
   };
 
   const tracked: DbField[] = isInternship
-    ? ["holderPhone", "holderBirthDate", "holderBirthPlace", "holderCin", "holderCinIssuedAt", "holderCinIssuedPlace"]
-    : ["holderName", "holderEmail", "holderPhone", "holderBirthDate", "holderBirthPlace", "holderCin", "holderCinIssuedAt", "holderCinIssuedPlace"];
+    ? ["departmentName", "theme", "holderPhone", "holderBirthDate", "holderBirthPlace", "holderCin", "holderCinIssuedAt", "holderCinIssuedPlace"]
+    : ["holderName", "holderEmail", "departmentName", "theme", "holderPhone", "holderBirthDate", "holderBirthPlace", "holderCin", "holderCinIssuedAt", "holderCinIssuedPlace"];
 
   const missingInDb = selected ? tracked.filter((field) => !dbValues[field]) : [];
 
@@ -402,6 +588,11 @@ export default function CreateCertificatePage() {
         holderCinDuplicata: form.holderCinDuplicata,
         holderCinDuplicataAt: form.holderCinDuplicata ? clean(form.holderCinDuplicataAt) : undefined,
         missionLocation: clean(form.missionLocation),
+        theme: clean(form.theme),
+        departmentName: clean(form.departmentName),
+        projectIds: projectIds.map(Number),
+        partnerIds: parseIds(partnerIds),
+        beneficiaryId: !specialCase && selected?.source === "BENEFICIARY" ? selected.id : undefined,
         specialCase,
         specialCaseNote: specialCase ? specialCaseNote.trim() : undefined,
         // La base de données se complète toute seule (champs vides uniquement) pour un compte utilisateur
@@ -597,12 +788,16 @@ export default function CreateCertificatePage() {
                   Absentes de la base : {missingInDb.map((f) => DB_LABELS[f]).join(", ")}.
                   {selected.source === "USER"
                     ? " Saisissez-les ci-dessous : elles seront enregistrées dans la fiche à la délivrance."
-                    : " La fiche d'un bénéficiaire ne stocke que le nom, le téléphone et l'e-mail : rien n'est écrit dans la base."}
+                    : " Complétez-les dans la fiche du bénéficiaire (Bénéficiaires › Modifier) pour qu'elles se remplissent toutes seules."}
                 </p>
               ) : (
                 <p className="mt-1 text-xs">Toutes les informations nécessaires existent déjà dans la base de données.</p>
               )}
             </div>
+          )}
+
+          {isBeneficiary && selected?.source === "BENEFICIARY" && selected.beneficiary && !specialCase && (
+            <BeneficiarySheet b={selected.beneficiary} phone={selected.phone} email={selected.email} />
           )}
 
           {/* ---------- Stage ou titulaire ---------- */}
@@ -632,10 +827,16 @@ export default function CreateCertificatePage() {
                 <input type="email" className={inputClass} value={form.holderEmail} onChange={(e) => set("holderEmail", e.target.value)} />,
               )}
 
-              <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
-                Intitulé *
-                <input className={inputClass} placeholder="Ex. Bénévole animateur — Maison Digitale" value={form.title} onChange={(e) => set("title", e.target.value)} required />
-              </label>
+              {isBeneficiary && !specialCase ? (
+                <p className="rounded-xl bg-green-50 px-3 py-2 text-xs text-green-800 md:col-span-2">
+                  Le certificat indiquera : « a accompli avec sérieux la mission du projet « nom du projet : slogan » ».
+                </p>
+              ) : (
+                <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
+                  Intitulé *
+                  <input className={inputClass} placeholder="Ex. Bénévole animateur — Maison Digitale" value={form.title} onChange={(e) => set("title", e.target.value)} required />
+                </label>
+              )}
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Début
                 <input type="date" className={inputClass} value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
@@ -646,6 +847,83 @@ export default function CreateCertificatePage() {
               </label>
             </div>
           )}
+
+          {/* ---------- Projets : slogans et partenaires imprimés sur le certificat ---------- */}
+          <div className="space-y-3 rounded-2xl border border-pink-200 bg-pink-50/40 p-4">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-gray-700">
+                Projets (slogans et partenaires imprimés sur le certificat — sélection multiple)
+              </legend>
+
+              <div className="max-h-72 space-y-1.5 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2">
+                {/* Par défaut : Aucun projet */}
+                <label
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm transition ${
+                    projectIds.length === 0 ? "border-blue-600 bg-blue-50" : "border-transparent hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="certificate-projects"
+                    checked={projectIds.length === 0}
+                    onChange={() => setProjectIds([])}
+                    className="h-4 w-4 accent-blue-700"
+                  />
+                  <span className="font-semibold text-gray-900">Aucun projet</span>
+                </label>
+
+                {projects.map((p) => {
+                  const id = String(p.id);
+                  const on = projectIds.includes(id);
+
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm transition ${
+                        on ? "border-blue-600 bg-blue-50" : "border-transparent hover:bg-gray-50"
+                      }`}
+                    >
+                      <input type="checkbox" checked={on} onChange={() => toggleProject(id)} className="h-4 w-4 accent-blue-700" />
+                      <span className="text-gray-900">{p.label}</span>
+                    </label>
+                  );
+                })}
+
+                {projects.length === 0 && <p className="px-3 py-2 text-xs text-gray-500">Aucun projet disponible.</p>}
+              </div>
+
+              <p className="text-xs text-gray-500">
+                {projectIds.length === 0 ? "Aucun projet sélectionné." : `${projectIds.length} projet${projectIds.length > 1 ? "s" : ""} sélectionné${projectIds.length > 1 ? "s" : ""}.`}
+              </p>
+            </fieldset>
+
+            {brandings.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3 text-center">
+                {brandings.map((b) =>
+                  b.slogan ? (
+                    <p key={b.id} className="font-serif text-base font-medium italic text-teal-700">« {b.slogan} »</p>
+                  ) : (
+                    <p key={b.id} className="text-xs text-amber-700">
+                      {b.name} n&apos;a pas de slogan : ajoutez-le dans « Modifier le projet ».
+                    </p>
+                  ),
+                )}
+              </div>
+            )}
+
+            {projectIds.length > 0 ? (
+              <PartnersField
+                label="Partenaires des projets imprimés sur ce certificat (sélection multiple)"
+                value={partnerIds}
+                onChange={setPartnerIds}
+                options={partnerOptions}
+                allowCreate={false}
+                emptyHint="Aucun partenaire lié à ces projets : ajoutez-les dans « Modifier le projet »."
+              />
+            ) : (
+              <p className="text-xs text-gray-500">Choisissez un ou plusieurs projets : leurs partenaires (logo, nom, slogan) s&apos;afficheront ici.</p>
+            )}
+          </div>
 
           {/* ---------- Identité du titulaire + lieu de mission ---------- */}
           <div className="grid gap-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:grid-cols-3">
@@ -695,6 +973,9 @@ export default function CreateCertificatePage() {
                 className="h-4 w-4"
               />
               Le CIN est un duplicata
+              {isInternship && selected && form.holderCinDuplicata && selected.cinDuplicata && (
+                <span className="text-xs font-normal text-emerald-700">✓ lu dans la base de données</span>
+              )}
             </label>
 
             {form.holderCinDuplicata ? (
@@ -706,9 +987,32 @@ export default function CreateCertificatePage() {
               <span className="hidden md:block" />
             )}
 
+            {field(
+              "departmentName",
+              "Département",
+              <input
+                className={inputClass}
+                placeholder="Ex. Suivi et Évaluation"
+                value={form.departmentName}
+                onChange={(e) => set("departmentName", e.target.value)}
+              />,
+            )}
+
+            {field(
+              "theme",
+              isInternship ? "Thème du stagiaire" : "Thème / sujet de la mission",
+              <input
+                className={inputClass}
+                placeholder="Ex. Suivi des indicateurs du projet"
+                value={form.theme}
+                onChange={(e) => set("theme", e.target.value)}
+              />,
+              "md:col-span-2",
+            )}
+
             <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-3">
               {isInternship ? "Lieu de stage" : "Lieu de mission"}
-              <input className={inputClass} placeholder="Ex. Siège — Fianarantsoa" value={form.missionLocation} onChange={(e) => set("missionLocation", e.target.value)} />
+              <input className={inputClass} placeholder="Ex. Fianarantsoa (un lieu, pas un département)" value={form.missionLocation} onChange={(e) => set("missionLocation", e.target.value)} />
               {isInternship && suggestion?.missionLocation && form.missionLocation === suggestion.missionLocation && (
                 <span className="block text-xs font-normal text-emerald-700">
                   ✓ Rempli automatiquement d&apos;après {LOCATION_SOURCE_LABEL[suggestion.locationSource ?? ""] ?? "le suivi & évaluation"}.

@@ -9,11 +9,12 @@ import { db } from "../utils/db";
 import { getReqUser } from "../utils/dataScope";
 import { sendEmail } from "../utils/mailer";
 import { notifyUsers } from "../utils/notify";
+import { isSameName } from "../utils/names";
 
 const router = Router();
 export const publicCertificateRouter = Router();
 
-const TYPES = ["INTERNSHIP", "VOLUNTEER", "STAFF", "TRAINING"];
+const TYPES = ["INTERNSHIP", "VOLUNTEER", "STAFF", "TRAINING", "BENEFICIARY"];
 const ISSUERS = ["ADMIN", "DIRECTION", "RH"] as const;
 
 const CATEGORY_CODE: Record<string, string> = {
@@ -21,6 +22,7 @@ const CATEGORY_CODE: Record<string, string> = {
   VOLUNTEER: "BEN",
   STAFF: "TRV",
   TRAINING: "FOR",
+  BENEFICIARY: "BNF",
 };
 
 async function nextCode(type: string): Promise<string> {
@@ -61,6 +63,12 @@ const USER_LOOKUP_SELECT = {
   role: true,
   status: true,
   department: { select: { name: true } },
+  // Dernier stage du compte : thème + département repris automatiquement sur le certificat
+  internships: {
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    select: { theme: true, department: { select: { name: true } } },
+  },
 } as const;
 
 function toUserCandidate(u: Json) {
@@ -80,6 +88,9 @@ function toUserCandidate(u: Json) {
     role: u.role ?? null,
     status: u.status ?? null,
     subtitle: u.department?.name ?? null,
+    // Lus dans la base de données : département du compte (sinon celui de son dernier stage) + thème du dernier stage
+    departmentName: u.department?.name ?? u.internships?.[0]?.department?.name ?? null,
+    theme: u.internships?.[0]?.theme ?? null,
   };
 }
 
@@ -87,19 +98,37 @@ function toBeneficiaryCandidate(b: Json) {
   return {
     source: "BENEFICIARY" as const,
     id: b.id,
+    projectId: b.projectId ?? null,
     name: `${b.firstName} ${b.lastName}`.trim(),
     email: b.email ?? null,
     phone: b.phone ?? null,
-    birthDate: null,
-    birthPlace: null,
-    cinNumber: null,
-    cinIssuedAt: null,
-    cinIssuedPlace: null,
-    cinDuplicata: false,
-    cinDuplicataAt: null,
+    birthDate: b.birthDate ?? null,
+    birthPlace: b.birthPlace ?? null,
+    cinNumber: b.cinNumber ?? null,
+    cinIssuedAt: b.cinIssuedAt ?? null,
+    cinIssuedPlace: b.cinIssuedPlace ?? null,
+    cinDuplicata: Boolean(b.cinDuplicata),
+    cinDuplicataAt: b.cinDuplicataAt ?? null,
     role: null,
     status: null,
     subtitle: b.project?.name ?? null,
+    departmentName: b.project?.department?.name ?? null,
+    theme: null,
+    // Fiche du bénéficiaire (mêmes champs que le formulaire « Ajouter un bénéficiaire »)
+    beneficiary: {
+      projectName: b.project?.name ?? null,
+      firstName: b.firstName ?? null,
+      lastName: b.lastName ?? null,
+      gender: b.gender ?? null,
+      age: b.age ?? null,
+      vulnerable: Boolean(b.vulnerable),
+      locality: b.locality ?? null,
+      zoneName: b.zone?.name ?? null,
+      householdSize: b.householdSize ?? null,
+      monthlyIncome: b.monthlyIncome ?? null,
+      childrenUnder5: b.childrenUnder5 ?? null,
+      hasDisability: Boolean(b.hasDisability),
+    },
   };
 }
 
@@ -107,6 +136,7 @@ function toBeneficiaryCandidate(b: Json) {
 router.get("/lookup", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
   try {
     const q = String(req.query.q ?? "").trim().slice(0, 80);
+    const only = String(req.query.only ?? "").toUpperCase(); // BENEFICIARY : uniquement les bénéficiaires
 
     if (q.length < 2) return res.json({ success: true, data: [] });
 
@@ -139,15 +169,41 @@ router.get("/lookup", authorizeRoles(...ISSUERS), async (req: Request, res: Resp
     }
 
     const [users, beneficiaries]: [Json[], Json[]] = await Promise.all([
-      db.user.findMany({
-        where: { status: { not: "REJECTED" }, OR: [nameFilter(), ...(userPhoneIds.length ? [{ id: { in: userPhoneIds } }] : [])] },
-        select: USER_LOOKUP_SELECT,
-        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
-        take: 15,
-      }),
+      only === "BENEFICIARY"
+        ? Promise.resolve([] as Json[])
+        : db.user.findMany({
+            where: { status: { not: "REJECTED" }, OR: [nameFilter(), ...(userPhoneIds.length ? [{ id: { in: userPhoneIds } }] : [])] },
+            select: USER_LOOKUP_SELECT,
+            orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+            take: 15,
+          }),
       db.beneficiary.findMany({
         where: { OR: [nameFilter(), ...(beneficiaryPhoneIds.length ? [{ id: { in: beneficiaryPhoneIds } }] : [])] },
-        select: { id: true, firstName: true, lastName: true, email: true, phone: true, project: { select: { name: true } } },
+        select: {
+          id: true,
+          projectId: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          age: true,
+          vulnerable: true,
+          locality: true,
+          householdSize: true,
+          monthlyIncome: true,
+          childrenUnder5: true,
+          hasDisability: true,
+          birthDate: true,
+          birthPlace: true,
+          cinNumber: true,
+          cinIssuedAt: true,
+          cinIssuedPlace: true,
+          cinDuplicata: true,
+          cinDuplicataAt: true,
+          project: { select: { name: true, department: { select: { name: true } } } },
+          zone: { select: { name: true } },
+        },
         orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
         take: 10,
       }),
@@ -191,6 +247,43 @@ router.get("/lookup/internship/:id", authorizeRoles(...ISSUERS), async (req: Req
   }
 });
 
+/** Slogan + partenaires (logo) d'un projet : aperçu avant de délivrer le certificat. */
+router.get("/project-branding/:id", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ success: false, message: "Projet invalide" });
+
+    const project = await db.project.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        slogan: true,
+        partnerLinks: {
+          orderBy: { id: "asc" },
+          select: { partner: { select: { id: true, name: true, slogan: true, logoUrl: true, isActive: true } } },
+        },
+      },
+    });
+
+    if (!project) return res.status(404).json({ success: false, message: "Projet introuvable" });
+
+    res.json({
+      success: true,
+      data: {
+        id: project.id,
+        name: project.name,
+        slogan: project.slogan ?? null,
+        partners: project.partnerLinks.map((l: Json) => l.partner).filter((p: Json) => p?.isActive),
+      },
+    });
+  } catch (error) {
+    logger.error("Erreur aperçu projet", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
+
 router.get("/", async (req: Request, res: Response) => {
   try {
     const user = getReqUser(req);
@@ -211,7 +304,10 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     const user = getReqUser(req);
-    const row = await db.certificate.findUnique({ where: { id: Number(req.params.id) } });
+    const row = await db.certificate.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { partnerLinks: { orderBy: { displayOrder: "asc" } }, project: { select: { id: true, name: true, slogan: true } } },
+    });
     const all = user && (ISSUERS as readonly string[]).includes(user.role);
 
     if (!row || (!all && row.userId !== user?.id)) {
@@ -242,12 +338,22 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     let endDate: Date | null = body.endDate ? new Date(body.endDate) : null;
     let expiresAt: Date | null = body.expiresAt ? new Date(body.expiresAt) : null;
     const internshipId = body.internshipId ? Number(body.internshipId) : null;
-    const projectId = body.projectId ? Number(body.projectId) : null;
+    // Un ou plusieurs projets (sélection multiple) ; « projectId » reste accepté pour l'ancien format
+    const toIds = (value: unknown): number[] =>
+      Array.from(new Set<number>((Array.isArray(value) ? value : []).map((v: unknown) => Number(v)).filter((v: number) => Number.isInteger(v) && v > 0)));
+
+    const requestedProjectIds: number[] = toIds(body.projectIds).length ? toIds(body.projectIds) : toIds(body.projectId ? [body.projectId] : []);
+    let needsAutoTitle = false;
     const beneficiaryId = body.beneficiaryId ? Number(body.beneficiaryId) : null;
 
     let holderBirthDate: Date | null = body.holderBirthDate ? new Date(body.holderBirthDate) : null;
     let holderBirthPlace: string | null = body.holderBirthPlace ? String(body.holderBirthPlace).trim() || null : null;
     let missionLocation: string | null = body.missionLocation ? String(body.missionLocation).trim() || null : null;
+
+    // Thème + département : « a effectué avec sérieux son stage dans le département : X intitulé « thème » »
+    // (saisis à la délivrance — pour un stage, repris du stage s'ils sont vides)
+    let theme: string | null = body.theme ? String(body.theme).trim().slice(0, 300) || null : null;
+    let departmentName: string | null = body.departmentName ? String(body.departmentName).trim().slice(0, 150) || null : null;
 
     // Identité complémentaire (CIN) + cas particulier
     let holderPhone: string | null = body.holderPhone ? String(body.holderPhone).trim().slice(0, 30) || null : null;
@@ -276,6 +382,50 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
     let finalScore: number | null = null;
     let mention: string | null = null;
+
+    if (type === "BENEFICIARY" && !specialCase) {
+      if (!beneficiaryId || !Number.isInteger(beneficiaryId) || beneficiaryId <= 0) {
+        return res.status(400).json({ success: false, message: "Choisissez un bénéficiaire dans la base de données" });
+      }
+
+      const beneficiary = await db.beneficiary.findUnique({
+        where: { id: beneficiaryId },
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          projectId: true,
+          birthDate: true,
+          birthPlace: true,
+          cinNumber: true,
+          cinIssuedAt: true,
+          cinIssuedPlace: true,
+          cinDuplicata: true,
+          cinDuplicataAt: true,
+        },
+      });
+
+      if (!beneficiary) return res.status(404).json({ success: false, message: "Bénéficiaire introuvable" });
+
+      // Identité (naissance + CIN) lue dans la fiche du bénéficiaire
+      holderBirthDate = beneficiary.birthDate ?? holderBirthDate;
+      holderBirthPlace = beneficiary.birthPlace?.trim() || holderBirthPlace;
+      holderCin = beneficiary.cinNumber?.trim() || holderCin;
+      holderCinIssuedAt = beneficiary.cinIssuedAt ?? holderCinIssuedAt;
+      holderCinIssuedPlace = beneficiary.cinIssuedPlace?.trim() || holderCinIssuedPlace;
+      holderCinDuplicata = Boolean(beneficiary.cinDuplicata) || holderCinDuplicata;
+      holderCinDuplicataAt = beneficiary.cinDuplicataAt ?? holderCinDuplicataAt;
+
+      // Tout vient de la fiche du bénéficiaire ; l'intitulé est celui du projet (complété plus bas)
+      holderName = `${beneficiary.firstName} ${beneficiary.lastName}`.trim();
+      holderEmail = beneficiary.email ?? holderEmail;
+      holderPhone = beneficiary.phone?.trim() || holderPhone;
+      needsAutoTitle = true;
+      title = "Projet Ndao Hifanosika";
+
+      if (!requestedProjectIds.length && beneficiary.projectId) requestedProjectIds.push(beneficiary.projectId);
+    }
 
     if (type === "INTERNSHIP") {
       if (!internshipId) return res.status(400).json({ success: false, message: "Stage obligatoire" });
@@ -325,7 +475,10 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       holderCinIssuedPlace = profile?.cinIssuedPlace?.trim() || holderCinIssuedPlace;
       holderCinDuplicata = Boolean(profile?.cinDuplicata) || holderCinDuplicata;
       holderCinDuplicataAt = profile?.cinDuplicataAt ?? holderCinDuplicataAt;
-      title = title || internship.title;
+      // Si l'intitulé du stage n'est que le nom du stagiaire, il ne doit pas être répété sur le certificat
+      const rawTitle = title || internship.title;
+      needsAutoTitle = !rawTitle.trim() || isSameName(rawTitle, holderName);
+      title = needsAutoTitle ? "Stage au sein de Ndao Hifanosika" : rawTitle;
       startDate = internship.startDate ?? startDate;
       endDate = internship.endDate ?? endDate;
 
@@ -333,6 +486,8 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       const suggestion = await getInternshipCertificateSuggestion(internshipId);
       if (suggestion) {
         missionLocation = missionLocation ?? suggestion.missionLocation;
+        theme = theme ?? suggestion.theme ?? null;
+        departmentName = departmentName ?? suggestion.departmentName ?? null;
         finalScore = suggestion.finalScoreOn20;
         mention = suggestion.mention;
       }
@@ -381,6 +536,113 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: "Précisez le motif du cas particulier (5 caractères minimum)" });
     }
 
+    // Slogans + partenaires des projets : copiés sur le certificat (sans doublon)
+    let resolvedProjectIds: number[] = [...requestedProjectIds];
+
+    if (!resolvedProjectIds.length && beneficiaryId && Number.isInteger(beneficiaryId) && beneficiaryId > 0) {
+      const beneficiary = await db.beneficiary.findUnique({ where: { id: beneficiaryId }, select: { projectId: true } });
+      if (beneficiary?.projectId) resolvedProjectIds = [beneficiary.projectId];
+    }
+
+    if (!resolvedProjectIds.length && internshipId && Number.isInteger(internshipId) && internshipId > 0) {
+      const linked = await db.internship.findUnique({ where: { id: internshipId }, select: { projectId: true } });
+      if (linked?.projectId) resolvedProjectIds = [linked.projectId];
+    }
+
+    const resolvedProjectId: number | null = resolvedProjectIds[0] ?? null;
+
+    let projectSlogan: string | null = null;
+    let projectPartners: Array<{ partnerId: number; role: string | null; nameSnapshot: string; sloganSnapshot: string | null; logoSnapshot: string | null; displayOrder: number }> = [];
+
+    const toSnapshot = (partner: Json, index: number, role: string | null = null) => ({
+      partnerId: partner.id as number,
+      role,
+      nameSnapshot: partner.name as string,
+      sloganSnapshot: (partner.slogan ?? null) as string | null,
+      logoSnapshot: (partner.logoUrl ?? null) as string | null,
+      displayOrder: index,
+    });
+
+    if (resolvedProjectIds.length) {
+      const projects: Json[] = await db.project.findMany({
+        where: { id: { in: resolvedProjectIds } },
+        select: {
+          id: true,
+          name: true,
+          slogan: true,
+          partnerLinks: {
+            orderBy: { id: "asc" },
+            select: { role: true, partner: { select: { id: true, name: true, slogan: true, logoUrl: true, isActive: true } } },
+          },
+        },
+      });
+
+      // On garde l'ordre de sélection
+      const ordered = resolvedProjectIds.map((id) => projects.find((p) => p.id === id)).filter(Boolean) as Json[];
+
+      const slogans = Array.from(new Set<string>(ordered.map((p) => String(p.slogan ?? "").trim()).filter(Boolean)));
+      projectSlogan = slogans.length ? slogans.join(" · ") : null;
+
+      const seen = new Set<number>();
+      const merged: Array<{ partner: Json; role: string | null }> = [];
+
+      for (const project of ordered) {
+        for (const link of project.partnerLinks as Json[]) {
+          if (!link.partner?.isActive || seen.has(link.partner.id)) continue;
+          seen.add(link.partner.id);
+          merged.push({ partner: link.partner, role: link.role ?? null });
+        }
+      }
+
+      projectPartners = merged.map((entry, index) => toSnapshot(entry.partner, index, entry.role));
+
+      if (needsAutoTitle && ordered.length) {
+        title = ordered.map((p) => String(p.name)).join(", ");
+      }
+    }
+
+    // Liste choisie à la délivrance (ajout / retrait de partenaires) : prioritaire sur celle du projet
+    if (Array.isArray(body.partnerIds)) {
+      const ids: number[] = Array.from(new Set<number>(body.partnerIds.map((v: unknown) => Number(v)).filter((v: number) => Number.isInteger(v) && v > 0)));
+
+      const found: Json[] = ids.length
+        ? await db.partner.findMany({ where: { id: { in: ids }, isActive: true }, select: { id: true, name: true, slogan: true, logoUrl: true } })
+        : [];
+
+      // Seuls les partenaires enregistrés dans le projet peuvent être imprimés
+      const allowed = new Set<number>(projectPartners.map((p) => p.partnerId));
+
+      projectPartners = ids
+        .filter((id) => allowed.has(id))
+        .map((id) => found.find((p) => p.id === id))
+        .filter(Boolean)
+        .map((partner, index) => toSnapshot(partner, index));
+    }
+
+    // Département + thème : complétés depuis la base de données quand ils n'ont pas été saisis
+    if (!specialCase && (!theme || !departmentName)) {
+      try {
+        if (userId) {
+          const owner = await db.user.findUnique({
+            where: { id: userId },
+            select: {
+              department: { select: { name: true } },
+              internships: { orderBy: { createdAt: "desc" }, take: 1, select: { theme: true, department: { select: { name: true } } } },
+            },
+          });
+          departmentName = departmentName ?? owner?.department?.name ?? owner?.internships?.[0]?.department?.name ?? null;
+          theme = theme ?? owner?.internships?.[0]?.theme ?? null;
+        }
+
+        if (!departmentName && resolvedProjectId) {
+          const proj = await db.project.findUnique({ where: { id: resolvedProjectId }, select: { department: { select: { name: true } } } });
+          departmentName = proj?.department?.name ?? null;
+        }
+      } catch (error) {
+        logger.error("Département / thème non lus dans la base", error);
+      }
+    }
+
     let row: Awaited<ReturnType<typeof db.certificate.create>> | null = null;
 
     for (let attempt = 0; attempt < 5 && !row; attempt++) {
@@ -399,6 +661,8 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
             holderBirthDate,
             holderBirthPlace,
             missionLocation,
+            theme,
+            departmentName,
             mention,
             finalScore,
             holderPhone,
@@ -410,9 +674,11 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
             specialCase,
             specialCaseNote: specialCase ? specialCaseNote : null,
             internshipId,
-            projectId,
+            projectId: resolvedProjectId,
             beneficiaryId,
             userId,
+            slogan: projectSlogan,
+            partnerLinks: projectPartners.length ? { create: projectPartners } : undefined,
             issuedById: getReqUser(req)?.id ?? null,
           },
         });
@@ -528,6 +794,8 @@ publicCertificateRouter.get("/:code", async (req: Request, res: Response) => {
         type: row.type,
         holderName: row.holderName,
         title: row.title,
+        theme: row.theme ?? null,
+        departmentName: row.departmentName ?? null,
         startDate: row.startDate,
         endDate: row.endDate,
         expiresAt: row.expiresAt,

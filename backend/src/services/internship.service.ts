@@ -4,6 +4,7 @@ export async function findAllInternships() {
   return prisma.internship.findMany({
     include: {
       project: true,
+      department: true,
       student: {
         select: {
           id: true,
@@ -68,6 +69,8 @@ export async function createInternship(data: {
   endDate?: Date;
   status?: any;
   description?: string;
+  theme?: string;
+  departmentId?: number;
 }) {
   return prisma.internship.create({
     data: {
@@ -80,9 +83,12 @@ export async function createInternship(data: {
       endDate: data.endDate,
       status: data.status ?? "PENDING",
       description: data.description,
+      theme: data.theme,
+      departmentId: data.departmentId,
     },
     include: {
       project: true,
+      department: true,
       student: true,
       supervisor: true,
     },
@@ -101,6 +107,8 @@ export async function updateInternship(
     endDate?: Date | null;
     status?: any;
     description?: string;
+    theme?: string | null;
+    departmentId?: number | null;
   },
 ) {
   return prisma.internship.update({

@@ -50,6 +50,23 @@ function parseOptionalDate(value: unknown): Date | null | undefined {
   return date;
 }
 
+/** Liste d'identifiants de partenaires valides (sans doublon). */
+function parsePartnerIds(value: unknown): number[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return [];
+  if (!Array.isArray(value)) return null;
+
+  const ids = value.map((v) => parsePositiveInt(v));
+  if (ids.some((v) => v === null)) return null;
+
+  return Array.from(new Set(ids as number[]));
+}
+
+function parseSlogan(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  return String(value ?? "").trim().slice(0, 200) || null;
+}
+
 const PROJECT_STATUSES = [
   "DRAFT",
   "ACTIVE",
@@ -102,6 +119,8 @@ export async function getProjects(
       where,
       include: {
         department: true,
+
+        partnerLinks: { include: { partner: { select: { id: true, name: true, slogan: true } } } },
 
         createdBy: {
           select: {
@@ -175,6 +194,8 @@ export async function getProjectById(
 
       include: {
         department: true,
+
+        partnerLinks: { include: { partner: true } },
 
         createdBy: {
           select: {
@@ -250,6 +271,8 @@ export async function createProject(
       code,
       description,
       objective,
+      slogan,
+      partnerIds,
       startDate,
       endDate,
       status,
@@ -373,6 +396,28 @@ export async function createProject(
       });
     }
 
+    const parsedPartnerIds = parsePartnerIds(partnerIds);
+
+    if (parsedPartnerIds === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Liste de partenaires invalide.",
+      });
+    }
+
+    if (parsedPartnerIds && parsedPartnerIds.length > 0) {
+      const found = await prisma.partner.count({
+        where: { id: { in: parsedPartnerIds }, isActive: true },
+      });
+
+      if (found !== parsedPartnerIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: "Un des partenaires sélectionnés est introuvable.",
+        });
+      }
+    }
+
     const parsedDepartmentId =
       departmentId === undefined || departmentId === null
         ? null
@@ -444,6 +489,17 @@ export async function createProject(
             ? objective.trim() || null
             : null,
 
+        slogan: parseSlogan(slogan) ?? null,
+
+        partnerLinks:
+          parsedPartnerIds && parsedPartnerIds.length > 0
+            ? {
+                create: parsedPartnerIds.map((partnerId) => ({
+                  partnerId,
+                })),
+              }
+            : undefined,
+
         startDate: parsedStartDate ?? null,
         endDate: parsedEndDate ?? null,
 
@@ -465,6 +521,8 @@ export async function createProject(
 
       include: {
         department: true,
+
+        partnerLinks: { include: { partner: true } },
 
         createdBy: {
           select: {
@@ -566,6 +624,8 @@ export async function updateProject(
       code,
       description,
       objective,
+      slogan,
+      partnerIds,
       startDate,
       endDate,
       status,
@@ -786,6 +846,40 @@ export async function updateProject(
       }
     }
 
+    if (slogan !== undefined) {
+      data.slogan = parseSlogan(slogan);
+    }
+
+    const parsedPartnerIds = parsePartnerIds(partnerIds);
+
+    if (parsedPartnerIds === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Liste de partenaires invalide.",
+      });
+    }
+
+    if (parsedPartnerIds !== undefined) {
+      if (parsedPartnerIds.length > 0) {
+        const found = await prisma.partner.count({
+          where: { id: { in: parsedPartnerIds }, isActive: true },
+        });
+
+        if (found !== parsedPartnerIds.length) {
+          return res.status(400).json({
+            success: false,
+            message: "Un des partenaires sélectionnés est introuvable.",
+          });
+        }
+      }
+
+      // Remplace l'ensemble des partenaires du projet
+      data.partnerLinks = {
+        deleteMany: {},
+        create: parsedPartnerIds.map((partnerId) => ({ partnerId })),
+      };
+    }
+
     if (Object.keys(data).length === 0) {
       return res.status(400).json({
         success: false,
@@ -800,6 +894,8 @@ export async function updateProject(
 
       include: {
         department: true,
+
+        partnerLinks: { include: { partner: true } },
 
         createdBy: {
           select: {

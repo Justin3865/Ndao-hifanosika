@@ -11,6 +11,8 @@ const shape = (row: Row) => {
   return {
     id: i.id,
     title: i.title,
+    theme: i.theme ?? null,
+    department: i.department ?? null,
     status: i.status,
     institution: i.institution,
     startDate: i.startDate,

@@ -82,8 +82,9 @@ router.put("/", async (req: Request, res: Response) => {
     const me = getReqUser(req);
     const { firstName, lastName, phone, birthDate, birthPlace } = req.body ?? {};
 
-    if (!String(firstName ?? "").trim() || !String(lastName ?? "").trim()) {
-      return res.status(400).json({ success: false, message: "Prénom et nom sont obligatoires" });
+    // Le prénom est facultatif (certaines personnes n'en ont pas)
+    if (!String(lastName ?? "").trim()) {
+      return res.status(400).json({ success: false, message: "Le nom est obligatoire" });
     }
 
     // Date de naissance : facultative, mais doit être valide et dans le passé
@@ -103,7 +104,7 @@ router.put("/", async (req: Request, res: Response) => {
     const user = await prisma.user.update({
       where: { id: me!.id },
       data: {
-        firstName: String(firstName).trim(),
+        firstName: String(firstName ?? "").trim(),
         lastName: String(lastName).trim(),
         phone: phone ? String(phone).trim() : null,
         birthDate: birth,

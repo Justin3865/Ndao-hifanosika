@@ -234,6 +234,7 @@ export async function loadInternshipsMonitoring(
     orderBy: { createdAt: "desc" },
     include: {
       project: { select: { id: true, name: true, code: true } },
+      department: { select: { id: true, name: true } },
       student: { select: { id: true, firstName: true, lastName: true, email: true } },
       supervisor: { select: { id: true, firstName: true, lastName: true } },
       tasks: { select: TASK_SELECT },

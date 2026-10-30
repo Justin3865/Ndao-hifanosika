@@ -47,6 +47,9 @@ export interface InternshipEvaluationItem {
 export interface InternshipMonitoring {
   id: number;
   title: string;
+  /** Thème du stagiaire (celui imprimé sur le certificat) */
+  theme?: string | null;
+  department?: { id: number; name: string } | null;
   status: InternshipStatus;
   institution?: string | null;
   startDate: string;

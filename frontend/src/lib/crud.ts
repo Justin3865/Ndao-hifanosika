@@ -16,7 +16,8 @@ export type FieldType =
   | "checkbox"
   | "geo"
   | "identity"
-  | "newperson";
+  | "newperson"
+  | "partners";
 
 export interface Option {
   value: string;
@@ -50,10 +51,20 @@ export interface FieldDef {
   full?: boolean;
   /** type "text" : n'accepte que des chiffres, au plus N */
   digitsOnly?: number;
+  /** Texte d'aide affiché sous le champ */
+  hint?: string;
+  /** Champ « âge » : nom du champ date de naissance dont il est déduit (non modifiable si la date est saisie) */
+  ageFrom?: string;
   /** type "identity" : nom du champ « select » qui contient l'identifiant de la personne */
   identityOf?: string;
   /** Champ obligatoire SAUF si le bloc « newperson » de ce nom est rempli */
   requiredUnless?: string;
+  /** Champ date : doit être STRICTEMENT postérieur à la date du champ nommé (ex. fin > début) */
+  after?: string;
+  /** Champ « statut » : se règle seul d'après les dates { start, end } tant que l'utilisateur ne l'a pas choisi */
+  statusFromDates?: { start: string; end: string };
+  /** Champ « select » d'un encadrant : fixé sur la personne connectée quand c'est un tuteur */
+  lockForTutor?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

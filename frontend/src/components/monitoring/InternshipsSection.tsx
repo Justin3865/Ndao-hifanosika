@@ -29,7 +29,7 @@ export function InternshipCard({ i }: { i: InternshipMonitoring }) {
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-slate-900">{fullName(i.student)}</p>
           <p className="truncate text-xs text-slate-500">
-            {i.title}
+            {i.theme ? `Thème : ${i.theme}` : i.title}
             {i.project ? ` · ${i.project.code}` : ""}
           </p>
         </div>
@@ -91,7 +91,7 @@ export default function InternshipsSection({ list, error }: { list: InternshipMo
     () =>
       list.filter((i) => {
         const q = query.trim().toLowerCase();
-        const text = `${fullName(i.student)} ${i.title} ${i.project?.name ?? ""} ${fullName(i.supervisor)}`.toLowerCase();
+        const text = `${fullName(i.student)} ${i.title} ${i.theme ?? ""} ${i.project?.name ?? ""} ${fullName(i.supervisor)}`.toLowerCase();
         return (status === "ALL" || i.status === status) && (!q || text.includes(q));
       }),
     [list, query, status]

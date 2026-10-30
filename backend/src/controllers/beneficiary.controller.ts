@@ -179,10 +179,11 @@ export async function createBeneficiary(
       longitude,
     } = req.body;
 
-    if (!projectId || !firstName || !lastName) {
+    // Le prénom est facultatif (certaines personnes n'en ont pas)
+    if (!projectId || !lastName) {
       res.status(400).json({
         success: false,
-        message: "projectId, firstName et lastName sont obligatoires",
+        message: "projectId et lastName sont obligatoires",
       });
       return;
     }
@@ -216,7 +217,7 @@ export async function createBeneficiary(
     const beneficiary = await prisma.beneficiary.create({
       data: {
         projectId: Number(projectId),
-        firstName,
+        firstName: firstName ?? "",
         lastName,
         gender,
         phone,
@@ -324,7 +325,7 @@ export async function updateBeneficiary(
       data: {
         projectId:
           projectId !== undefined ? Number(projectId) : undefined,
-        firstName,
+        firstName: firstName === null ? "" : firstName,
         lastName,
         gender,
         phone,

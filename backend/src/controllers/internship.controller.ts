@@ -52,12 +52,13 @@ async function createStudentFromBody(
     return { error: "Seuls l'administrateur et le RH peuvent créer un compte stagiaire.", status: 403 };
   }
 
-  const firstName = toText(person.firstName);
+  // Le prénom est facultatif : certaines personnes n'en ont pas (colonne conservée vide)
+  const firstName = toText(person.firstName) ?? "";
   const lastName = toText(person.lastName);
   const email = toText(person.email)?.toLowerCase();
 
-  if (!firstName || !lastName || !email) {
-    return { error: "Prénom, nom et e-mail du nouveau stagiaire sont obligatoires." };
+  if (!lastName || !email) {
+    return { error: "Le nom et l'e-mail du nouveau stagiaire sont obligatoires." };
   }
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Adresse e-mail du stagiaire invalide." };
@@ -97,7 +98,7 @@ async function createStudentFromBody(
     await sendEmail(
       email,
       "Votre compte — Ndao Hifanosika",
-      `Bonjour ${firstName},\n\nUn compte stagiaire a été créé pour votre stage « ${String(body.title)} ».\nPour définir votre mot de passe : ${base}/login puis « Mot de passe oublié » avec cette adresse e-mail.\n\n— Ndao Hifanosika`,
+      `Bonjour ${firstName || lastName},\n\nUn compte stagiaire a été créé pour votre stage « ${String(body.title)} ».\nPour définir votre mot de passe : ${base}/login puis « Mot de passe oublié » avec cette adresse e-mail.\n\n— Ndao Hifanosika`,
     );
   } catch (error) {
     logger.error("E-mail de bienvenue du stagiaire non envoyé", error);
