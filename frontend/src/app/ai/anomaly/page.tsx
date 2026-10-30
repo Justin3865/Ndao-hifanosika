@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, BookOpen, Eye, History, Loader2, X } from "lucide-react";
+import { BellRing, BookOpen, CheckCircle2, Eye, History, Loader2, PlayCircle, RotateCcw, X } from "lucide-react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader, LevelBadge, METHOD_NOTE, State } from "@/components/insights/parts";
@@ -25,6 +25,34 @@ interface Anomaly {
   source?: "rules" | "isolation-forest";
   score?: number;
 }
+
+type ActionStatus = "IN_PROGRESS" | "RESOLVED" | "IGNORED";
+
+interface AnomalyAction {
+  key: string;
+  type: string;
+  title: string;
+  status: ActionStatus;
+  note: string | null;
+  snoozedUntil: string | null;
+  userName: string | null;
+  updatedAt: string;
+}
+
+const ACTION_BADGE: Record<ActionStatus, { label: string; className: string }> = {
+  IN_PROGRESS: { label: "En cours", className: "bg-amber-100 text-amber-800" },
+  RESOLVED: { label: "Résolue", className: "bg-green-100 text-green-800" },
+  IGNORED: { label: "Ignorée", className: "bg-gray-100 text-gray-700" },
+};
+
+/** Filtre de statut : « active » = sans action ou en cours. */
+const STATUS_FILTERS: Array<[string, string]> = [
+  ["active", "À traiter"],
+  ["IN_PROGRESS", "En cours"],
+  ["RESOLVED", "Résolues"],
+  ["IGNORED", "Ignorées"],
+  ["all", "Toutes"],
+];
 
 interface Engine {
   name: string;
@@ -129,6 +157,9 @@ export default function AiAnomalyPage() {
 
   const [severity, setSeverity] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [actions, setActions] = useState<Record<string, AnomalyAction>>({});
+  const [acting, setActing] = useState("");
 
   const [role, setRole] = useState("");
   const [minSeverity, setMinSeverity] = useState<Severity>("MEDIUM");
@@ -167,11 +198,23 @@ export default function AiAnomalyPage() {
     }
   }, []);
 
+  const loadActions = useCallback(async () => {
+    try {
+      const res = await api.get("/ai/anomalies/actions");
+      const map: Record<string, AnomalyAction> = {};
+      for (const item of toList<AnomalyAction>(res.data?.data)) map[item.key] = item;
+      setActions(map);
+    } catch {
+      /* les actions sont facultatives : la liste reste affichée sans elles */
+    }
+  }, []);
+
   useEffect(() => {
     setRole(getStoredRole());
     void loadAnomalies();
     void loadHistory();
-  }, [loadAnomalies, loadHistory]);
+    void loadActions();
+  }, [loadAnomalies, loadHistory, loadActions]);
 
   useEffect(() => {
     if (config) setMinSeverity(config.minSeverity);
@@ -192,11 +235,71 @@ export default function AiAnomalyPage() {
       }
     };
 
+    // Un collègue vient d'agir sur une anomalie : on resynchronise les statuts
+    const onAction = () => void loadActions();
+
     socket.on("anomaly:run", onRun);
+    socket.on("anomaly:action", onAction);
     return () => {
       socket.off("anomaly:run", onRun);
+      socket.off("anomaly:action", onAction);
     };
-  }, [loadAnomalies, loadHistory]);
+  }, [loadAnomalies, loadHistory, loadActions]);
+
+  /** Enregistre une action (en cours / résolue / ignorée) sur une anomalie. */
+  const act = async (a: Anomaly, status: ActionStatus, extra: { note?: string; snoozeDays?: number } = {}) => {
+    if (!a.key) return;
+    setActing(a.key);
+
+    try {
+      const res = await api.put("/ai/anomalies/actions", { key: a.key, type: a.type, title: a.title, status, ...extra });
+      const saved = res.data?.data as AnomalyAction | undefined;
+      setActions((current) => ({ ...current, [a.key as string]: { ...(saved as AnomalyAction), key: a.key as string, status } }));
+      toast.success(status === "RESOLVED" ? "Anomalie marquée comme résolue." : status === "IGNORED" ? "Anomalie ignorée." : "Anomalie prise en charge.");
+      void loadActions();
+    } catch (err) {
+      toast.error(errorMessage(err, "Action impossible pour le moment."));
+    } finally {
+      setActing("");
+    }
+  };
+
+  const resolve = (a: Anomaly) => {
+    const note = window.prompt("Note de résolution (facultatif) :", "");
+    if (note === null) return; // annulé
+    void act(a, "RESOLVED", { note: note.trim() || undefined });
+  };
+
+  const ignore = async (a: Anomaly, snoozeDays?: number) => {
+    if (!snoozeDays) {
+      const ok = await confirmDialog("Ignorer définitivement cette anomalie ? Elle ne sera plus notifiée.", {
+        title: "Ignorer l'anomalie",
+        confirmLabel: "Ignorer",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    void act(a, "IGNORED", { snoozeDays });
+  };
+
+  const reopen = async (a: Anomaly) => {
+    if (!a.key) return;
+    setActing(a.key);
+
+    try {
+      await api.delete("/ai/anomalies/actions", { params: { key: a.key } });
+      setActions((current) => {
+        const next = { ...current };
+        delete next[a.key as string];
+        return next;
+      });
+      toast.info("Anomalie rouverte.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Impossible de rouvrir l'anomalie."));
+    } finally {
+      setActing("");
+    }
+  };
 
   const openCatalog = async () => {
     const next = !showCatalog;
@@ -256,9 +359,21 @@ export default function AiAnomalyPage() {
     }
   };
 
+  const statusOf = (a: Anomaly): ActionStatus | "" => (a.key ? actions[a.key]?.status ?? "" : "");
+
+  const matchesStatus = (a: Anomaly) => {
+    const st = statusOf(a);
+    if (statusFilter === "all") return true;
+    if (statusFilter === "active") return st === "" || st === "IN_PROGRESS";
+    return st === statusFilter;
+  };
+
   const filtered = rows.filter(
-    (a) => (!severity || a.severity === severity) && (!sourceFilter || (a.source ?? "rules") === sourceFilter),
+    (a) => (!severity || a.severity === severity) && (!sourceFilter || (a.source ?? "rules") === sourceFilter) && matchesStatus(a),
   );
+
+  const statusCount = (value: string) =>
+    value === "all" ? rows.length : rows.filter((a) => (value === "active" ? ["", "IN_PROGRESS"].includes(statusOf(a)) : statusOf(a) === value)).length;
 
   const countFor = (code: string) => rows.filter((a) => a.type === code).length;
 
@@ -486,6 +601,21 @@ export default function AiAnomalyPage() {
               </button>
             ))}
 
+            <span className="mx-1 hidden h-5 w-px bg-gray-200 sm:block" />
+
+            <select
+              aria-label="Statut des anomalies"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="cursor-pointer rounded-full bg-white px-4 py-1.5 text-sm font-medium text-gray-700 outline-none ring-1 ring-gray-200 transition hover:bg-gray-50 focus:ring-blue-500"
+            >
+              {STATUS_FILTERS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label} ({statusCount(value)})
+                </option>
+              ))}
+            </select>
+
             <span className="ml-auto text-sm text-gray-500">{filtered.length} anomalie(s)</span>
           </div>
 
@@ -496,20 +626,91 @@ export default function AiAnomalyPage() {
           )}
 
           <div className="space-y-3">
-            {filtered.map((a, index) => (
-              <Link key={`${a.key ?? a.type}-${index}`} href={a.link} className="flex items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300">
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {a.title}
-                    {a.source === "isolation-forest" && (
-                      <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">IA · score {a.score}</span>
+            {filtered.map((a, index) => {
+              const action = a.key ? actions[a.key] : undefined;
+              const badge = action ? ACTION_BADGE[action.status] : null;
+              const busyNow = !!a.key && acting === a.key;
+              const done = action?.status === "RESOLVED" || action?.status === "IGNORED";
+              const btn = "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-60";
+
+              return (
+                <div
+                  key={`${a.key ?? a.type}-${index}`}
+                  className={`rounded-2xl border bg-white p-5 shadow-sm transition ${done ? "border-gray-200 opacity-75" : "border-gray-200 hover:border-blue-300"}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {a.title}
+                        {a.source === "isolation-forest" && (
+                          <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">IA · score {a.score}</span>
+                        )}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">{a.detail}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <LevelBadge level={a.severity} />
+                      {badge && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge.className}`}>{badge.label}</span>}
+                    </div>
+                  </div>
+
+                  {action && (action.note || action.userName) && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      {action.userName ? `Par ${action.userName}` : ""}
+                      {action.userName ? " · " : ""}
+                      {stamp(action.updatedAt)}
+                      {action.snoozedUntil ? ` · ignorée jusqu'au ${new Date(action.snoozedUntil).toLocaleDateString("fr-FR")}` : ""}
+                      {action.note ? ` — ${action.note}` : ""}
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                    <Link href={a.link} className={btn}>
+                      <Eye className="h-3.5 w-3.5 text-blue-500" /> Voir
+                    </Link>
+
+                    {a.key && !done && action?.status !== "IN_PROGRESS" && (
+                      <button type="button" disabled={busyNow} onClick={() => void act(a, "IN_PROGRESS")} className={btn}>
+                        <PlayCircle className="h-3.5 w-3.5 text-amber-500" /> Prendre en charge
+                      </button>
                     )}
-                  </p>
-                  <p className="mt-1 text-sm text-gray-600">{a.detail}</p>
+
+                    {a.key && !done && (
+                      <button type="button" disabled={busyNow} onClick={() => resolve(a)} className={btn}>
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> Résolue
+                      </button>
+                    )}
+
+                    {a.key && !done && (
+                      <select
+                        aria-label="Ignorer l'anomalie"
+                        disabled={busyNow}
+                        value=""
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          event.target.value = "";
+                          if (value) void ignore(a, value === "forever" ? undefined : Number(value));
+                        }}
+                        className={`${btn} cursor-pointer bg-transparent`}
+                      >
+                        <option value="">Ignorer…</option>
+                        <option value="7">pendant 7 jours</option>
+                        <option value="30">pendant 30 jours</option>
+                        <option value="forever">définitivement</option>
+                      </select>
+                    )}
+
+                    {a.key && action && (
+                      <button type="button" disabled={busyNow} onClick={() => void reopen(a)} className={btn}>
+                        <RotateCcw className="h-3.5 w-3.5 text-gray-500" /> Rouvrir
+                      </button>
+                    )}
+
+                    {busyNow && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+                  </div>
                 </div>
-                <LevelBadge level={a.severity} />
-              </Link>
-            ))}
+              );
+            })}
           </div>
         </State>
 

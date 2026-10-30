@@ -5,6 +5,7 @@ import { db } from "../utils/db";
 import { notifyUsers } from "../utils/notify";
 import { sendError } from "../middlewares/error.middleware";
 import { getAnomalies } from "./insights.controller";
+import { silencedKeys } from "./anomalyActions.controller";
 import { emitToAnomalyWatchers } from "../realtime/socket";
 import { isAnomalyRealtimeEnabled } from "../services/anomalyRealtime.service";
 
@@ -70,7 +71,9 @@ async function currentAnomalies(req?: Request): Promise<{ anomalies: AnomalyLike
     throw new Error(result?.message ?? `Impossible de calculer les anomalies (réponse ${box.status})`);
   }
 
-  const anomalies = (result.data as AnomalyLike[]).filter((a) => isSeverity(a.severity));
+  // Les anomalies marquées « résolues » ou « ignorées » ne sont plus notifiées
+  const silenced = await silencedKeys();
+  const anomalies = (result.data as AnomalyLike[]).filter((a) => isSeverity(a.severity) && !(a.key && silenced.has(a.key)));
 
   return {
     anomalies,

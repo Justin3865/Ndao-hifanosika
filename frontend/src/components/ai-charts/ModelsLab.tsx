@@ -76,6 +76,7 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
   const [canTrain, setCanTrain] = useState(false);
   const [selected, setSelected] = useState("");
   const [openRun, setOpenRun] = useState<number | null>(null);
+  const [more, setMore] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -148,8 +149,7 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
     <section className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Comparaison de toutes les méthodes d&apos;apprentissage</h2>
-          <p className="text-sm text-gray-500">Chaque méthode est testée par validation croisée sur les ménages de la base ; les courbes sont superposées.</p>
+          <h2 className="text-lg font-bold text-gray-900">Comparaison des méthodes (ménages)</h2>
         </div>
         {canTrain && (
           <button type="button" onClick={run} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-900 disabled:opacity-60">
@@ -158,9 +158,9 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
         )}
       </div>
 
-      <ChartCard title="Historique des tests" subtitle="Chaque exécution de « Relancer les tests » est enregistrée : date, meilleur modèle et résultats (du plus récent au plus ancien).">
+      <ChartCard title="Historique des tests">
         {runs.length === 0 ? (
-          <p className="text-sm text-gray-500">Aucun test enregistré pour le moment. Cliquez sur « Relancer les tests » pour en créer un.</p>
+          <p className="text-sm text-gray-500">Aucun test enregistré.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-sm">
@@ -276,19 +276,13 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
           <div className="flex flex-wrap items-center gap-4 rounded-3xl bg-blue-800 p-6 text-white shadow-lg">
             <Trophy className="h-10 w-10 shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wide opacity-90">Meilleur modèle (résultat le plus élevé aux tests)</p>
+              <p className="text-xs font-semibold uppercase tracking-wide opacity-90">Meilleur modèle</p>
               <p className="text-2xl font-bold">{report.best.name}</p>
-              <p className="text-sm opacity-95">AUC {fmt(report.best.auc)} · F1 {fmt(report.best.f1)} · exactitude {pct(report.best.accuracy)} — sur {report.sampleSize} ménages ({report.positives} vulnérables), {report.folds} plis</p>
+              <p className="text-sm opacity-95">AUC {fmt(report.best.auc)} · F1 {fmt(report.best.f1)} · exactitude {pct(report.best.accuracy)} · {report.sampleSize} ménages ({report.positives} vulnérables) · fiabilité {report.reliability.toLowerCase()}</p>
             </div>
           </div>
 
-          {report.reliability !== "CORRECTE" && (
-            <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-medium text-sky-800">
-              Fiabilité {report.reliability.toLowerCase()} : l&apos;échantillon est petit, les écarts entre méthodes peuvent être dus au hasard. Plus il y aura de ménages enquêtés, plus le classement sera fiable.
-            </p>
-          )}
-
-          <ChartCard title="Classement des méthodes" subtitle="Trié par AUC puis F1 (validation croisée = test hors échantillon)">
+          <ChartCard title="Classement des méthodes">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs text-gray-500">
@@ -315,6 +309,12 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
             </div>
           </ChartCard>
 
+          <button type="button" onClick={() => setMore((v) => !v)} className="rounded-xl bg-blue-800 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-900">
+            {more ? "Masquer" : "Voir"} les graphiques détaillés
+          </button>
+
+          {more && (
+          <>
           <div className="grid gap-5 lg:grid-cols-2">
             <ChartCard title="Courbes ROC superposées" subtitle="Plus la courbe épouse le coin haut-gauche, meilleur est le modèle (diagonale = hasard)">
               <LineChart
@@ -444,12 +444,12 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
               </div>
             </ChartCard>
           </div>
+          </>
+          )}
         </>
       )}
 
-
-
-      {history.length > 0 && (
+      {more && history.length > 0 && (
         <ChartCard title="Évolution des résultats dans la base de données" subtitle="AUC de chaque entraînement enregistré (table AiModel) : les modèles s'améliorent-ils avec plus de données ?">
           <LineChart
             yDomain={[0, 1]}

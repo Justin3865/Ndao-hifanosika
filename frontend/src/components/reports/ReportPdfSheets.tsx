@@ -139,7 +139,7 @@ function Page({ title, issued, number, total, probe = false, badge = "Bailleurs"
           <div className="relative z-10 flex flex-1 flex-col">
             {/* En-tête */}
             <div className="text-center">
-              <div className="flex justify-center"><Logo size={56} /></div>
+              <div className="flex justify-center"><Logo print size={56} /></div>
               <p className="mt-2 text-[11px] text-gray-500">{ORG.name} — {ORG.address}</p>
               {orgContactLine() && <p className="text-[11px] text-gray-500">{orgContactLine()}</p>}
 

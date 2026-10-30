@@ -27,8 +27,8 @@ import {
   trainMlp,
 } from "./ml";
 
-type Predictor = (x: number[]) => number;
-type Trainer = (X: Matrix, y: number[]) => Predictor;
+export type Predictor = (x: number[]) => number;
+export type Trainer = (X: Matrix, y: number[]) => Predictor;
 
 export interface Point { x: number; y: number }
 
@@ -85,7 +85,7 @@ export interface VulnerableRow {
 
 /* ------------------------------ méthodes ------------------------------ */
 
-function gaussianNb(X: Matrix, y: number[]): Predictor {
+export function gaussianNb(X: Matrix, y: number[]): Predictor {
   const d = X[0].length;
 
   const stats = [0, 1].map((c) => {
@@ -112,7 +112,7 @@ function gaussianNb(X: Matrix, y: number[]): Predictor {
   };
 }
 
-function knn(X: Matrix, y: number[]): Predictor {
+export function knn(X: Matrix, y: number[]): Predictor {
   const root = Math.round(Math.sqrt(X.length));
   const k = Math.max(3, Math.min(9, root % 2 ? root : root + 1));
 
@@ -137,7 +137,7 @@ function knn(X: Matrix, y: number[]): Predictor {
   };
 }
 
-function methodTrainers(n: number): Array<{ key: string; name: string; kind: string; train: Trainer }> {
+export function methodTrainers(n: number): Array<{ key: string; name: string; kind: string; train: Trainer }> {
   const epochs = n > 600 ? 120 : n > 250 ? 250 : 500;
 
   return [

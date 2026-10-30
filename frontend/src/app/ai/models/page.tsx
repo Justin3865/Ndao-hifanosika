@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BrainCircuit, Loader2, Play, Trash2 } from "lucide-react";
 import api from "@/lib/axios";
+import { DatasetsLab } from "@/components/ai-charts/DatasetsLab";
 import { ModelsLab } from "@/components/ai-charts/ModelsLab";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader } from "@/components/insights/parts";
@@ -92,14 +93,11 @@ export default function ModelsPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <InsightHeader title="Modèles d'apprentissage" subtitle="Régression logistique entraînée par descente de gradient stochastique (SGD) et réseau de neurones profond." />
+        <InsightHeader title="Modèles d'apprentissage" subtitle="Entraînement et test sur vos données réelles." />
 
         <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700"><BrainCircuit className="h-6 w-6" /></span>
-          <div className="min-w-0 flex-1 text-sm text-gray-600">
-            Les modèles apprennent des ménages déjà enregistrés (signalement « vulnérable », âge, taille du ménage, revenu, altitude, éloignement, retards du projet…)
-            pour repérer les ménages à vérifier en priorité. Réentraînez-les chaque fois que de nouvelles données sont saisies.
-          </div>
+          <div className="min-w-0 flex-1 text-sm text-gray-600">Modèles de vulnérabilité des ménages (SGD et réseau de neurones).</div>
           {canTrain && (
             <button type="button" onClick={train} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-3 font-semibold text-white hover:bg-blue-900 disabled:opacity-60">
               {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
@@ -115,12 +113,6 @@ export default function ModelsPage() {
               <span className="text-sm text-gray-500">{report.sampleSize} ménages · {report.positives} vulnérables · validation croisée {report.folds} plis</span>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${RELIABILITY_STYLE[report.reliability]}`}>Fiabilité : {report.reliability.toLowerCase()}</span>
             </div>
-
-            {report.reliability !== "CORRECTE" && (
-              <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
-                Peu de données : les résultats sont indicatifs. Il faut plusieurs centaines de ménages renseignés (dont au moins 40 vulnérables) pour des prédictions réellement fiables.
-              </p>
-            )}
 
             {report.trained && (
               <div className="overflow-x-auto">
@@ -153,14 +145,15 @@ export default function ModelsPage() {
           </div>
         )}
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-3 font-semibold text-gray-900">Historique des entraînements</h2>
-          {history.length === 0 && <p className="text-sm text-gray-500">Aucun entraînement : les scores utilisent une heuristique transparente.</p>}
+        <details className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <summary className="cursor-pointer font-semibold text-gray-900">Historique des entraînements ({history.length})</summary>
+          <div className="mt-3" />
+          {history.length === 0 && <p className="text-sm text-gray-500">Aucun entraînement.</p>}
           <div className="divide-y divide-gray-100">
             {history.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                 <span className="font-medium text-gray-900">{m.name}</span>
-                <span className="text-gray-500">{m.sampleSize} ménages · AUC {Number(m.metrics.auc).toFixed(2)} · exactitude {pct(m.metrics.accuracy)}</span>
+                <span className="text-gray-500">{m.sampleSize} {m.name.startsWith("dataset-") ? "lignes" : "ménages"} · AUC {Number(m.metrics.auc).toFixed(2)} · exactitude {pct(m.metrics.accuracy)}</span>
                 <span className="flex items-center gap-2">
                   <span className="text-xs text-gray-400">{fmtDateTime(m.trainedAt)}</span>
                   {canTrain && (
@@ -178,7 +171,9 @@ export default function ModelsPage() {
               </div>
             ))}
           </div>
-        </div>
+        </details>
+
+        <DatasetsLab onChanged={() => void load()} />
 
         <ModelsLab onChanged={() => void load()} />
       </div>

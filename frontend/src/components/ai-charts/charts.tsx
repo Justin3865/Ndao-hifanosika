@@ -96,21 +96,23 @@ export function LineChart({ series, xLabel, yLabel, xDomain, yDomain, height = 2
 
   const [x0, x1] = xDomain ?? [Math.min(...all.map((p) => p.x)), Math.max(...all.map((p) => p.x))];
   const [y0, y1] = yDomain ?? [Math.min(0, ...all.map((p) => p.y)), Math.max(...all.map((p) => p.y)) || 1];
-  const sx = (v: number) => m.l + ((v - x0) / (x1 - x0 || 1)) * (W - m.l - m.r);
+  // un seul point (ou tous au même x) : on le place au milieu et on trace une ligne de gauche à droite
+  const flat = x1 === x0;
+  const sx = (v: number) => (flat ? (m.l + W - m.r) / 2 : m.l + ((v - x0) / (x1 - x0)) * (W - m.l - m.r));
   const sy = (v: number) => H - m.b - ((v - y0) / (y1 - y0 || 1)) * (H - m.t - m.b);
   const yTicks = Array.from({ length: 5 }, (_, i) => y0 + ((y1 - y0) * i) / 4);
-  const xt = xTicks ?? Array.from({ length: 5 }, (_, i) => ({ value: x0 + ((x1 - x0) * i) / 4, label: format(x0 + ((x1 - x0) * i) / 4) }));
+  const xt = xTicks ?? (flat ? [{ value: x0, label: format(x0) }] : Array.from({ length: 5 }, (_, i) => ({ value: x0 + ((x1 - x0) * i) / 4, label: format(x0 + ((x1 - x0) * i) / 4) })));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
-      {yTicks.map((t) => (
-        <g key={t}>
+      {yTicks.map((t, i) => (
+        <g key={i}>
           <line x1={m.l} x2={W - m.r} y1={sy(t)} y2={sy(t)} stroke="#94a3b8" strokeOpacity={0.25} />
           <text x={m.l - 6} y={sy(t) + 4} textAnchor="end" fontSize={10} className="fill-gray-500">{format(t)}</text>
         </g>
       ))}
-      {xt.map((t) => (
-        <text key={t.value} x={sx(t.value)} y={H - m.b + 15} textAnchor="middle" fontSize={10} className="fill-gray-500">{t.label}</text>
+      {xt.map((t, i) => (
+        <text key={i} x={sx(t.value)} y={H - m.b + 15} textAnchor="middle" fontSize={10} className="fill-gray-500">{t.label}</text>
       ))}
       {diagonal && <line x1={sx(x0)} y1={sy(y0)} x2={sx(x1)} y2={sy(y1)} stroke="#94a3b8" strokeDasharray="4 4" />}
       {xLabel && <text x={(W + m.l) / 2} y={H - 4} textAnchor="middle" fontSize={11} className="fill-gray-500">{xLabel}</text>}
@@ -124,6 +126,9 @@ export function LineChart({ series, xLabel, yLabel, xDomain, yDomain, height = 2
           <g key={s.name} opacity={faded ? 0.2 : 1} onMouseEnter={() => setHover(s.name)} onMouseLeave={() => setHover(null)}>
             {s.area && <path d={`${d} L${sx(s.points[s.points.length - 1].x)},${sy(y0)} L${sx(s.points[0].x)},${sy(y0)} Z`} fill={s.color} fillOpacity={0.12} />}
             <path d={d} fill="none" stroke={s.color} strokeWidth={s.highlight ? 3.5 : s.width ?? 2} strokeDasharray={s.dashed ? "5 4" : undefined} strokeLinejoin="round" strokeLinecap="round" />
+            {s.points.length === 1 && (
+              <line x1={m.l} x2={W - m.r} y1={sy(s.points[0].y)} y2={sy(s.points[0].y)} stroke={s.color} strokeWidth={s.highlight ? 3.5 : s.width ?? 2} strokeDasharray="6 4" strokeLinecap="round" />
+            )}
             {s.points.length <= 12 && s.points.map((p, i) => (
               <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={s.highlight ? 4 : 3} fill={s.color}><title>{`${s.name} — ${format(p.x)} ; ${format(p.y)}`}</title></circle>
             ))}

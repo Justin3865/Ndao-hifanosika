@@ -221,7 +221,7 @@ export default function AiSummaryPage() {
                     <div className="relative z-10 text-center">
                       {/* En-tête */}
                       <div className="flex justify-center">
-                        <Logo size={56} />
+                        <Logo print size={56} />
                       </div>
                       <p className="mt-2 text-[11px] text-[#6b7280] [overflow-wrap:anywhere]">
                         {ORG.name} — {ORG.address}

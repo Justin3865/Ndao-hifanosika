@@ -998,3 +998,20 @@ model ReminderLog {
 
   @@index([sentAt])
 }
+
+// Action prise sur une anomalie IA (clé stable "TYPE:entityId"), partagée par toute l'équipe.
+model AnomalyAction {
+  id           Int       @id @default(autoincrement())
+  key          String    @unique
+  type         String
+  title        String
+  status       String // IN_PROGRESS | RESOLVED | IGNORED
+  note         String?
+  snoozedUntil DateTime? // IGNORED temporaire : l'anomalie revient après cette date
+  userId       Int?
+  userName     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+}
