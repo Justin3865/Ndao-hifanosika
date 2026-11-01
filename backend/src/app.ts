@@ -37,6 +37,7 @@ import { anomalyWatcher } from "./services/anomalyRealtime.service";
 
 import activitySpaceRoutes from "./routes/activitySpace.routes";
 import monitoringRoutes from "./routes/monitoring.routes";
+import finalEvaluationRoutes from "./routes/finalEvaluation.routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
 import { phoneLimit } from "./middlewares/phoneLimit.middleware";
@@ -88,6 +89,7 @@ app.use("/api/partners", partnersRoutes);
 app.use("/api/activities", activitiesRoutes);
 app.use("/api/activity-space", activitySpaceRoutes);
 app.use("/api/monitoring", monitoringRoutes);
+app.use("/api/final-evaluation", finalEvaluationRoutes);
 app.use("/api/milestones", milestonesRoutes);
 app.use("/api/members", membersRoutes);
 app.use("/api/beneficiaries", beneficiariesRoutes);

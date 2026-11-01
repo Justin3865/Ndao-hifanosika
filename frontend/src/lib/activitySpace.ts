@@ -54,23 +54,29 @@ export interface SpaceData {
   comments: ActivityComment[];
 }
 
+export type MeritKey = "progress" | "completion" | "evaluation" | "reports" | "presence";
+export type MeritComponents = Record<MeritKey, number | null>;
+
 export interface MeritRow {
   userId: number;
   name: string;
   level: Level;
   rank: number;
   cohortSize: number;
+  /** moyenne sur 20 */
   score: number;
   badge: string;
-  components: { quality: number | null; engagement: number; presence: number; volume: number } | null;
-  counts: { participations: number; rated: number; reports: number; checkins: number } | null;
+  components: MeritComponents | null;
+  counts: { stages: number; tasks: number; tasksDone: number; evaluations: number } | null;
+  stage?: { title: string; status: string } | null;
 }
 
 export interface MeritData {
   period: string;
   scope: "all" | "supervised" | "self";
-  weights: { quality: number; engagement: number; presence: number; volume: number };
-  target: number;
+  weights: Record<MeritKey, number>;
+  scale: number;
+  averages?: Partial<Record<Level, number | null>>;
   unranked?: number;
   generatedAt: string;
   cohorts: Record<Level, MeritRow[]>;

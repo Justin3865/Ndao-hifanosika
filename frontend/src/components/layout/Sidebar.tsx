@@ -23,7 +23,6 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
-  Trophy,
   UserCog,
   Users,
   X,
@@ -57,10 +56,10 @@ const groups = [
       { href: "/activities", label: "Activités", icon: Activity },
       // Jalons : déplacés dans la fiche du projet (/projects/[id])
       { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
-      { href: "/evaluations", label: "Évaluations", icon: ClipboardList },
+      // « Évaluations » regroupe aussi « Évaluation finale » et « Ordre de mérite » (onglets de la rubrique)
+      { href: "/evaluations", label: "Évaluations", icon: ClipboardList, also: ["/evaluation-finale", "/merit"] },
       // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"
       { href: "/internships", label: "Stages", icon: GraduationCap },
-      { href: "/merit", label: "Ordre de mérite", icon: Trophy },
       // ⚠️ NOFAFANA: Ny "Offres de stage" sy "Nouvelle offre" tsy aseho eto intsony
     ],
   },
@@ -102,7 +101,14 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
   const visibleGroups = groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => canAccessPath(role, item.href)),
+      items: group.items
+        .map((item) => {
+          // lien = première page de la rubrique accessible à ce rôle
+          const paths = [item.href, ...(item.also ?? [])];
+          const target = paths.find((path) => canAccessPath(role, path));
+          return target ? { ...item, target, paths } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
     }))
     .filter((group) => group.items.length > 0);
 
@@ -129,14 +135,13 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
 
             <div className="space-y-1">
               {group.items.map((item) => {
-                const active =
-                  pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const active = item.paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
                 const Icon = item.icon;
 
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={item.target}
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                       active

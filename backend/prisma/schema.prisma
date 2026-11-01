@@ -1043,3 +1043,26 @@ model AnomalyAction {
 
   @@index([status])
 }
+
+/// Fahafaham-po (satisfaction) recueillie auprès des partenaires et des bénéficiaires d'un projet.
+/// Chaque ligne = un questionnaire rempli ; `ratings` = { critère: note 1-5 } ; `score` = moyenne sur 5.
+model ProjectFeedback {
+  id            Int      @id @default(autoincrement())
+  projectId     Int
+  /// PARTNER | BENEFICIARY
+  kind          String
+  partnerId     Int?
+  beneficiaryId Int?
+  /// Nom de la personne interrogée (représentant du partenaire, bénéficiaire anonyme…)
+  respondent    String?
+  ratings       Json
+  score         Float
+  comment       String?  @db.Text
+  collectedById Int?
+  collectedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([projectId, kind])
+  @@index([partnerId])
+  @@index([beneficiaryId])
+}

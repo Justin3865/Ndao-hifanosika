@@ -9,6 +9,7 @@ import {
   HistoryData,
   Level,
   MeritData,
+  MeritKey,
   MeritRow,
   closeMeritPeriod,
   fetchMerit,
@@ -21,15 +22,19 @@ const BADGE: Record<string, string> = {
   Excellent: "bg-green-100 text-green-700",
   "Très bien": "bg-blue-100 text-blue-700",
   Bien: "bg-amber-100 text-amber-800",
+  Passable: "bg-orange-100 text-orange-800",
   "À améliorer": "bg-red-100 text-red-700",
 };
 const MEDAL = ["text-amber-500", "text-slate-400", "text-orange-600"];
-const COMPONENT_LABELS: Array<[keyof NonNullable<MeritRow["components"]>, string]> = [
-  ["quality", "Qualité"],
-  ["engagement", "Rapports"],
+const COMPONENT_LABELS: Array<[MeritKey, string]> = [
+  ["progress", "Avancement"],
+  ["completion", "Achèvement"],
+  ["evaluation", "Éval. tuteur"],
+  ["reports", "Rapports"],
   ["presence", "Présence"],
-  ["volume", "Volume"],
 ];
+
+const fmt20 = (value: number) => value.toFixed(2).replace(/\.?0+$/, "");
 
 const th = "px-4 py-3 font-semibold";
 const card = "rounded-2xl border border-gray-200 bg-white p-6 shadow-sm";
@@ -49,9 +54,9 @@ function ScoreBar({ value }: { value: number }) {
   return (
     <div className="flex items-center gap-2">
       <div className="h-2 w-28 overflow-hidden rounded-full bg-gray-200">
-        <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+        <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, Math.max(0, (value / 20) * 100))}%` }} />
       </div>
-      <span className="text-sm font-semibold text-gray-900">{value}</span>
+      <span className="text-sm font-semibold text-gray-900">{fmt20(value)}/20</span>
     </div>
   );
 }
@@ -67,18 +72,18 @@ function RankingTable({ rows, highlightId }: { rows: MeritRow[]; highlightId?: n
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-left text-sm">
+      <table className="w-full min-w-[900px] text-left text-sm">
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th className={th}>Rang</th>
             <th className={th}>Stagiaire</th>
-            <th className={th}>Score</th>
+            <th className={th}>Moyenne</th>
             {COMPONENT_LABELS.map(([, label]) => (
               <th key={label} className={th}>
                 {label}
               </th>
             ))}
-            <th className={th}>Participations</th>
+            <th className={th}>Stage</th>
             <th className={th}>Mention</th>
           </tr>
         </thead>
@@ -98,7 +103,7 @@ function RankingTable({ rows, highlightId }: { rows: MeritRow[]; highlightId?: n
                 </td>
               ))}
               <td className="px-4 py-3 text-gray-700">
-                {row.counts ? `${row.counts.participations} (${row.counts.rated} notée(s))` : "—"}
+                {row.counts ? `${row.counts.tasksDone}/${row.counts.tasks} tâche(s) terminée(s)` : "—"}
               </td>
               <td className="px-4 py-3">
                 <BadgeTag badge={row.badge} />
@@ -194,7 +199,7 @@ export default function MeritPage() {
               <Trophy className="h-6 w-6 text-amber-500" /> Ordre de mérite
             </h1>
             <p className="text-sm text-gray-500">
-              {isIntern ? "Votre position parmi les stagiaires de votre promotion." : "Classement des stagiaires selon leur participation aux activités."}
+              {isIntern ? "Votre position parmi les stagiaires de votre promotion." : "Classement automatique des stagiaires par promotion, selon l'avancement et l'achèvement de leur stage (moyenne sur 20)."}
             </p>
           </div>
 
@@ -265,7 +270,7 @@ export default function MeritPage() {
                         <span className="text-xl font-medium text-gray-500"> / {mine.cohortSize}</span>
                       </p>
                       <p className="mt-2 flex items-center gap-2 text-sm text-gray-700">
-                        Score {mine.score}/100 <BadgeTag badge={mine.badge} />
+                        Moyenne {fmt20(mine.score)}/20 <BadgeTag badge={mine.badge} />
                       </p>
                     </div>
 
@@ -275,14 +280,14 @@ export default function MeritPage() {
                           <span className="text-gray-500">
                             {label} <span className="text-xs">({merit.weights[key]}%)</span>
                           </span>
-                          <span className="font-semibold text-gray-900">{mine.components?.[key] === null ? "—" : `${mine.components?.[key]}%`}</span>
+                          <span className="font-semibold text-gray-900">{mine.components?.[key] === null || mine.components?.[key] === undefined ? "—" : `${mine.components[key]}%`}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : (
                   <p className="text-sm text-gray-600">
-                    Vous n&apos;êtes pas encore classé en {merit.period} : demandez à participer à une activité depuis la page « Activités ».
+                    Vous n&apos;êtes pas encore classé en {merit.period} : votre classement apparaît dès que votre stage a des tâches suivies ou une évaluation du tuteur.
                   </p>
                 )}
               </div>
@@ -295,7 +300,7 @@ export default function MeritPage() {
                     <Medal className={`mx-auto h-8 w-8 ${MEDAL[entry.rank - 1] ?? "text-gray-400"}`} />
                     <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Tableau d&apos;honneur — {entry.rank}{entry.rank === 1 ? "er" : "e"}</p>
                     <p className="mt-1 font-semibold text-gray-900">{entry.name}</p>
-                    <p className="text-sm text-gray-600">{entry.score}/100</p>
+                    <p className="text-sm text-gray-600">{fmt20(entry.score)}/20</p>
                   </div>
                 ))}
               </div>
@@ -311,8 +316,9 @@ export default function MeritPage() {
               <div className="rounded-2xl border border-gray-200 bg-white p-5 text-sm text-gray-600 shadow-sm">
                 <p className="font-medium text-gray-900">Comment le score est calculé</p>
                 <p className="mt-1">
-                  Qualité {merit.weights.quality}% (moyenne des notes du tuteur) · Rapports rendus {merit.weights.engagement}% · Présence pointée {merit.weights.presence}% · Volume{" "}
-                  {merit.weights.volume}% (objectif : {merit.target} activités). Seules les participations acceptées comptent ; classement séparé L3 / M2, égalité de score = même rang.
+                  Moyenne sur 20 calculée automatiquement à partir du stage : avancement des tâches {merit.weights.progress}% · achèvement (tâches terminées) {merit.weights.completion}% · évaluation du tuteur{" "}
+                  {merit.weights.evaluation}% · rapports rendus {merit.weights.reports}% · présence pointée {merit.weights.presence}% (ignorée tant qu&apos;aucun pointage GPS n&apos;existe). Une donnée absente est ignorée (poids réajustés). Classement séparé L3 / M2, égalité de moyenne = même rang.
+                  {merit.averages?.[level] !== undefined && merit.averages?.[level] !== null ? ` Moyenne de la promotion ${level} : ${fmt20(merit.averages[level] as number)}/20.` : ""}
                   {merit.unranked !== undefined ? ` ${merit.unranked} stagiaire(s) sans participation ne sont pas classés.` : ""}
                 </p>
               </div>

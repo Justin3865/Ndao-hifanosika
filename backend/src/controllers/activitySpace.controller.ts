@@ -492,6 +492,10 @@ async function visibleRows(user: { id: number; role: string }, cohorts: Record<L
   return null;
 }
 
+/** Note /20 d'une ligne d'historique (les anciens classements, enregistrés sur 100, sont ramenés sur 20). */
+const scoreOn20Of = (row: { score: number; details?: { scale?: number } | null }): number =>
+  row.details?.scale === 20 ? row.score : Math.round((row.score / 5) * 100) / 100;
+
 const honorBoard = (cohort: MeritRow[]) =>
   cohort.slice(0, 3).map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }));
 
@@ -510,7 +514,8 @@ export const getMerit = wrap("Erreur lors du calcul de l'ordre de mérite", asyn
       period: result.period,
       scope: visible.scope,
       weights: result.weights,
-      target: result.target,
+      scale: result.scale,
+      averages: result.averages,
       unranked: visible.scope === "all" ? result.unranked : undefined,
       generatedAt: result.generatedAt,
       cohorts: { L3: strip(visible.rows.L3), M2: strip(visible.rows.M2) },
@@ -565,8 +570,8 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
       data: {
         scope: "self",
         periods: [],
-        mine: rows.map((r: { period: string; rank: number; cohortSize: number; score: number; badge: string | null; level: string }) => ({
-          period: r.period, rank: r.rank, cohortSize: r.cohortSize, score: r.score, badge: r.badge, level: r.level,
+        mine: rows.map((r: { period: string; rank: number; cohortSize: number; score: number; badge: string | null; level: string; details: { scale?: number } | null }) => ({
+          period: r.period, rank: r.rank, cohortSize: r.cohortSize, score: scoreOn20Of(r), badge: r.badge, level: r.level,
         })),
         cohorts: null,
       },
@@ -609,15 +614,16 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
     const shape = (level: Level) =>
       rows
         .filter((r: { level: string }) => r.level === level)
-        .map((r: { userId: number; rank: number; cohortSize: number; score: number; badge: string | null; details: { components?: unknown; counts?: unknown } | null }) => ({
+        .map((r: { userId: number; rank: number; cohortSize: number; score: number; badge: string | null; details: { scale?: number; components?: unknown; counts?: unknown } | null }) => ({
           userId: r.userId,
           name: name.get(r.userId) ?? "—",
           rank: r.rank,
           cohortSize: r.cohortSize,
-          score: r.score,
+          score: scoreOn20Of(r),
           badge: r.badge,
-          components: r.details?.components ?? null,
-          counts: r.details?.counts ?? null,
+          // les anciens classements (activités, /100) n'ont pas les mêmes composantes : on ne les affiche pas
+          components: r.details?.scale === 20 ? r.details?.components ?? null : null,
+          counts: r.details?.scale === 20 ? r.details?.counts ?? null : null,
         }));
 
     cohorts = { L3: shape("L3"), M2: shape("M2") };

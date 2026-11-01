@@ -127,6 +127,12 @@ const ACCESS_RULES: AccessRule[] = [
     roles: ["ADMIN", "DIRECTION", "COORDINATOR", "RH", ...TUTEURS, ...STAGIAIRES],
   },
 
+  // Évaluation finale (projets : pilotage ; stages : filtrés côté serveur pour les tuteurs)
+  {
+    pattern: /^\/evaluation-finale(\/|$)/,
+    roles: ["ADMIN", "DIRECTION", "DAF", "COMMUNICATION", "COORDINATOR", "RH", ...TUTEURS],
+  },
+
   // Rapports
   { pattern: /^\/reports(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "RH", "COMMUNICATION", "COORDINATOR"] },
   { pattern: /^\/suivi-evaluation(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COORDINATOR", "RH", "COMMUNICATION", "DSI", "TUTEUR_L3", "TUTEUR_M2"] },

@@ -319,10 +319,10 @@ export function ActivitiesBoard() {
               {merit.rank !== null ? (
                 <span>
                   Ordre de mérite {merit.period} ({merit.level}) : vous êtes <strong>{merit.rank}
-                  {merit.rank === 1 ? "er" : "e"}</strong> sur {merit.cohortSize} — score {merit.score}/100 ({merit.badge})
+                  {merit.rank === 1 ? "er" : "e"}</strong> sur {merit.cohortSize} — moyenne {merit.score}/20 ({merit.badge})
                 </span>
               ) : (
-                <span>Participez à une activité pour entrer dans l&apos;ordre de mérite {merit.period}.</span>
+                <span>Votre stage n&apos;a pas encore assez de données (tâches, évaluation) pour entrer dans l&apos;ordre de mérite {merit.period}.</span>
               )}
             </span>
             <span className="font-medium underline">Voir le classement</span>

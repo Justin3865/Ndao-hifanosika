@@ -8,6 +8,7 @@ import Sidebar from "./Sidebar";
 import Footer from "./Footer";
 import { ToastHost } from "@/components/ui/ToastHost";
 import { MissionBanner } from "@/components/mission/MissionBanner";
+import { EvaluationSubNav } from "@/components/evaluations/EvaluationSubNav";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -32,7 +33,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
           <MissionBanner />
 
-          <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
+          <main className="flex-1 p-4 md:p-6 lg:p-8">
+            <EvaluationSubNav />
+            {children}
+          </main>
 
           <Footer />
         </div>
