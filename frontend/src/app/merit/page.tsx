@@ -36,7 +36,7 @@ const COMPONENT_LABELS: Array<[MeritKey, string]> = [
 
 const fmt20 = (value: number) => value.toFixed(2).replace(/\.?0+$/, "");
 
-const th = "px-4 py-3 font-semibold";
+const th = "px-2 py-3 font-semibold";
 const card = "rounded-2xl border border-gray-200 bg-white p-6 shadow-sm";
 
 function Rank({ rank }: { rank: number }) {
@@ -53,17 +53,17 @@ function Rank({ rank }: { rank: number }) {
 function ScoreBar({ value }: { value: number }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 w-28 overflow-hidden rounded-full bg-gray-200">
+      <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-200">
         <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, Math.max(0, (value / 20) * 100))}%` }} />
       </div>
-      <span className="text-sm font-semibold text-gray-900">{fmt20(value)}/20</span>
+      <span className="shrink-0 text-sm font-semibold text-gray-900">{fmt20(value)}/20</span>
     </div>
   );
 }
 
 function BadgeTag({ badge }: { badge: string | null }) {
   return badge ? (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${BADGE[badge] ?? "bg-gray-100 text-gray-700"}`}>{badge}</span>
+    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${BADGE[badge] ?? "bg-gray-100 text-gray-700"}`}>{badge}</span>
   ) : null;
 }
 
@@ -71,8 +71,13 @@ function RankingTable({ rows, highlightId }: { rows: MeritRow[]; highlightId?: n
   if (rows.length === 0) return <p className="px-4 py-8 text-center text-sm text-gray-500">Aucun stagiaire classé pour cette période.</p>;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] text-left text-sm">
+    <div className="overflow-hidden">
+      <table className="w-full table-fixed text-left text-sm">
+        <colgroup>
+          {[5, 14, 14, 9, 9, 7, 8, 8, 14, 12].map((w, i) => (
+            <col key={i} style={{ width: `${w}%` }} />
+          ))}
+        </colgroup>
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th className={th}>Rang</th>
@@ -90,22 +95,25 @@ function RankingTable({ rows, highlightId }: { rows: MeritRow[]; highlightId?: n
         <tbody className="divide-y divide-gray-100">
           {rows.map((row) => (
             <tr key={row.userId} className={row.userId === highlightId ? "bg-blue-50" : "hover:bg-gray-50"}>
-              <td className="px-4 py-3">
+              <td className="px-2 py-3">
                 <Rank rank={row.rank} />
               </td>
-              <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
-              <td className="px-4 py-3">
+              <td className="px-2 py-3 font-medium text-gray-900">{row.name}</td>
+              <td className="px-2 py-3">
                 <ScoreBar value={row.score} />
               </td>
               {COMPONENT_LABELS.map(([key]) => (
-                <td key={key} className="px-4 py-3 text-gray-700">
+                <td key={key} className="px-2 py-3 text-gray-700">
                   {row.components?.[key] === null || row.components?.[key] === undefined ? "—" : `${row.components[key]}%`}
                 </td>
               ))}
-              <td className="px-4 py-3 text-gray-700">
+              <td className="px-2 py-3 text-gray-700">
                 {row.counts ? `${row.counts.tasksDone}/${row.counts.tasks} tâche(s) terminée(s)` : "—"}
+                {row.stage?.durationMonths ? (
+                  <span className="block text-xs text-gray-500">Durée : {row.stage.durationMonths} mois</span>
+                ) : null}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-2 py-3">
                 <BadgeTag badge={row.badge} />
               </td>
             </tr>
@@ -119,7 +127,7 @@ function RankingTable({ rows, highlightId }: { rows: MeritRow[]; highlightId?: n
 export default function MeritPage() {
   const [role, setRole] = useState("");
   const [tab, setTab] = useState<"ranking" | "history">("ranking");
-  const [level, setLevel] = useState<Level>("L3");
+  const [level, setLevel] = useState<Level | "AUTRE">("L3");
   const [period, setPeriod] = useState(String(new Date().getFullYear()));
   const [merit, setMerit] = useState<MeritData | null>(null);
   const [history, setHistory] = useState<HistoryData | null>(null);
@@ -173,9 +181,19 @@ export default function MeritPage() {
     setClosing(true);
 
     try {
-      await closeMeritPeriod(period);
-      toast.success(`Classement ${period} enregistré dans l'historique.`);
+      const result = await closeMeritPeriod(period);
+
+      if (!result || result.saved === 0) {
+        toast.error(`Aucun stagiaire classé en ${period} : rien à enregistrer dans l'historique.`);
+        return;
+      }
+
+      toast.success(`Classement ${period} enregistré dans l'historique (${result.saved} stagiaire(s)).`);
+
+      // le classement clôturé passe directement dans l'historique, sur la période qui vient d'être enregistrée
       setHistory(null);
+      setHistoryPeriod(period);
+      setTab("history");
     } catch (err) {
       toast.error(errorMessage(err, "Clôture impossible."));
     } finally {
@@ -183,9 +201,52 @@ export default function MeritPage() {
     }
   };
 
-  const rows = merit?.cohorts[level] ?? [];
+  // « Autre » : stagiaires dont la durée de stage n'est ni 2 mois (L3) ni 6 mois (M2) — classés entre eux
+  const otherRows = useMemo(() => {
+    const all = [...(merit?.cohorts.L3 ?? []), ...(merit?.cohorts.M2 ?? [])].filter(
+      (row) => row.stage?.durationMonths !== null && row.stage?.durationMonths !== undefined && row.stage.durationMonths !== (row.level === "M2" ? 6 : 2),
+    );
+    all.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"));
+    const ranked: MeritRow[] = [];
+    all.forEach((row, index) => {
+      // égalité de moyenne = même rang
+      const rank = index > 0 && ranked[index - 1].score === row.score ? ranked[index - 1].rank : index + 1;
+      ranked.push({ ...row, rank, cohortSize: all.length });
+    });
+    return ranked;
+  }, [merit]);
+
+  const rows = level === "AUTRE" ? otherRows : merit?.cohorts[level] ?? [];
   const mine = isIntern ? rows[0] : undefined;
-  const honor = merit?.honor[level] ?? [];
+  // Tableau d'honneur : réservé aux stagiaires ayant au moins 16/20 (sinon aucun)
+  const honor =
+    level === "AUTRE"
+      ? otherRows.filter((row) => row.score >= 16).slice(0, 3).map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }))
+      : (merit?.honor[level] ?? []).filter((entry) => entry.score >= 16);
+  const historyLevel: Level | "AUTRE" = level;
+
+  // Historique : « Autre » = stagiaires dont la durée de stage n'est ni 2 mois (L3) ni 6 mois (M2), reclassés entre eux
+  const historyRows = useMemo(() => {
+    const cohorts = history?.cohorts;
+    if (!cohorts) return [] as MeritRow[];
+    if (historyLevel !== "AUTRE") return cohorts[historyLevel] ?? [];
+
+    const all = [...(cohorts.L3 ?? []), ...(cohorts.M2 ?? [])].filter(
+      (row) => row.stage?.durationMonths !== null && row.stage?.durationMonths !== undefined && row.stage.durationMonths !== (row.level === "M2" ? 6 : 2),
+    );
+    all.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"));
+    const ranked: MeritRow[] = [];
+    all.forEach((row, index) => {
+      const rank = index > 0 && ranked[index - 1].score === row.score ? ranked[index - 1].rank : index + 1;
+      ranked.push({ ...row, rank, cohortSize: all.length });
+    });
+    return ranked;
+  }, [history, historyLevel]);
+
+  const historyHonor =
+    historyLevel === "AUTRE"
+      ? historyRows.filter((row) => row.score >= 16).slice(0, 3).map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }))
+      : (history?.honor?.[historyLevel] ?? []).filter((entry) => entry.score >= 16);
 
   const tabClass = (active: boolean) =>
     `inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition ${active ? "bg-blue-700 text-white" : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`;
@@ -203,13 +264,27 @@ export default function MeritPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={tabClass(tab === "ranking")} onClick={() => setTab("ranking")}>
-              <Trophy className="h-4 w-4" /> Classement
-            </button>
-            <button type="button" className={tabClass(tab === "history")} onClick={() => setTab("history")}>
-              <History className="h-4 w-4" /> Historique
-            </button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto">
+            <div className="flex gap-2 [&>button]:flex-1 [&>button]:justify-center">
+              <button type="button" className={tabClass(tab === "ranking")} onClick={() => setTab("ranking")}>
+                <Trophy className="h-4 w-4" /> Classement
+              </button>
+              <button type="button" className={tabClass(tab === "history")} onClick={() => setTab("history")}>
+                <History className="h-4 w-4" /> Historique
+              </button>
+            </div>
+
+            {tab === "ranking" && CLOSERS.includes(role) && (
+              <button
+                type="button"
+                disabled={closing}
+                onClick={close}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-600 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
+              >
+                <History className="h-4 w-4" />
+                Clôturer la période {period}
+              </button>
+            )}
           </div>
         </div>
 
@@ -229,30 +304,19 @@ export default function MeritPage() {
 
               {!isIntern && (
                 <div className="inline-flex overflow-hidden rounded-xl border border-gray-300 bg-white">
-                  {(["L3", "M2"] as Level[]).map((value) => (
+                  {(["L3", "M2", "AUTRE"] as Array<Level | "AUTRE">).map((value) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => setLevel(value)}
                       className={`px-5 py-3 text-sm font-medium ${level === value ? "bg-blue-700 text-white" : "text-gray-700 hover:bg-gray-50"}`}
                     >
-                      {value}
+                      {value === "AUTRE" ? "Autre" : value}
                     </button>
                   ))}
                 </div>
               )}
 
-              {CLOSERS.includes(role) && (
-                <button
-                  type="button"
-                  disabled={closing}
-                  onClick={close}
-                  className="ml-auto inline-flex items-center gap-2 rounded-xl border border-blue-600 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
-                >
-                  <History className="h-4 w-4" />
-                  Clôturer la période {period}
-                </button>
-              )}
             </div>
 
             {loading && <p className="text-sm text-gray-500">Chargement...</p>}
@@ -318,7 +382,7 @@ export default function MeritPage() {
                 <p className="mt-1">
                   Moyenne sur 20 calculée automatiquement à partir du stage : avancement des tâches {merit.weights.progress}% · achèvement (tâches terminées) {merit.weights.completion}% · évaluation du tuteur{" "}
                   {merit.weights.evaluation}% · rapports rendus {merit.weights.reports}% · présence pointée {merit.weights.presence}% (ignorée tant qu&apos;aucun pointage GPS n&apos;existe). Une donnée absente est ignorée (poids réajustés). Classement séparé L3 / M2, égalité de moyenne = même rang.
-                  {merit.averages?.[level] !== undefined && merit.averages?.[level] !== null ? ` Moyenne de la promotion ${level} : ${fmt20(merit.averages[level] as number)}/20.` : ""}
+                  {level !== "AUTRE" && merit.averages?.[level] !== undefined && merit.averages?.[level] !== null ? ` Moyenne de la promotion ${level} : ${fmt20(merit.averages[level] as number)}/20.` : ""}
                   {merit.unranked !== undefined ? ` ${merit.unranked} stagiaire(s) sans participation ne sont pas classés.` : ""}
                 </p>
               </div>
@@ -327,6 +391,8 @@ export default function MeritPage() {
         )}
 
         {/* ------------------------- HISTORIQUE ------------------------- */}
+        {tab === "history" && !history && !error && <p className="text-sm text-gray-500">Chargement...</p>}
+
         {tab === "history" && history && (
           <>
             {history.scope === "self" ? (
@@ -347,15 +413,15 @@ export default function MeritPage() {
                     <tbody className="divide-y divide-gray-100">
                       {history.mine.map((row) => (
                         <tr key={row.period}>
-                          <td className="px-4 py-3 font-medium text-gray-900">{row.period}</td>
-                          <td className="px-4 py-3 text-gray-700">{row.level}</td>
-                          <td className="px-4 py-3 text-gray-700">
+                          <td className="px-2 py-3 font-medium text-gray-900">{row.period}</td>
+                          <td className="px-2 py-3 text-gray-700">{row.level}</td>
+                          <td className="px-2 py-3 text-gray-700">
                             {row.rank} / {row.cohortSize}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <ScoreBar value={row.score} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <BadgeTag badge={row.badge} />
                           </td>
                         </tr>
@@ -381,21 +447,34 @@ export default function MeritPage() {
                   </select>
 
                   <div className="inline-flex overflow-hidden rounded-xl border border-gray-300 bg-white">
-                    {(["L3", "M2"] as Level[]).map((value) => (
+                    {(["L3", "M2", "AUTRE"] as Array<Level | "AUTRE">).map((value) => (
                       <button
                         key={value}
                         type="button"
                         onClick={() => setLevel(value)}
-                        className={`px-5 py-3 text-sm font-medium ${level === value ? "bg-blue-700 text-white" : "text-gray-700 hover:bg-gray-50"}`}
+                        className={`px-5 py-3 text-sm font-medium ${historyLevel === value ? "bg-blue-700 text-white" : "text-gray-700 hover:bg-gray-50"}`}
                       >
-                        {value}
+                        {value === "AUTRE" ? "Autre" : value}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {historyHonor.length > 0 && (
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    {historyHonor.map((entry) => (
+                      <div key={entry.rank} className={`${card} text-center`}>
+                        <Medal className={`mx-auto h-8 w-8 ${MEDAL[entry.rank - 1] ?? "text-gray-400"}`} />
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Tableau d&apos;honneur — {entry.rank}{entry.rank === 1 ? "er" : "e"}</p>
+                        <p className="mt-1 font-semibold text-gray-900">{entry.name}</p>
+                        <p className="text-sm text-gray-600">{fmt20(entry.score)}/20</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  <RankingTable rows={history.cohorts?.[level] ?? []} />
+                  <RankingTable rows={historyRows} />
                 </div>
               </>
             )}

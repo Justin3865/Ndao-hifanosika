@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ClipboardCheck } from "lucide-react";
 import { ActivitySpace } from "@/components/activities/ActivitySpace";
 import { ProjectMilestones } from "@/components/milestones/ProjectMilestones";
+import { ProjectActivities } from "@/components/projects/ProjectActivities";
+import { InternshipProgress } from "@/components/internships/InternshipProgress";
 import { StatusBadge } from "@/components/crud/StatusBadge";
 import { LEVEL_COLORS, ZONE_LEVELS, ZoneMap, zoneLevelDetails, zoneLevelLabel, zonePlaces } from "@/components/zones/ZoneMap";
 import { ZonesOverview } from "@/components/zones/ZonesOverview";
@@ -126,7 +128,12 @@ export const projectsConfig: ResourceConfig = {
     },
   ],
   titleOf: (p) => p.name,
-  extra: (p) => <ProjectMilestones projectId={p.id} />,
+  extra: (p) => (
+    <>
+      <ProjectActivities projectId={p.id} />
+      <ProjectMilestones projectId={p.id} />
+    </>
+  ),
   searchOf: (p) => `${p.name} ${p.code} ${p.department?.name ?? ""} ${p.objective ?? ""} ${p.slogan ?? ""} ${(p.partnerLinks ?? []).map((l: { partner?: { name?: string } }) => l.partner?.name ?? "").join(" ")}`,
   rowActions: (p, role) =>
     SUIVI_EVAL_ROLES.includes(role) ? (
@@ -456,6 +463,7 @@ export const internshipsConfig: ResourceConfig = {
     { label: "Statut", value: <StatusBadge status={i.status} /> },
     { label: "Description", value: i.description || "—" },
   ],
+  extra: (i) => <InternshipProgress internshipId={i.id} />,
   titleOf: (i) => i.title,
   searchOf: (i) => `${i.title} ${i.theme ?? ""} ${i.project?.code ?? ""} ${i.project?.name ?? ""} ${personName(i.student)} ${personName(i.supervisor)} ${i.institution ?? ""}`,
   rowActions: (i, role) =>

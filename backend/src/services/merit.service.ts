@@ -39,7 +39,7 @@ export interface MeritRow {
   supervisorIds: number[];
   components: MeritComponents;
   counts: { stages: number; tasks: number; tasksDone: number; evaluations: number };
-  stage: { title: string; status: string } | null;
+  stage: { title: string; status: string; durationMonths: number | null } | null;
 }
 
 export interface MeritResult {
@@ -130,7 +130,7 @@ export async function computeMerit(period: string): Promise<MeritResult> {
   );
 
   const byStudent = new Map<number, StageMetrics[]>();
-  const titles = new Map<number, { title: string; status: string; startDate: Date }>();
+  const titles = new Map<number, { title: string; status: string; startDate: Date; durationMonths: number | null }>();
   const supervisors = new Map<number, number[]>();
 
   for (const { internship, metrics } of stages) {
@@ -138,7 +138,12 @@ export async function computeMerit(period: string): Promise<MeritResult> {
 
     const known = titles.get(internship.studentId);
     if (!known || internship.startDate > known.startDate) {
-      titles.set(internship.studentId, { title: internship.title, status: internship.status, startDate: internship.startDate });
+      titles.set(internship.studentId, {
+        title: internship.title,
+        status: internship.status,
+        startDate: internship.startDate,
+        durationMonths: metrics.presence.referenceMonths ?? null,
+      });
     }
 
     if (internship.supervisorId !== null) {
@@ -196,7 +201,7 @@ export async function computeMerit(period: string): Promise<MeritResult> {
         tasksDone: mine.reduce((sum, m) => sum + m.tasks.completed, 0),
         evaluations: mine.reduce((sum, m) => sum + m.evaluations.count, 0),
       },
-      stage: stage ? { title: stage.title, status: stage.status } : null,
+      stage: stage ? { title: stage.title, status: stage.status, durationMonths: stage.durationMonths } : null,
     });
   }
 
@@ -226,13 +231,38 @@ export async function computeMerit(period: string): Promise<MeritResult> {
   };
 }
 
-/** Clôture une période : enregistre le classement dans l'historique (relançable : met à jour). */
-export async function closePeriod(period: string, closedById: number): Promise<{ saved: number }> {
+/** Promotion « Autre » : durée de stage ni 2 mois (L3) ni 6 mois (M2) — même règle que l'écran Ordre de mérite. */
+export const isOtherGroup = (row: Pick<MeritRow, "level" | "stage">): boolean => {
+  const months = row.stage?.durationMonths;
+  return months !== null && months !== undefined && months !== (row.level === "M2" ? 6 : 2);
+};
+
+export const HONOR_MIN_SCORE = 16;
+
+/**
+ * Clôture une période : enregistre TOUT le classement dans l'historique (relançable : met à jour).
+ * Tous les stagiaires classés sont enregistrés, qu'ils figurent ou non au tableau d'honneur.
+ */
+export async function closePeriod(
+  period: string,
+  closedById: number,
+): Promise<{ saved: number; honored: number }> {
   const result = await computeMerit(period);
-  let saved = 0;
+  const savedIds: number[] = [];
+  let honored = 0;
 
   for (const level of ["L3", "M2"] as Level[]) {
+    const honorIds = new Set(
+      result.cohorts[level]
+        .filter((row) => row.score >= HONOR_MIN_SCORE)
+        .slice(0, 3)
+        .map((row) => row.userId),
+    );
+
     for (const row of result.cohorts[level]) {
+      const onHonorBoard = honorIds.has(row.userId);
+      if (onHonorBoard) honored += 1;
+
       const data = {
         level: row.level,
         rank: row.rank,
@@ -240,7 +270,15 @@ export async function closePeriod(period: string, closedById: number): Promise<{
         score: row.score,
         badge: row.badge,
         // scale = 20 : distingue les classements /20 (stage) des anciens classements /100 (activités)
-        details: { scale: MERIT_SCALE, components: row.components, counts: row.counts, stage: row.stage, name: row.name },
+        details: {
+          scale: MERIT_SCALE,
+          components: row.components,
+          counts: row.counts,
+          stage: row.stage,
+          name: row.name,
+          group: isOtherGroup(row) ? "AUTRE" : row.level,
+          honor: onHonorBoard,
+        },
         closedById,
       };
 
@@ -249,9 +287,14 @@ export async function closePeriod(period: string, closedById: number): Promise<{
         create: { period, userId: row.userId, ...data },
         update: { ...data, createdAt: new Date() },
       });
-      saved += 1;
+      savedIds.push(row.userId);
     }
   }
 
-  return { saved };
+  // re-clôture : retire de l'historique les stagiaires qui ne sont plus classés, pour éviter des rangs incohérents
+  if (savedIds.length > 0) {
+    await db.meritSnapshot.deleteMany({ where: { period, userId: { notIn: savedIds } } });
+  }
+
+  return { saved: savedIds.length, honored };
 }

@@ -70,6 +70,17 @@ function workingDaysBetween(from: Date, to: Date): number {
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
+/** Durée de référence d'un stage pour la présence : L3 = 2 mois, M2 = 6 mois (ou durée libre « Autre »). */
+export const PRESENCE_MONTHS = { L3: 2, M2: 6 } as const;
+export type PresenceLevel = keyof typeof PRESENCE_MONTHS;
+
+/** Dernier jour de la période de référence (début + N mois − 1 jour). */
+function presenceEnd(start: Date, months: number): Date {
+  const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, start.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d;
+}
+
 // ------------------------------------------------------------
 // Calcul pour un stage
 // ------------------------------------------------------------
@@ -82,6 +93,10 @@ export function computeInternship(
     startDate: Date;
     endDate: Date | null;
     supervisorId: number | null;
+    /** niveau du stagiaire : fixe la durée de référence de la présence (L3 = 2 mois, M2 = 6 mois) */
+    level?: PresenceLevel;
+    /** durée libre (mois) saisie pour « Autre » ; prioritaire sur le niveau. NULL = durée du niveau. */
+    durationMonths?: number | null;
   },
   tasks: InternshipTaskRow[],
   evaluations: InternshipEvaluationRow[],
@@ -116,11 +131,35 @@ export function computeInternship(
   const evaluationsPct = avg(evalScores);
 
   // --- présence / GPS ---
+  // Jours présents ÷ jours ouvrés de la durée de référence du niveau (L3 : 2 mois, M2 : 6 mois).
   const periodEnd = internship.endDate && internship.endDate < now ? internship.endDate : now;
   const inPeriod = missions.filter((m) => m.startedAt >= internship.startDate && m.startedAt <= periodEnd);
-  const presentDays = new Set(inPeriod.map((m) => dayKey(m.startedAt))).size;
-  const workingDays = internship.startDate <= now ? workingDaysBetween(internship.startDate, periodEnd) : 0;
-  const presencePct = workingDays >= 1 && operational ? clamp((presentDays / workingDays) * 100) : null;
+  const elapsedWorkingDays = internship.startDate <= now ? workingDaysBetween(internship.startDate, periodEnd) : 0;
+  const elapsedPresentDays = new Set(inPeriod.map((m) => dayKey(m.startedAt))).size;
+
+  let presentDays = elapsedPresentDays;
+  let workingDays = elapsedWorkingDays;
+  let plannedWorkingDays = elapsedWorkingDays;
+  let presencePct: number | null = null;
+
+  const referenceMonths = internship.durationMonths || (internship.level ? PRESENCE_MONTHS[internship.level] : null);
+
+  if (referenceMonths) {
+    const refEnd = presenceEnd(internship.startDate, referenceMonths);
+    const refEndInclusive = new Date(refEnd.getTime() + 86399999);
+    const refMissions = missions.filter((m) => m.startedAt >= internship.startDate && m.startedAt <= refEndInclusive);
+    presentDays = new Set(refMissions.map((m) => dayKey(m.startedAt))).size;
+    plannedWorkingDays = workingDaysBetween(internship.startDate, refEnd);
+    presencePct =
+      plannedWorkingDays >= 1 && operational && internship.startDate <= now
+        ? clamp((presentDays / plannedWorkingDays) * 100)
+        : null;
+  } else {
+    presencePct = elapsedWorkingDays >= 1 && operational ? clamp((elapsedPresentDays / elapsedWorkingDays) * 100) : null;
+  }
+  // les alertes de présence restent basées sur le temps écoulé (pas de fausse alerte en début de stage)
+  const elapsedPresencePct =
+    elapsedWorkingDays >= 1 && operational ? clamp((elapsedPresentDays / elapsedWorkingDays) * 100) : null;
 
   const components = { tasks: tasksPct, reports: reportsPct, evaluations: evaluationsPct, presence: presencePct };
 
@@ -153,13 +192,13 @@ export function computeInternship(
       add("STAGE_ECHU", "warning", "Stagiaire", "La date de fin est dépassée alors que le stage est encore en cours.");
     if (!internship.supervisorId) add("SANS_TUTEUR", "info", "Données", "Aucun tuteur assigné.");
 
-    if (presencePct !== null && workingDays >= 5) {
-      if (presencePct < 50)
-        add("PRESENCE_CRITIQUE", "critical", "GPS", `Présence terrain très faible : ${Math.round(presencePct)} %.`);
-      else if (presencePct < 70)
-        add("PRESENCE_FAIBLE", "warning", "GPS", `Présence terrain insuffisante : ${Math.round(presencePct)} %.`);
+    if (elapsedPresencePct !== null && elapsedWorkingDays >= 5) {
+      if (elapsedPresencePct < 50)
+        add("PRESENCE_CRITIQUE", "critical", "GPS", `Présence terrain très faible : ${Math.round(elapsedPresencePct)} %.`);
+      else if (elapsedPresencePct < 70)
+        add("PRESENCE_FAIBLE", "warning", "GPS", `Présence terrain insuffisante : ${Math.round(elapsedPresencePct)} %.`);
     }
-    if (workingDays >= 5 && inPeriod.length === 0)
+    if (elapsedWorkingDays >= 5 && inPeriod.length === 0)
       add("SANS_GPS", "info", "GPS", "Aucun check-in GPS enregistré depuis le début du stage.");
   }
 
@@ -201,6 +240,8 @@ export function computeInternship(
     presence: {
       presentDays,
       workingDays,
+      plannedWorkingDays,
+      referenceMonths,
       rate: presencePct,
       gpsCheckins: inPeriod.length,
       gpsPoints: inPeriod.reduce((a, m) => a + m.points, 0),
@@ -235,7 +276,7 @@ export async function loadInternshipsMonitoring(
     include: {
       project: { select: { id: true, name: true, code: true } },
       department: { select: { id: true, name: true } },
-      student: { select: { id: true, firstName: true, lastName: true, email: true } },
+      student: { select: { id: true, firstName: true, lastName: true, email: true, role: true } },
       supervisor: { select: { id: true, firstName: true, lastName: true } },
       tasks: { select: TASK_SELECT },
       evaluations: {
@@ -281,7 +322,7 @@ export async function loadInternshipsMonitoring(
       hasEvidence: !!t.evidenceName,
     }));
     const studentMissions = byStudent.get(i.studentId) ?? [];
-    const metrics = computeInternship(i, taskRows, i.evaluations, studentMissions);
+    const metrics = computeInternship({ ...i, level: String(i.student?.role ?? "").endsWith("M2") ? "M2" : "L3" }, taskRows, i.evaluations, studentMissions);
     return { internship: i, taskRows, metrics, missions: studentMissions };
   });
 }

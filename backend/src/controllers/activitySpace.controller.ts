@@ -4,7 +4,7 @@ import { logger } from "../config/logger";
 import { sendError } from "../middlewares/error.middleware";
 import { getReqUser } from "../utils/dataScope";
 import { notifyUsers } from "../utils/notify";
-import { closePeriod, computeMerit, Level, levelOf, MeritRow, validPeriod } from "../services/merit.service";
+import { closePeriod, computeMerit, HONOR_MIN_SCORE as MERIT_HONOR_MIN, Level, levelOf, MeritRow, validPeriod } from "../services/merit.service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
@@ -496,8 +496,13 @@ async function visibleRows(user: { id: number; role: string }, cohorts: Record<L
 const scoreOn20Of = (row: { score: number; details?: { scale?: number } | null }): number =>
   row.details?.scale === 20 ? row.score : Math.round((row.score / 5) * 100) / 100;
 
+/** Tableau d'honneur : uniquement les stagiaires ayant au moins 16/20 (aucun premier / deuxième / troisième sinon). */
+const HONOR_MIN_SCORE = MERIT_HONOR_MIN;
 const honorBoard = (cohort: MeritRow[]) =>
-  cohort.slice(0, 3).map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }));
+  cohort
+    .filter((row) => row.score >= HONOR_MIN_SCORE)
+    .slice(0, 3)
+    .map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }));
 
 export const getMerit = wrap("Erreur lors du calcul de l'ordre de mérite", async (req, res) => {
   const user = me(req);
@@ -552,9 +557,9 @@ export const closeMerit = wrap("Erreur lors de la clôture de la période", asyn
   if (!MERIT_FULL.includes(user.role)) return fail(res, 403, "Accès refusé.");
 
   const period = validPeriod(req.body?.period);
-  const { saved } = await closePeriod(period, user.id);
+  const { saved, honored } = await closePeriod(period, user.id);
 
-  res.json({ success: true, data: { period, saved } });
+  res.json({ success: true, data: { period, saved, honored } });
 });
 
 /** GET /merit/history — périodes clôturées ; ?period=2025 → classement détaillé de cette période. */
@@ -614,7 +619,7 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
     const shape = (level: Level) =>
       rows
         .filter((r: { level: string }) => r.level === level)
-        .map((r: { userId: number; rank: number; cohortSize: number; score: number; badge: string | null; details: { scale?: number; components?: unknown; counts?: unknown } | null }) => ({
+        .map((r: { userId: number; rank: number; cohortSize: number; score: number; badge: string | null; details: { scale?: number; components?: unknown; counts?: unknown; stage?: unknown } | null }) => ({
           userId: r.userId,
           name: name.get(r.userId) ?? "—",
           rank: r.rank,
@@ -624,10 +629,29 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
           // les anciens classements (activités, /100) n'ont pas les mêmes composantes : on ne les affiche pas
           components: r.details?.scale === 20 ? r.details?.components ?? null : null,
           counts: r.details?.scale === 20 ? r.details?.counts ?? null : null,
+          stage: r.details?.scale === 20 ? r.details?.stage ?? null : null,
         }));
 
     cohorts = { L3: shape("L3"), M2: shape("M2") };
   }
 
-  res.json({ success: true, data: { scope: allowed ? "supervised" : "all", periods, selected: selected ?? null, mine: [], cohorts } });
+  // tableau d'honneur de la période clôturée (≥ 16/20, 3 premiers) — le classement complet reste dans `cohorts`
+  const honorOf = (list: unknown[] | undefined) =>
+    (list ?? [])
+      .map((r) => r as { rank: number; name: string; score: number; badge: string | null })
+      .filter((r) => r.score >= HONOR_MIN_SCORE)
+      .slice(0, 3)
+      .map((r) => ({ rank: r.rank, name: r.name, score: r.score, badge: r.badge }));
+
+  res.json({
+    success: true,
+    data: {
+      scope: allowed ? "supervised" : "all",
+      periods,
+      selected: selected ?? null,
+      mine: [],
+      cohorts,
+      honor: cohorts ? { L3: honorOf(cohorts.L3), M2: honorOf(cohorts.M2) } : null,
+    },
+  });
 });

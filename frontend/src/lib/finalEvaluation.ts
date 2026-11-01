@@ -105,7 +105,12 @@ export interface InternshipEvaluation {
   components: Record<"progress" | "completion" | "evaluation" | "reports" | "presence", number | null>;
   tasks: { total: number; completed: number };
   evaluations: number;
+  durationMonths?: number | null;
 }
+
+/** Durée standard (mois) d'un stage selon le niveau ; toute autre durée = « Autre ». */
+export const isOtherDuration = (level: Level, durationMonths?: number | null): boolean =>
+  durationMonths !== null && durationMonths !== undefined && durationMonths !== (level === "M2" ? 6 : 2);
 
 export interface InternshipsOverview {
   weights: Record<string, number>;

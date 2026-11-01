@@ -353,6 +353,8 @@ model Internship {
   theme        String?
   /// Département d'affectation du stagiaire (ex. « Suivi et Évaluation »)
   departmentId Int?
+  /// Durée prévue (mois) pour le calcul de la présence : L3 = 2, M2 = 6, autre = saisie libre. NULL = ancien calcul.
+  durationMonths Int?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 

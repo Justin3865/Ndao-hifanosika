@@ -426,6 +426,8 @@ export async function evaluateInternships(scope: Record<string, unknown>) {
       components,
       tasks: { total: metrics.tasks.total, completed: metrics.tasks.completed },
       evaluations: metrics.evaluations.count,
+      /** durée de référence (mois) : sert au filtre « Autre » (≠ 2 mois L3 / 6 mois M2) */
+      durationMonths: metrics.presence.referenceMonths ?? null,
     };
   });
 

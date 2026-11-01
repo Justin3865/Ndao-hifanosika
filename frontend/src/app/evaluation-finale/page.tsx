@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Award, GraduationCap, Briefcase } from "lucide-react";
+import { Award, GraduationCap, Briefcase, Plus } from "lucide-react";
 import { AppLayout } from "@/components/layout";
+import { ProgressModal } from "@/components/final-evaluation/ProgressModal";
 import { PercentBar, PhaseTag, ScoreBar, Stat, VerdictTag, card, th } from "@/components/final-evaluation/parts";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage } from "@/lib/crud";
@@ -15,6 +16,7 @@ import {
   fetchInternshipEvaluations,
   fetchProjectEvaluations,
   fmt20,
+  isOtherDuration,
 } from "@/lib/finalEvaluation";
 
 type Tab = "projects" | "internships";
@@ -22,13 +24,20 @@ type Tab = "projects" | "internships";
 export default function FinalEvaluationPage() {
   const [role, setRole] = useState("");
   const [tab, setTab] = useState<Tab>("projects");
-  const [level, setLevel] = useState<Level | "ALL">("ALL");
+  const [level, setLevel] = useState<Level | "ALL" | "AUTRE">("ALL");
   const [projects, setProjects] = useState<ProjectsOverview | null>(null);
   const [internships, setInternships] = useState<InternshipsOverview | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const [modal, setModal] = useState<{ mode: "project" | "internship"; id: number | null } | null>(null);
 
   const canSeeProjects = PROJECT_READ_ROLES.includes(role);
+  // Mêmes rôles que les routes d'écriture existantes (monitoring WRITE / internships).
+  const canAddProjectProgress = ["ADMIN", "DIRECTION", "COORDINATOR"].includes(role);
+  const canAddStageProgress = ["ADMIN", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"].includes(role);
+  const addClass =
+    "inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-500 transition hover:bg-emerald-500/20";
 
   useEffect(() => {
     const current = getStoredRole();
@@ -62,10 +71,12 @@ export default function FinalEvaluationPage() {
     return () => {
       cancelled = true;
     };
-  }, [role, tab, canSeeProjects]);
+  }, [role, tab, canSeeProjects, reload]);
 
   const stages = useMemo(
-    () => (internships?.internships ?? []).filter((item) => level === "ALL" || item.level === level),
+    () => (internships?.internships ?? []).filter((item) =>
+      level === "ALL" ? true : level === "AUTRE" ? isOtherDuration(item.level, item.durationMonths) : item.level === level,
+    ),
     [internships, level],
   );
 
@@ -85,15 +96,28 @@ export default function FinalEvaluationPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {canSeeProjects && (
-              <button type="button" className={tabClass(tab === "projects")} onClick={() => setTab("projects")}>
-                <Briefcase className="h-4 w-4" /> Projets
+          <div className="flex w-full flex-col gap-2 sm:w-auto">
+            <div className="flex gap-2 [&>button]:flex-1 [&>button]:justify-center">
+              {canSeeProjects && (
+                <button type="button" className={tabClass(tab === "projects")} onClick={() => setTab("projects")}>
+                  <Briefcase className="h-4 w-4" /> Projets
+                </button>
+              )}
+              <button type="button" className={tabClass(tab === "internships")} onClick={() => setTab("internships")}>
+                <GraduationCap className="h-4 w-4" /> Stages
+              </button>
+            </div>
+
+            {tab === "projects" && canAddProjectProgress && (
+              <button type="button" className={`${addClass} w-full justify-center`} onClick={() => setModal({ mode: "project", id: null })}>
+                <Plus className="h-4 w-4" /> Ajouter avancement projet
               </button>
             )}
-            <button type="button" className={tabClass(tab === "internships")} onClick={() => setTab("internships")}>
-              <GraduationCap className="h-4 w-4" /> Stages
-            </button>
+            {tab === "internships" && canAddStageProgress && (
+              <button type="button" className={`${addClass} w-full justify-center`} onClick={() => setModal({ mode: "internship", id: null })}>
+                <Plus className="h-4 w-4" /> Ajouter avancement stage
+              </button>
+            )}
           </div>
         </div>
 
@@ -114,8 +138,14 @@ export default function FinalEvaluationPage() {
               {projects.projects.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-gray-500">Aucun projet à évaluer.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-left text-sm">
+                <div className="overflow-hidden">
+                  <table className="w-full table-fixed text-left text-sm">
+                    <colgroup>
+                      {[5, 17, 10, 13, 9, 9, 10, 12, 6].map((w, i) => (
+                        <col key={i} style={{ width: `${w}%` }} />
+                      ))}
+                      {canAddProjectProgress && <col style={{ width: "9%" }} />}
+                    </colgroup>
                     <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                       <tr>
                         <th className={th}>Rang</th>
@@ -127,39 +157,45 @@ export default function FinalEvaluationPage() {
                         <th className={th}>Bénéficiaires</th>
                         <th className={th}>Fiabilité</th>
                         <th className={th} />
+                        {canAddProjectProgress && <th className={th} />}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {projects.projects.map((project) => (
                         <tr key={project.projectId} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-semibold text-gray-700">{project.rank || "—"}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3 font-semibold text-gray-700">{project.rank || "—"}</td>
+                          <td className="px-2 py-3">
                             <p className="font-medium text-gray-900">{project.name}</p>
                             <p className="text-xs text-gray-500">{project.code}</p>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <PhaseTag phase={project.phase} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <ScoreBar value={project.score} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <VerdictTag verdict={project.verdict} />
                           </td>
-                          <td className="px-4 py-3 text-gray-700">
+                          <td className="px-2 py-3 text-gray-700">
                             {project.satisfaction.partners.average !== null ? `${project.satisfaction.partners.average}/5 (${project.satisfaction.partners.count})` : "—"}
                           </td>
-                          <td className="px-4 py-3 text-gray-700">
+                          <td className="px-2 py-3 text-gray-700">
                             {project.satisfaction.beneficiaries.average !== null ? `${project.satisfaction.beneficiaries.average}/5 (${project.satisfaction.beneficiaries.count})` : "—"}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <PercentBar value={project.coverage} />
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-2 py-3 text-right">
                             <Link href={`/evaluation-finale/projets/${project.projectId}`} className="font-medium text-blue-700 hover:underline">
                               Détail
                             </Link>
                           </td>
+                          {canAddProjectProgress && (
+                            <td className="px-2 py-3 text-right">
+                              <button type="button" onClick={() => setModal({ mode: "project", id: project.projectId })} className="whitespace-nowrap font-medium text-emerald-500 hover:underline">+ Avancement</button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -189,14 +225,14 @@ export default function FinalEvaluationPage() {
             </div>
 
             <div className="inline-flex overflow-hidden rounded-xl border border-gray-300 bg-white">
-              {(["ALL", "L3", "M2"] as const).map((value) => (
+              {(["ALL", "L3", "M2", "AUTRE"] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setLevel(value)}
                   className={`px-5 py-3 text-sm font-medium ${level === value ? "bg-blue-700 text-white" : "text-gray-700 hover:bg-gray-50"}`}
                 >
-                  {value === "ALL" ? "Tous" : value}
+                  {value === "ALL" ? "Tous" : value === "AUTRE" ? "Autre" : value}
                 </button>
               ))}
             </div>
@@ -205,8 +241,14 @@ export default function FinalEvaluationPage() {
               {stages.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-gray-500">Aucun stage à évaluer.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-left text-sm">
+                <div className="overflow-hidden">
+                  <table className="w-full table-fixed text-left text-sm">
+                    <colgroup>
+                      {[6, 15, 17, 10, 13, 9, 11, 11].map((w, i) => (
+                        <col key={i} style={{ width: `${w}%` }} />
+                      ))}
+                      {canAddStageProgress && <col style={{ width: "8%" }} />}
+                    </colgroup>
                     <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                       <tr>
                         <th className={th}>Rang</th>
@@ -217,37 +259,43 @@ export default function FinalEvaluationPage() {
                         <th className={th}>Mention</th>
                         <th className={th}>Avancement</th>
                         <th className={th}>Achèvement</th>
+                        {canAddStageProgress && <th className={th} />}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {stages.map((stage) => (
                         <tr key={stage.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-semibold text-gray-700">{stage.rank ? `${stage.rank}/${stage.cohortSize}` : "—"}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3 font-semibold text-gray-700">{stage.rank ? `${stage.rank}/${stage.cohortSize}` : "—"}</td>
+                          <td className="px-2 py-3">
                             <p className="font-medium text-gray-900">
                               {stage.student.firstName} {stage.student.lastName}
                             </p>
                             <p className="text-xs text-gray-500">{stage.level}</p>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <p className="text-gray-900">{stage.title}</p>
                             {stage.project && <p className="text-xs text-gray-500">{stage.project.name}</p>}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <PhaseTag phase={stage.phase} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <ScoreBar value={stage.score} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <VerdictTag verdict={stage.verdict} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <PercentBar value={stage.components.progress} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-3">
                             <PercentBar value={stage.components.completion} />
                           </td>
+                          {canAddStageProgress && (
+                            <td className="px-2 py-3 text-right">
+                              <button type="button" onClick={() => setModal({ mode: "internship", id: stage.id })} className="whitespace-nowrap font-medium text-emerald-500 hover:underline">+ Avancement</button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -269,6 +317,19 @@ export default function FinalEvaluationPage() {
           </>
         )}
       </div>
+      {modal && (
+        <ProgressModal
+          mode={modal.mode}
+          initialId={modal.id}
+          options={
+            modal.mode === "project"
+              ? (projects?.projects ?? []).map((p) => ({ id: p.projectId, label: `${p.name} (${p.code})` }))
+              : (internships?.internships ?? []).map((i) => ({ id: i.id, label: `${i.student.firstName} ${i.student.lastName} — ${i.title}` }))
+          }
+          onClose={() => setModal(null)}
+          onSaved={() => setReload((n) => n + 1)}
+        />
+      )}
     </AppLayout>
   );
 }

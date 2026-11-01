@@ -68,7 +68,7 @@ export interface MeritRow {
   badge: string;
   components: MeritComponents | null;
   counts: { stages: number; tasks: number; tasksDone: number; evaluations: number } | null;
-  stage?: { title: string; status: string } | null;
+  stage?: { title: string; status: string; durationMonths?: number | null } | null;
 }
 
 export interface MeritData {
@@ -99,6 +99,7 @@ export interface HistoryData {
   selected: string | null;
   mine: Array<{ period: string; rank: number; cohortSize: number; score: number; badge: string | null; level: Level }>;
   cohorts: Record<Level, MeritRow[]> | null;
+  honor?: Partial<Record<Level, Array<{ rank: number; name: string; score: number; badge: string | null }>>> | null;
 }
 
 export const fetchMine = async () =>
@@ -132,7 +133,8 @@ export const fetchMerit = async (period?: string) =>
 export const fetchMyMerit = async () => (await api.get(`${base}/merit/me`)).data?.data as MyMerit | null;
 export const fetchMeritHistory = async (period?: string) =>
   (await api.get(`${base}/merit/history`, { params: period ? { period } : {} })).data?.data as HistoryData;
-export const closeMeritPeriod = (period: string) => api.post(`${base}/merit/close`, { period });
+export const closeMeritPeriod = async (period: string) =>
+  (await api.post(`${base}/merit/close`, { period })).data?.data as { period: string; saved: number; honored: number };
 
 export const PARTICIPATION_LABELS: Record<ParticipationStatus, string> = {
   PENDING: "En attente",
