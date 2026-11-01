@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/ui/Alert";
 import { cn } from "@/lib/utils";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 export interface MemberFormData {
   name: string;
@@ -265,9 +266,10 @@ export function MemberForm({
           id="phone"
           type="tel"
           label="Téléphone"
-          placeholder="+261 34 12 345 67"
+          placeholder="034 12 345 67"
           value={formData.phone}
-          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+          onChange={(e) => setFormData({ ...formData, phone: sanitizePhone(e.target.value) })}
+          {...phoneInputProps}
           icon={<Phone className="h-4 w-4" />}
         />
 

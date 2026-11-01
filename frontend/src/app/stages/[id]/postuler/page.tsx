@@ -18,6 +18,7 @@ import {
   goToAuth,
   isClosed,
 } from "@/lib/stages";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 const inputClass =
   "w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1B8FAE] focus:ring-2 focus:ring-[#1B8FAE]/20";
@@ -200,7 +201,9 @@ export default function PostulerPage() {
                     </label>
                     <input
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(sanitizePhone(e.target.value))}
+                      type="tel"
+                      {...phoneInputProps}
                       placeholder="034 00 000 00"
                       className={inputClass}
                     />

@@ -2,7 +2,8 @@
  * Jeux de données d'apprentissage : liste d'ENTRAÎNEMENT / liste de TEST pour chaque source.
  *
  *   - households : ménages enquêtés par les agents          → étiquette « vulnérable »
- *   - interns    : stagiaires (Suivi & Évaluation stage)     → étiquette « en difficulté » (note moyenne < 12/20)
+ *   - interns    : stagiaires (évaluations du tuteur)        → étiquette « en difficulté » (note moyenne < 12/20)
+ *   - stage_progress : avancement du STAGE (tâches, présence)  → étiquette « en retard » (écart réel/prévu ≤ -10 pts)
  *   - projects   : projets (Suivi & Évaluation des projets)  → étiquette « en retard » (écart réel/prévu ≤ -10 pts)
  *
  * Pour chaque source : tirage stratifié entraînement / test (par défaut 70 % / 30 %), entraînement des
@@ -17,11 +18,11 @@ import { db } from "../utils/db";
 import { computeMonitoring, loadAllProjectContexts } from "../services/monitoring.service";
 import { loadInternshipsMonitoring } from "../services/internshipMonitoring.service";
 import { FEATURE_NAMES, imputeMatrix, loadHouseholds } from "./vulnerability";
-import { Matrix, Metrics, applyScaler, computeMetrics, fitScaler, makeRng } from "./ml";
+import { Matrix, Metrics, applyScaler, computeMetrics, fitScaler, makeRng, stratifiedFolds } from "./ml";
 import { methodTrainers } from "./compare";
 
-export type DatasetKind = "households" | "interns" | "projects";
-export const DATASET_KINDS: DatasetKind[] = ["households", "interns", "projects"];
+export type DatasetKind = "households" | "interns" | "stage_progress" | "projects";
+export const DATASET_KINDS: DatasetKind[] = ["households", "interns", "stage_progress", "projects"];
 
 export const isDatasetKind = (v: string): v is DatasetKind => (DATASET_KINDS as string[]).includes(v);
 
@@ -129,6 +130,60 @@ const INTERNS: DatasetDef = {
   },
 };
 
+const STAGE_PROGRESS: DatasetDef = {
+  kind: "stage_progress",
+  title: "Avancement du stage (Suivi & Évaluation)",
+  description:
+    "Avancement réel des stages comparé au calendrier. Entraînement SÉPARÉ de celui des stagiaires (évaluations) et de celui des projets : ici on prédit si un stage prend du retard à partir de l'état des tâches, de la présence terrain et du temps écoulé.",
+  labelRule: `En retard = écart (avancement réel − prévu) ≤ ${Math.abs(PROJECT_LATE_GAP)} points, l'avancement réel étant le score S&E du stage. Les variables sont des comptages bruts (statuts des tâches, présence, durée) et non les composantes du score, pour limiter la fuite d'information.`,
+  positiveText: "En retard",
+  negativeText: "Dans les temps",
+  featureNames: [
+    "Temps écoulé du stage (%)",
+    "Tâches terminées (%)",
+    "Tâches en cours (%)",
+    "Tâches à faire (%)",
+    "Tâches en retard (%)",
+    "Tâches bloquées (%)",
+    "Nombre de tâches",
+    "Jours ouvrés écoulés",
+    "Check-ins GPS",
+    "Durée prévue (jours)",
+    "Tuteur assigné",
+  ],
+  load: async () => {
+    const rows = await loadInternshipsMonitoring({});
+
+    return rows
+      .filter((r) => r.internship.status === "IN_PROGRESS" || r.internship.status === "COMPLETED")
+      .map(({ internship: i, metrics: m }) => {
+        const total = m.tasks.total;
+        const elapsed = i.status === "COMPLETED" ? 100 : m.time.elapsedPct;
+
+        return {
+          id: i.id,
+          name: `${i.student.firstName} ${i.student.lastName}`,
+          context: i.title,
+          link: `/internships/${i.id}`,
+          label: (m.gap === null ? null : m.gap <= PROJECT_LATE_GAP ? 1 : 0) as 0 | 1 | null,
+          values: [
+            elapsed,
+            pctOf(m.tasks.completed, total),
+            pctOf(m.tasks.inProgress, total),
+            pctOf(m.tasks.todo, total),
+            pctOf(m.tasks.overdue, total),
+            pctOf(m.tasks.blocked, total),
+            total,
+            m.presence.workingDays,
+            m.presence.gpsCheckins,
+            m.time.totalDays,
+            i.supervisor ? 1 : 0,
+          ],
+        };
+      });
+  },
+};
+
 const PROJECTS: DatasetDef = {
   kind: "projects",
   title: "Projets (Suivi & Évaluation)",
@@ -182,7 +237,12 @@ const PROJECTS: DatasetDef = {
   },
 };
 
-export const DEFS: Record<DatasetKind, DatasetDef> = { households: HOUSEHOLDS, interns: INTERNS, projects: PROJECTS };
+export const DEFS: Record<DatasetKind, DatasetDef> = {
+  households: HOUSEHOLDS,
+  interns: INTERNS,
+  stage_progress: STAGE_PROGRESS,
+  projects: PROJECTS,
+};
 
 /* ------------------------------ rapport ------------------------------ */
 
@@ -211,6 +271,39 @@ export interface DatasetMethod {
   train: Metrics;
   /** AUC entraînement − AUC test : un écart élevé = sur-apprentissage */
   overfit: number;
+}
+
+/** Description d'une variable sur la liste d'ENTRAÎNEMENT (comme le tableau « jeu de données » d'un mémoire) */
+export interface FeatureStat {
+  name: string;
+  /** % de valeurs manquantes (remplacées par la moyenne de l'entraînement) */
+  missingPct: number;
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  meanPositive: number | null;
+  meanNegative: number | null;
+  /** |écart des moyennes entre classes| / écart-type commun : plus c'est grand, plus la variable sépare les classes */
+  effect: number;
+}
+
+/** Validation croisée stratifiée sur la liste d'entraînement uniquement */
+export interface CvResult {
+  key: string;
+  name: string;
+  aucMean: number;
+  aucStd: number;
+  f1Mean: number;
+  accuracyMean: number;
+  folds: number[];
+}
+
+/** Courbe d'apprentissage : qualité de l'ensemble selon la taille de la liste d'entraînement utilisée */
+export interface CurvePoint {
+  size: number;
+  trainAuc: number;
+  testAuc: number;
 }
 
 export interface DatasetReport {
@@ -242,10 +335,153 @@ export interface DatasetReport {
   best: { key: string; name: string; auc: number; f1: number; accuracy: number } | null;
   /** Matrice de confusion de l'ensemble sur la liste de test */
   confusion: { tp: number; fp: number; tn: number; fn: number };
+  /** Description des variables (liste d'entraînement) */
+  stats: FeatureStat[];
+  /** Validation croisée (k plis) par méthode + ensemble */
+  cv: { k: number; results: CvResult[] } | null;
+  /** Courbe d'apprentissage de l'ensemble */
+  curve: CurvePoint[];
   train: DatasetRow[];
   test: DatasetRow[];
   unlabeled: DatasetRow[];
   runId?: number;
+}
+
+/* ------------------------------ rapport d'apprentissage ------------------------------ */
+
+const std = (v: number[]) => {
+  if (v.length < 2) return 0;
+  const m = mean(v);
+  return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1));
+};
+
+function describeFeatures(featureNames: string[], rows: RawRow[]): FeatureStat[] {
+  return featureNames.map((name, j) => {
+    const column = (cls?: number) =>
+      rows
+        .filter((r) => cls === undefined || r.label === cls)
+        .map((r) => r.values[j])
+        .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+
+    const all = column();
+    const pos = column(1);
+    const neg = column(0);
+    const sd = std(all);
+    const pooled = Math.sqrt((std(pos) ** 2 + std(neg) ** 2) / 2);
+
+    return {
+      name,
+      missingPct: rows.length ? round(((rows.length - all.length) / rows.length) * 100, 1) : 0,
+      mean: round(mean(all), 2),
+      std: round(sd, 2),
+      min: all.length ? round(Math.min(...all), 2) : 0,
+      max: all.length ? round(Math.max(...all), 2) : 0,
+      meanPositive: pos.length ? round(mean(pos), 2) : null,
+      meanNegative: neg.length ? round(mean(neg), 2) : null,
+      effect: pooled > 0 && pos.length && neg.length ? round(Math.abs(mean(pos) - mean(neg)) / pooled, 2) : 0,
+    };
+  });
+}
+
+/** Sous-échantillon stratifié (au moins 2 lignes par classe quand elles existent) */
+function stratifiedSubset(y: number[], fraction: number, seed: number): number[] {
+  const rng = makeRng(seed);
+  const picked: number[] = [];
+
+  [0, 1].forEach((cls) => {
+    const idx = y.map((v, i) => (v === cls ? i : -1)).filter((i) => i >= 0);
+
+    for (let i = idx.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [idx[i], idx[j]] = [idx[j], idx[i]];
+    }
+
+    picked.push(...idx.slice(0, Math.min(idx.length, Math.max(2, Math.ceil(idx.length * fraction)))));
+  });
+
+  return picked.sort((a, b) => a - b);
+}
+
+/** Entraîne les 4 méthodes sur (X, y) et renvoie un prédicteur « ensemble » + les 4 prédicteurs. */
+function fitAll(X: Matrix, y: number[]) {
+  const scaler = fitScaler(X);
+  const Z = X.map((row) => applyScaler(row, scaler));
+  const predictors = methodTrainers(X.length).map((t) => ({ key: t.key, name: t.name, predict: t.train(Z, y) }));
+
+  return {
+    predictors,
+    score: (x: number[]) => {
+      const z = applyScaler(x, scaler);
+      const per = predictors.map((p) => p.predict(z));
+      return { per, ensemble: mean(per) };
+    },
+  };
+}
+
+function crossValidation(X: Matrix, y: number[], wanted = 5): { k: number; results: CvResult[] } | null {
+  const pos = y.filter((v) => v === 1).length;
+  const k = Math.min(wanted, pos, y.length - pos);
+  if (k < 2) return null;
+
+  const folds = stratifiedFolds(y, k, 7);
+  const names = methodTrainers(X.length).map((t) => ({ key: t.key, name: t.name }));
+  const keys = [...names, { key: "ensemble", name: "Ensemble (moyenne des 4 méthodes)" }];
+  const acc: Record<string, Metrics[]> = Object.fromEntries(keys.map((m) => [m.key, [] as Metrics[]]));
+
+  folds.forEach((testIdx) => {
+    const hold = new Set(testIdx);
+    const trIdx = X.map((_, i) => i).filter((i) => !hold.has(i));
+    const trY = trIdx.map((i) => y[i]);
+    if (new Set(trY).size < 2 || new Set(testIdx.map((i) => y[i])).size < 2) return;
+
+    const model = fitAll(trIdx.map((i) => X[i]), trY);
+    const scored = testIdx.map((i) => model.score(X[i]));
+    const teY = testIdx.map((i) => y[i]);
+
+    names.forEach((m, j) => acc[m.key].push(computeMetrics(scored.map((s) => s.per[j]), teY)));
+    acc.ensemble.push(computeMetrics(scored.map((s) => s.ensemble), teY));
+  });
+
+  const results: CvResult[] = keys
+    .filter((m) => acc[m.key].length > 0)
+    .map((m) => {
+      const aucs = acc[m.key].map((r) => r.auc);
+
+      return {
+        key: m.key,
+        name: m.name,
+        aucMean: round(mean(aucs)),
+        aucStd: round(std(aucs)),
+        f1Mean: round(mean(acc[m.key].map((r) => r.f1))),
+        accuracyMean: round(mean(acc[m.key].map((r) => r.accuracy))),
+        folds: aucs.map((a) => round(a)),
+      };
+    });
+
+  return results.length ? { k, results } : null;
+}
+
+function learningCurve(trainX: Matrix, trainY: number[], testX: Matrix, testY: number[]): CurvePoint[] {
+  if (trainX.length < 10) return [];
+
+  const points: CurvePoint[] = [];
+
+  [0.2, 0.4, 0.6, 0.8, 1].forEach((fraction, step) => {
+    const idx = fraction === 1 ? trainX.map((_, i) => i) : stratifiedSubset(trainY, fraction, 11 + step);
+    const y = idx.map((i) => trainY[i]);
+    if (new Set(y).size < 2 || idx.length < 6) return;
+
+    const X = idx.map((i) => trainX[i]);
+    const model = fitAll(X, y);
+
+    points.push({
+      size: idx.length,
+      trainAuc: round(computeMetrics(X.map((x) => model.score(x).ensemble), y).auc),
+      testAuc: round(computeMetrics(testX.map((x) => model.score(x).ensemble), testY).auc),
+    });
+  });
+
+  return points;
 }
 
 const ROW_CAP = 1000;
@@ -324,6 +560,9 @@ export async function runDataset(
     baselineTest: emptyMetrics,
     best: null,
     confusion: { tp: 0, fp: 0, tn: 0, fn: 0 },
+    stats: [],
+    cv: null,
+    curve: [],
     train: [],
     test: [],
     unlabeled: [],
@@ -410,6 +649,13 @@ export async function runDataset(
 
   const majority = trainY.filter((v) => v === 1).length > trainY.length / 2 ? 1 : 0;
 
+  // Rapport d'apprentissage (calculé sur l'ENTRAÎNEMENT ; le test ne sert qu'à la courbe)
+  const testX = imputeMatrix(testRows.map((r) => r.values), columnMeans).X;
+  const heavy = trainRows.length > 1500; // au-delà, on évite les calculs répétés (durée)
+  const stats = describeFeatures(def.featureNames, trainRows);
+  const cv = heavy ? null : crossValidation(trainX, trainY);
+  const curve = heavy ? [] : learningCurve(trainX, trainY, testX, testY);
+
   return {
     ...base,
     available: true,
@@ -425,6 +671,9 @@ export async function runDataset(
     baselineTest: roundMetrics(computeMetrics(testY.map(() => majority), testY)),
     best: { key: top.key, name: top.name, auc: top.test.auc, f1: top.test.f1, accuracy: top.test.accuracy },
     confusion,
+    stats,
+    cv,
+    curve,
     train: trainOut.slice(0, ROW_CAP),
     test: testOut.slice(0, ROW_CAP),
     unlabeled: unlabeledOut.slice(0, ROW_CAP),
@@ -521,4 +770,26 @@ export async function datasetsOverview() {
       };
     }),
   );
+}
+
+/* ------------------------------ export pour l'application Python ------------------------------ */
+
+const csvCell = (v: unknown): string => {
+  const text = v === null || v === undefined ? "" : String(v);
+  return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+/** CSV (séparateur « , ») : id, nom, contexte, label (vide = inconnu), puis une colonne par variable. */
+export async function datasetCsv(kind: DatasetKind): Promise<string> {
+  const def = DEFS[kind];
+  const rows = await def.load();
+  const header = ["id", "name", "context", "label", ...def.featureNames];
+
+  const lines = rows.map((r) =>
+    [r.id, r.name, r.context, r.label ?? "", ...r.values.map((v) => (v === null || v === undefined ? "" : round(v, 4)))]
+      .map(csvCell)
+      .join(","),
+  );
+
+  return [header.map(csvCell).join(","), ...lines].join("\n");
 }

@@ -2,8 +2,13 @@
 // Configuration de chaque module : colonnes, formulaires, rôles autorisés.
 // Les rôles d'écriture reflètent authorizeRoles() du backend.
 
+import Link from "next/link";
+import { ClipboardCheck } from "lucide-react";
 import { ActivitySpace } from "@/components/activities/ActivitySpace";
+import { ProjectMilestones } from "@/components/milestones/ProjectMilestones";
 import { StatusBadge } from "@/components/crud/StatusBadge";
+import { LEVEL_COLORS, ZONE_LEVELS, ZoneMap, zoneLevelDetails, zoneLevelLabel, zonePlaces } from "@/components/zones/ZoneMap";
+import { ZonesOverview } from "@/components/zones/ZonesOverview";
 import { TrackingPanel } from "@/components/tracking/TrackingPanel";
 import {
   ResourceConfig,
@@ -14,6 +19,8 @@ import {
 import { ASSIGNABLE_ROLES, ROLE_LABELS, roleLabel, statusLabel } from "@/lib/roles";
 
 const TUTEURS = ["TUTEUR_L3", "TUTEUR_M2"];
+/** Rôles autorisés sur /suivi-evaluation (voir lib/access.ts) */
+const SUIVI_EVAL_ROLES = ["ADMIN", "DIRECTION", "DAF", "COORDINATOR", "RH", "COMMUNICATION", "DSI", "TUTEUR_L3", "TUTEUR_M2"];
 const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
 
 const GENDERS = [
@@ -56,24 +63,40 @@ export const projectsConfig: ResourceConfig = {
   listKey: "projects",
   itemKey: "project",
   columns: [
-    { header: "Code", render: (p) => p.code },
+    { header: "Code", render: (p) => <span className="whitespace-nowrap">{p.code}</span> },
     { header: "Projet", render: (p) => <span className="font-medium text-gray-900">{p.name}</span> },
+    { header: "Objectif", render: (p) => <span className="line-clamp-3 block min-w-[100px]" title={p.objective || undefined}>{p.objective || "—"}</span> },
+    { header: "Slogan", render: (p) => <span className="line-clamp-3 block min-w-[50px] italic" title={p.slogan || undefined}>{p.slogan ? `« ${p.slogan} »` : "—"}</span> },
+    { header: "Bénéficiaires visés", render: (p) => <span className="block">{p.beneficiaryTarget ?? "—"}</span> },
+    { header: "Partenaires du projet", render: (p) => {
+      const names = Array.isArray(p.partnerLinks)
+        ? p.partnerLinks.map((l: { partner?: { name?: string } }) => l.partner?.name).filter(Boolean).join(", ")
+        : "";
+      return <span className="line-clamp-3 block" title={names || undefined}>{names || "—"}</span>;
+    } },
     { header: "Département", render: (p) => p.department?.name ?? "—" },
-    { header: "Période", render: (p) => period(p.startDate, p.endDate) },
-    { header: "Budget", render: (p) => fmtMoney(p.budget) },
-    { header: "Statut", render: (p) => <StatusBadge status={p.status} /> },
+    { header: "Période", render: (p) => (
+      <span className="block">
+        <span className="block whitespace-nowrap">{fmtDate(p.startDate)}</span>
+        <span className="block whitespace-nowrap">→ {fmtDate(p.endDate)}</span>
+      </span>
+    ) },
+    { header: "Budget", render: (p) => <span className="whitespace-nowrap">{fmtMoney(p.budget)}</span> },
+    { header: "Statut", render: (p) => <span className="whitespace-nowrap"><StatusBadge status={p.status} /></span> },
   ],
   fields: [
     { name: "name", label: "Nom du projet", type: "text", required: true },
     { name: "code", label: "Code", type: "text", required: true },
     { name: "description", label: "Description", type: "textarea" },
     { name: "objective", label: "Objectif", type: "textarea" },
+    { name: "slogan", label: "Slogan du projet", type: "text", full: true, hint: "Imprimé sur les certificats : « nom du projet : slogan » (200 caractères max)." },
     { name: "startDate", label: "Date de début", type: "date", required: true },
     { name: "endDate", label: "Date de fin", type: "date", required: true },
     { name: "status", label: "Statut", type: "select", options: statusOptions(PROJECT_STATUS) },
     { name: "budget", label: "Budget (Ar)", type: "number", min: 0 },
     { name: "beneficiaryTarget", label: "Bénéficiaires visés", type: "number", min: 0 },
     { name: "departmentId", label: "Département", type: "select", lookup: "departments", required: true },
+    { name: "partnerIds", label: "Partenaires du projet", type: "partners", full: true },
   ],
   detail: (p) => [
     { label: "Code", value: p.code },
@@ -83,14 +106,43 @@ export const projectsConfig: ResourceConfig = {
     { label: "Budget", value: fmtMoney(p.budget) },
     { label: "Bénéficiaires visés", value: p.beneficiaryTarget ?? "—" },
     { label: "Objectif", value: p.objective || "—" },
+    { label: "Slogan", value: p.slogan ? `« ${p.slogan} »` : "—" },
     { label: "Description", value: p.description || "—" },
+    {
+      label: "Partenaires",
+      value: Array.isArray(p.partnerLinks) && p.partnerLinks.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {p.partnerLinks.map((l: { id: number; partner?: { name?: string; logoUrl?: string | null } }) => (
+            <span key={l.id} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-800">
+              {l.partner?.logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={l.partner.logoUrl} alt="" className="h-6 w-6 object-contain" />
+              )}
+              {l.partner?.name}
+            </span>
+          ))}
+        </div>
+      ) : "—",
+    },
   ],
   titleOf: (p) => p.name,
-  searchOf: (p) => `${p.name} ${p.code} ${p.department?.name ?? ""}`,
+  extra: (p) => <ProjectMilestones projectId={p.id} />,
+  searchOf: (p) => `${p.name} ${p.code} ${p.department?.name ?? ""} ${p.objective ?? ""} ${p.slogan ?? ""} ${(p.partnerLinks ?? []).map((l: { partner?: { name?: string } }) => l.partner?.name ?? "").join(" ")}`,
+  rowActions: (p, role) =>
+    SUIVI_EVAL_ROLES.includes(role) ? (
+      <Link
+        href={`/suivi-evaluation/${p.id}`}
+        className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-emerald-500/15 p-1.5 text-emerald-500 hover:bg-emerald-500/25 hover:text-emerald-400"
+        title="Suivi & évaluation"
+      >
+        <ClipboardCheck className="h-4 w-4 animate-pulse [animation-duration:3s] motion-reduce:animate-none" />
+      </Link>
+    ) : null,
   statusFilter: { field: "status", options: statusOptions(PROJECT_STATUS) },
   createRoles: PROJECT_WRITERS,
   editRoles: PROJECT_WRITERS,
   deleteRoles: ["ADMIN"],
+  fitWidth: true,
 };
 
 /* ------------------------------------------------------------------ */
@@ -168,7 +220,16 @@ export const milestonesConfig: ResourceConfig = {
     { name: "title", label: "Titre", type: "text", required: true },
     { name: "description", label: "Description", type: "textarea" },
     { name: "dueDate", label: "Échéance", type: "date", required: true },
-    { name: "progress", label: "Progression (%)", type: "number", min: 0, max: 100 },
+    {
+      name: "progress",
+      label: "Progression (%)",
+      type: "number",
+      min: 0,
+      max: 100,
+      readOnly: true,
+      readOnlyPlaceholder: "Automatique (Suivi & Évaluation)",
+      hint: "Calculée automatiquement : avancement du projet et des stages des stagiaires (Suivi & Évaluation).",
+    },
     { name: "completedAt", label: "Date d'achèvement", type: "date", hideOnCreate: true },
   ],
   detail: (m) => [
@@ -180,6 +241,16 @@ export const milestonesConfig: ResourceConfig = {
   ],
   titleOf: (m) => m.title,
   searchOf: (m) => `${m.title} ${m.project?.name ?? ""}`,
+  rowActions: (m, role) =>
+    SUIVI_EVAL_ROLES.includes(role) && (m.project?.id ?? m.projectId) ? (
+      <Link
+        href={`/suivi-evaluation/${m.project?.id ?? m.projectId}`}
+        className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-emerald-500/15 p-1.5 text-emerald-500 hover:bg-emerald-500/25 hover:text-emerald-400"
+        title="Suivi & évaluation"
+      >
+        <ClipboardCheck className="h-4 w-4 animate-pulse [animation-duration:3s] motion-reduce:animate-none" />
+      </Link>
+    ) : null,
   createRoles: MILESTONE_WRITERS,
   editRoles: MILESTONE_WRITERS,
   deleteRoles: ["ADMIN", "DIRECTION", "COORDINATOR"],
@@ -345,37 +416,58 @@ export const internshipsConfig: ResourceConfig = {
   listKey: "data",
   itemKey: "data",
   columns: [
-    { header: "Stage", render: (i) => <span className="font-medium text-gray-900">{i.title}</span> },
-    { header: "Stagiaire", render: (i) => personName(i.student) },
-    { header: "Tuteur", render: (i) => personName(i.supervisor) },
-    { header: "Établissement", render: (i) => i.institution || "—" },
-    { header: "Période", render: (i) => period(i.startDate, i.endDate) },
-    { header: "Statut", render: (i) => <StatusBadge status={i.status} /> },
+    { header: "Projet", render: (i) => <span className="block min-w-[70px] text-xs break-words">{i.project ? `${i.project.code} — ${i.project.name}` : "—"}</span> },
+    { header: "Stagiaire", render: (i) => <span className="block min-w-[100px] text-xs break-words">{personName(i.student)}</span> },
+    { header: "Stage", render: (i) => <span className="block min-w-[70px] text-xs font-medium text-gray-900 [overflow-wrap:anywhere]">{i.title}</span> },
+    { header: "Thème", render: (i) => <span className="block min-w-[110px] max-w-[140px] text-xs break-words">{i.theme || "—"}</span> },
+    { header: "Établissement", render: (i) => <span className="block min-w-[50px] text-xs break-words">{i.institution || "—"}</span> },
+    { header: "Période", render: (i) => <span className="block min-w-[65px] text-xs">{period(i.startDate, i.endDate)}</span> },
+    { header: "Statut", render: (i) => <span className="block whitespace-nowrap"><StatusBadge status={i.status} /></span> },
+    { header: "Tuteur", render: (i) => <span className="block min-w-[75px] text-xs break-words">{personName(i.supervisor)}</span> },
   ],
   fields: [
     { name: "title", label: "Intitulé du stage", type: "text", required: true },
     { name: "projectId", label: "Projet", type: "select", lookup: "projects" },
+    { name: "theme", label: "Thème du stage", type: "text", required: true, full: true, hint: "Sujet du stagiaire : repris automatiquement sur son certificat (sinon l'intitulé du stage)." },
     { name: "studentId", label: "Stagiaire", type: "select", lookup: "students", required: true, requiredUnless: "newPerson" },
     { name: "newPerson", label: "Nouveau stagiaire", type: "newperson", identityOf: "studentId", hideOnEdit: true, full: true },
     { name: "identity", label: "Informations du stagiaire", type: "identity", identityOf: "studentId", full: true },
     { name: "supervisorId", label: "Tuteur", type: "select", lookup: "tutors" },
     { name: "institution", label: "Établissement", type: "text" },
-    { name: "startDate", label: "Date de début", type: "date" },
-    { name: "endDate", label: "Date de fin", type: "date" },
-    { name: "status", label: "Statut", type: "select", options: statusOptions(INTERNSHIP_STATUS), defaultValue: "IN_PROGRESS" },
+    { name: "startDate", label: "Date de début", type: "date", required: true },
+    { name: "endDate", label: "Date de fin", type: "date", required: true, after: "startDate" },
+    {
+      name: "status",
+      label: "Statut",
+      type: "select",
+      options: statusOptions(INTERNSHIP_STATUS),
+      defaultValue: "IN_PROGRESS",
+      statusFromDates: { start: "startDate", end: "endDate" },
+    },
     { name: "description", label: "Description", type: "textarea" },
   ],
   detail: (i) => [
     { label: "Stagiaire", value: personName(i.student) },
     { label: "Tuteur", value: personName(i.supervisor) },
     { label: "Projet", value: i.project?.name ?? "—" },
+    { label: "Thème", value: i.theme || "—" },
     { label: "Établissement", value: i.institution || "—" },
     { label: "Période", value: period(i.startDate, i.endDate) },
     { label: "Statut", value: <StatusBadge status={i.status} /> },
     { label: "Description", value: i.description || "—" },
   ],
   titleOf: (i) => i.title,
-  searchOf: (i) => `${i.title} ${personName(i.student)} ${personName(i.supervisor)} ${i.institution ?? ""}`,
+  searchOf: (i) => `${i.title} ${i.theme ?? ""} ${i.project?.code ?? ""} ${i.project?.name ?? ""} ${personName(i.student)} ${personName(i.supervisor)} ${i.institution ?? ""}`,
+  rowActions: (i, role) =>
+    SUIVI_EVAL_ROLES.includes(role) ? (
+      <Link
+        href={`/suivi-evaluation/stagiaires/${i.id}`}
+        className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-emerald-500/15 p-1.5 text-emerald-500 hover:bg-emerald-500/25 hover:text-emerald-400"
+        title="Suivi & évaluation"
+      >
+        <ClipboardCheck className="h-4 w-4 animate-pulse [animation-duration:3s] motion-reduce:animate-none" />
+      </Link>
+    ) : null,
   statusFilter: { field: "status", options: statusOptions(INTERNSHIP_STATUS) },
   createRoles: INTERNSHIP_WRITERS,
   editRoles: INTERNSHIP_WRITERS,
@@ -583,31 +675,83 @@ export const zonesConfig: ResourceConfig = {
         </span>
       ),
     },
-    { header: "Région", render: (z) => z.region || "—" },
-    { header: "Adresse", render: (z) => z.address || "—" },
-    { header: "Coordonnées", render: (z) => `${Number(z.latitude).toFixed(4)}, ${Number(z.longitude).toFixed(4)}` },
+    { header: "Type", render: (z) => zoneLevelLabel(z.level) },
+    {
+      header: "Localisation",
+      render: (z) => {
+        const places = zonePlaces(z);
+        if (!places.length) return z.address || "—";
+
+        return (
+          <div className="space-y-0.5 text-xs leading-snug">
+            {places.map((p) => (
+              <div key={p.level} className="flex items-start gap-1.5">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: LEVEL_COLORS[p.level] }} />
+                <span>
+                  <span className="text-gray-500">{p.label} :</span> <span className="font-medium">{p.names.join(", ")}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      header: "Latitude, longitude et rayon de chaque niveau",
+      render: (z) => {
+        const levels = zoneLevelDetails(z);
+
+        // Ancienne zone sans contour : une seule ligne avec ses propres valeurs
+        if (!levels.length) {
+          return (
+            <span className="text-xs">
+              {Number(z.latitude).toFixed(4)}, {Number(z.longitude).toFixed(4)} · rayon ≈ {z.radiusKm ?? "—"} km
+            </span>
+          );
+        }
+
+        return (
+          <ul className="space-y-0.5 text-xs leading-snug">
+            {levels.map((d) => (
+              <li key={d.key} className="flex flex-wrap items-center gap-x-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: LEVEL_COLORS[d.level] }} />
+                <span className="font-medium">{d.name}</span>
+                <span className="text-gray-500">({d.label})</span>
+                <span>
+                  {d.lat.toFixed(4)}, {d.lng.toFixed(4)} · rayon ≈ {d.km} km
+                </span>
+              </li>
+            ))}
+          </ul>
+        );
+      },
+    },
     { header: "Statut", render: (z) => <StatusBadge status={z.isActive ? "ACTIVE" : "INACTIVE"} /> },
   ],
   fields: [
-    { name: "name", label: "Nom de la zone (ex. Toamasina)", type: "text", required: true },
+    { name: "boundary", label: "Zone", type: "zonehierarchy", full: true },
+    { name: "name", label: "Nom de la zone (rempli automatiquement)", type: "text", required: true },
+    { name: "level", label: "Type de zone", type: "select", options: ZONE_LEVELS, defaultValue: "COMMUNE", required: true },
     { name: "region", label: "Région", type: "text" },
-    { name: "address", label: "Adresse postale", type: "text", full: true },
-    { name: "phone", label: "Téléphone", type: "text" },
-    { name: "email", label: "Email", type: "email" },
-    { name: "radiusKm", label: "Rayon d'intervention (km)", type: "number", min: 0 },
-    { name: "center", label: "Position (cliquez sur la carte)", type: "geo", geoNames: { lat: "latitude", lng: "longitude" }, full: true },
+    { name: "radiusKm", label: "Rayon d'intervention (km), calculé selon la taille de la zone", type: "text" },
+    { name: "address", label: "Adresse postale (remplie automatiquement)", type: "text", full: true },
+    { name: "latitude", label: "Latitude (automatique)", type: "text", required: true },
+    { name: "longitude", label: "Longitude (automatique)", type: "text", required: true },
     { name: "isHeadquarters", label: "Siège de l'ONG (affiché sur la page d'accueil)", type: "checkbox" },
     { name: "isActive", label: "Zone active", type: "checkbox", defaultValue: true },
   ],
   detail: (z) => [
-    { label: "Région", value: z.region || "—" },
+    { label: "Type", value: zoneLevelLabel(z.level) },
+    ...zonePlaces(z).map((p) => ({ label: p.label, value: p.names.join(", ") })),
     { label: "Adresse", value: z.address || "—" },
-    { label: "Téléphone", value: z.phone || "—" },
-    { label: "Email", value: z.email || "—" },
-    { label: "Coordonnées", value: `${Number(z.latitude).toFixed(5)}, ${Number(z.longitude).toFixed(5)}` },
+    { label: "Latitude", value: Number(z.latitude).toFixed(5) },
+    { label: "Longitude", value: Number(z.longitude).toFixed(5) },
+    ...zoneLevelDetails(z).map((d) => ({ label: `${d.label} : ${d.name}`, value: `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)} · rayon ≈ ${d.km} km` })),
     { label: "Rayon", value: z.radiusKm ? `${z.radiusKm} km` : "—" },
     { label: "Siège", value: z.isHeadquarters ? "Oui" : "Non" },
   ],
+  extra: (z) => <ZoneMap zones={[z]} height={380} className="mt-4" legend />,
+  listExtra: (items) => <ZonesOverview zones={items} />,
   titleOf: (z) => z.name,
   searchOf: (z) => `${z.name} ${z.region ?? ""} ${z.address ?? ""}`,
   createRoles: ["ADMIN", "DIRECTION"],

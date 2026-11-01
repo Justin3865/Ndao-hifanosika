@@ -39,6 +39,7 @@ import activitySpaceRoutes from "./routes/activitySpace.routes";
 import monitoringRoutes from "./routes/monitoring.routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
+import { phoneLimit } from "./middlewares/phoneLimit.middleware";
 
 const app = express();
 
@@ -53,6 +54,9 @@ app.use(helmet());
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Tous les champs téléphone : 10 chiffres maximum (validation globale)
+app.use(phoneLimit);
 
 app.use(morgan("dev"));
 

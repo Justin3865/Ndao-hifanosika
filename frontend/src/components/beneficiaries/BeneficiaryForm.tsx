@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/ui/Alert";
 import { cn } from "@/lib/utils";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 export interface BeneficiaryFormData {
   name: string;
@@ -227,9 +228,10 @@ export function BeneficiaryForm({
           id="phone"
           type="tel"
           label="Téléphone"
-          placeholder="+261 34 12 345 67"
+          placeholder="034 12 345 67"
           value={formData.phone}
-          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+          onChange={(e) => setFormData({ ...formData, phone: sanitizePhone(e.target.value) })}
+          {...phoneInputProps}
           icon={<Phone className="h-4 w-4" />}
         />
 
@@ -346,9 +348,11 @@ export function BeneficiaryForm({
             <Input
               id="parentPhone"
               label="Téléphone du parent / tuteur"
-              placeholder="+261 34 12 345 67"
+              placeholder="034 12 345 67"
               value={formData.parentPhone}
-              onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, parentPhone: sanitizePhone(e.target.value) })}
+              {...phoneInputProps}
+              type="tel"
               error={errors.parentPhone}
               required
               icon={<Phone className="h-4 w-4" />}

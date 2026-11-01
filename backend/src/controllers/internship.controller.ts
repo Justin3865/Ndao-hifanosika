@@ -4,7 +4,13 @@ import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { logger } from "../config/logger";
 import { sendEmail } from "../utils/mailer";
-import { parseIdentity, toText } from "../utils/identity";
+import { cinOwnerName, parseIdentity, toText } from "../utils/identity";
+import {
+  findOverlap,
+  validateDates,
+  validateParticipants,
+  validateStatusAgainstDates,
+} from "../utils/internshipRules";
 import {
   canSeeInternship,
   getReqUser,
@@ -68,6 +74,11 @@ async function createStudentFromBody(
   const identity = readStudentIdentity(body);
 
   if (identity.error) return { error: identity.error };
+
+  {
+    const owner = await cinOwnerName(identity.data.cinNumber as string | null | undefined);
+    if (owner) return { error: `Ce numéro de CIN est déjà enregistré pour ${owner}.`, status: 409 };
+  }
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true } });
 
@@ -256,6 +267,13 @@ export async function getInternshipById(
   }
 }
 
+/** Thème du stage (imprimé sur le certificat) : texte nettoyé, null pour l'effacer, undefined = inchangé. */
+function cleanTheme(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return String(value).trim().slice(0, 300) || null;
+}
+
 export async function createInternship(
   req: Request,
   res: Response,
@@ -281,6 +299,7 @@ export async function createInternship(
       endDate,
       status,
       description,
+      theme,
     } = req.body;
 
     if (!studentId || !title || !startDate) {
@@ -291,12 +310,24 @@ export async function createInternship(
       return;
     }
 
-    if (endDate && new Date(endDate).getTime() < new Date(startDate).getTime()) {
-      res.status(400).json({
-        success: false,
-        message: "La date de fin doit être postérieure à la date de début.",
-      });
+    if (!cleanTheme(theme)) {
+      res.status(400).json({ success: false, message: "Le thème du stage est obligatoire" });
       return;
+    }
+
+    {
+      const start = new Date(startDate);
+      const end = endDate ? new Date(endDate) : null;
+      const problem =
+        validateDates(start, end) ??
+        validateStatusAgainstDates(status, start, end) ??
+        (await validateParticipants(Number(studentId), supervisorId ? Number(supervisorId) : null)) ??
+        (end ? await findOverlap(Number(studentId), start, end) : null);
+
+      if (problem) {
+        res.status(400).json({ success: false, message: problem });
+        return;
+      }
     }
 
     const student = await prisma.user.findUnique({
@@ -352,6 +383,15 @@ export async function createInternship(
       return;
     }
 
+    {
+      const owner = await cinOwnerName(identity.data.cinNumber as string | null | undefined, Number(studentId));
+
+      if (owner) {
+        res.status(409).json({ success: false, message: `Ce numéro de CIN est déjà enregistré pour ${owner}.` });
+        return;
+      }
+    }
+
     const internship = await prisma.internship.create({
       data: {
         projectId: projectId ? Number(projectId) : undefined,
@@ -365,6 +405,7 @@ export async function createInternship(
         endDate: endDate ? new Date(endDate) : undefined,
         status: status ?? "PENDING",
         description,
+        theme: cleanTheme(theme),
       },
       include: {
         project: true,
@@ -438,6 +479,7 @@ export async function updateInternship(
       endDate,
       status,
       description,
+      theme,
     } = req.body;
 
     {
@@ -445,13 +487,25 @@ export async function updateInternship(
       const effectiveEnd =
         endDate !== undefined ? (endDate ? new Date(endDate) : null) : existing.endDate;
 
-      if (effectiveEnd && effectiveStart && effectiveEnd.getTime() < effectiveStart.getTime()) {
-        res.status(400).json({
-          success: false,
-          message: "La date de fin doit être postérieure à la date de début.",
-        });
+      const effectiveStatus = status ?? existing.status;
+      const effectiveStudent = studentId ? Number(studentId) : existing.studentId;
+      const problem =
+        validateDates(effectiveStart, effectiveEnd) ??
+        validateStatusAgainstDates(effectiveStatus, effectiveStart, effectiveEnd) ??
+        (await validateParticipants(effectiveStudent, supervisorId ? Number(supervisorId) : existing.supervisorId)) ??
+        (effectiveEnd && effectiveStatus !== "CANCELLED"
+          ? await findOverlap(effectiveStudent, effectiveStart, effectiveEnd, id)
+          : null);
+
+      if (problem) {
+        res.status(400).json({ success: false, message: problem });
         return;
       }
+    }
+
+    if (theme !== undefined && !cleanTheme(theme)) {
+      res.status(400).json({ success: false, message: "Le thème du stage est obligatoire" });
+      return;
     }
 
     const identity = readStudentIdentity(req.body);
@@ -459,6 +513,18 @@ export async function updateInternship(
     if (identity.error) {
       res.status(400).json({ success: false, message: identity.error });
       return;
+    }
+
+    {
+      const owner = await cinOwnerName(
+        identity.data.cinNumber as string | null | undefined,
+        studentId ? Number(studentId) : existing.studentId,
+      );
+
+      if (owner) {
+        res.status(409).json({ success: false, message: `Ce numéro de CIN est déjà enregistré pour ${owner}.` });
+        return;
+      }
     }
 
     const internship = await prisma.internship.update({
@@ -489,6 +555,7 @@ export async function updateInternship(
             : undefined,
         status,
         description,
+        theme: cleanTheme(theme),
       },
     });
 

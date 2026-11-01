@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { logger } from "../config/logger";
 import { sendError } from "../middlewares/error.middleware";
 import {
+  datasetCsv,
   datasetHistory,
   datasetRun,
   datasetsOverview,
@@ -81,5 +82,22 @@ export async function runDatasetTest(req: Request, res: Response) {
   } catch (error) {
     logger.error("Erreur entraînement jeu de données", error);
     sendError(res, error, "Erreur lors de l'entraînement et du test");
+  }
+}
+
+/** Export CSV d'une source (pour l'application Python : ml/train_report.py) */
+export async function exportDatasetCsv(req: Request, res: Response) {
+  const kind = String(req.params.kind);
+  if (!isDatasetKind(kind)) return bad(res, "Source inconnue");
+
+  try {
+    const csv = await datasetCsv(kind);
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="dataset-${kind}.csv"`);
+    res.send(`\uFEFF${csv}`);
+  } catch (error) {
+    logger.error("Erreur export CSV", error);
+    sendError(res, error, "Erreur lors de l'export du jeu de données");
   }
 }

@@ -7,6 +7,7 @@ import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 import {
   findAllMilestones,
   findMilestoneById,
+  withAutoProgress,
   createMilestone as createMilestoneService,
   updateMilestone as updateMilestoneService,
   deleteMilestone as deleteMilestoneService,
@@ -112,6 +113,8 @@ export async function getMilestones(
       );
     }
 
+    milestones = await withAutoProgress(milestones);
+
     return res.status(200).json({
       success: true,
       count: milestones.length,
@@ -178,9 +181,11 @@ export async function getMilestoneById(
       });
     }
 
+    const [milestoneWithProgress] = await withAutoProgress([milestone]);
+
     return res.status(200).json({
       success: true,
-      milestone,
+      milestone: milestoneWithProgress,
     });
   } catch (error) {
     logger.error(

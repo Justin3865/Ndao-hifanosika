@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 interface InternshipFormProps {
   onSubmit?: (data: Record<string, string>) => void;
@@ -32,7 +33,7 @@ export default function InternshipForm({
   ) => {
     setForm({
       ...form,
-      [event.target.name]: event.target.value,
+      [event.target.name]: event.target.name === "phone" ? sanitizePhone(event.target.value) : event.target.value,
     });
   };
 
@@ -106,6 +107,8 @@ export default function InternshipForm({
 
           <input
             name="phone"
+            type="tel"
+            {...phoneInputProps}
             value={form.phone}
             onChange={handleChange}
             className="w-full rounded-lg border px-3 py-2"

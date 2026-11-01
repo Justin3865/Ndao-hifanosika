@@ -12,6 +12,7 @@ import {
   runComparison,
 } from "../controllers/aiExtra.controller";
 import {
+  exportDatasetCsv,
   getDatasetHistory,
   getDatasetLatest,
   getDatasetRun,
@@ -37,6 +38,7 @@ router.get("/models/history", authorizeRoles(...AI_ROLES), getModelHistory);
 // Jeux de données : listes d'entraînement / de test (ménages, stagiaires, S&E des projets)
 router.get("/datasets", authorizeRoles(...AI_ROLES), getDatasets);
 router.get("/datasets/runs/:id", authorizeRoles(...AI_ROLES), getDatasetRun);
+router.get("/datasets/:kind/export.csv", authorizeRoles(...AI_ROLES), exportDatasetCsv);
 router.get("/datasets/:kind/latest", authorizeRoles(...AI_ROLES), getDatasetLatest);
 router.get("/datasets/:kind/history", authorizeRoles(...AI_ROLES), getDatasetHistory);
 router.post("/datasets/:kind/run", authorizeRoles("ADMIN", "DSI"), runDatasetTest);

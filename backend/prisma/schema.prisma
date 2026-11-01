@@ -521,6 +521,8 @@ model Zone {
   longitude      Float
   radiusKm       Float?
   address        String?
+  level          String?
+  boundary       String?  @db.Text
   phone          String?
   email          String?
   isHeadquarters Boolean  @default(false)

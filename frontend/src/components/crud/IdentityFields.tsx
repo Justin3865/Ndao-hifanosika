@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/axios";
+import { ageLabel, checkCin, codeForPlace } from "@/lib/madagascar";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 /**
  * Identité d'une personne liée à un formulaire (ex. le stagiaire d'un stage) :
@@ -38,6 +40,35 @@ const LABELS: Record<Exclude<IdentityKey, "cinDuplicata" | "cinDuplicataAt">, st
   cinIssuedPlace: "Lieu de délivrance du CIN",
 };
 
+/** Problème bloquant dans l'identité saisie (null = tout va bien). Sert aussi à bloquer l'envoi du formulaire. */
+export function identityProblem(values: Values): string | null {
+  const v = (k: IdentityKey) => String(values[identityName(k)] ?? "").trim();
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (v("birthDate") && v("birthDate") > today) return "La date de naissance ne peut pas être dans le futur.";
+
+  const cin = v("cinNumber").replace(/\D/g, "");
+
+  if (cin) {
+    if (cin.length !== 12) return "Le numéro de CIN doit contenir exactement 12 chiffres.";
+
+    const check = checkCin(cin, v("cinIssuedPlace"));
+    if (!check.ok) return check.message ?? "Numéro de CIN invalide.";
+  }
+
+  if (v("cinIssuedAt")) {
+    if (v("cinIssuedAt") > today) return "La date de délivrance du CIN ne peut pas être dans le futur.";
+    if (v("birthDate") && v("cinIssuedAt") < v("birthDate")) return "Le CIN ne peut pas être délivré avant la naissance.";
+  }
+
+  if (values[identityName("cinDuplicata")] && v("cinDuplicataAt")) {
+    if (v("cinDuplicataAt") > today) return "La date du duplicata ne peut pas être dans le futur.";
+    if (v("cinIssuedAt") && v("cinDuplicataAt") < v("cinIssuedAt")) return "Le duplicata ne peut pas précéder la délivrance du CIN.";
+  }
+
+  return null;
+}
+
 const toInput = (value: unknown, date = false): string => {
   if (value === null || value === undefined) return "";
   return date ? String(value).slice(0, 10) : String(value);
@@ -56,6 +87,33 @@ export function IdentityFields({
 }) {
   const [inDb, setInDb] = useState<Partial<Record<IdentityKey, boolean>>>({});
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const [cinServer, setCinServer] = useState<{ taken: boolean; takenBy: string | null } | null>(null);
+
+  const cinValue = String(values[identityName("cinNumber")] ?? "");
+  const issuedPlace = String(values[identityName("cinIssuedPlace")] ?? "");
+  const birthValue = String(values[identityName("birthDate")] ?? "");
+  const cinLocal = checkCin(cinValue, issuedPlace);
+
+  // Un CIN complet : on demande au serveur s'il appartient déjà à une AUTRE personne (base de données)
+  useEffect(() => {
+    setCinServer(null);
+    if (cinValue.length !== 12) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .get("/profile/cin-check", { params: { cin: cinValue, userId: personId || undefined } })
+        .then((res) => {
+          if (!cancelled) setCinServer({ taken: Boolean(res.data?.data?.taken), takenBy: res.data?.data?.takenBy ?? null });
+        })
+        .catch(() => undefined);
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cinValue, personId]);
 
   useEffect(() => {
     const id = Number(personId);
@@ -119,6 +177,14 @@ export function IdentityFields({
     return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Absent de la base — à compléter</span>;
   };
 
+  const onPlaceChange = (value: string) => {
+    setValue(identityName("cinIssuedPlace"), value);
+
+    // CIN encore vide et lieu connu : on propose directement le code du district
+    const code = codeForPlace(value);
+    if (code && !cinValue) setValue(identityName("cinNumber"), code);
+  };
+
   const text = (key: keyof typeof LABELS, type = "text", placeholder = "", extra: Record<string, unknown> = {}) => (
     <label key={key} className="block space-y-1 text-sm font-medium text-gray-700">
       <span className="flex flex-wrap items-center gap-2">
@@ -130,7 +196,11 @@ export function IdentityFields({
         className={inputClass}
         placeholder={placeholder}
         value={String(values[identityName(key)] ?? "")}
-        onChange={(e) => setValue(identityName(key), key === "cinNumber" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value)}
+        onChange={(e) =>
+          key === "cinIssuedPlace"
+            ? onPlaceChange(e.target.value)
+            : setValue(identityName(key), key === "cinNumber" ? e.target.value.replace(/\D/g, "").slice(0, 12) : key === "phone" ? sanitizePhone(e.target.value) : e.target.value)
+        }
         {...extra}
       />
     </label>
@@ -155,12 +225,49 @@ export function IdentityFields({
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {text("phone", "tel", "Ex. 034 00 000 00")}
+        {text("phone", "tel", "Ex. 034 00 000 00", { ...phoneInputProps })}
         {text("birthDate", "date", "", { max: today })}
         {text("birthPlace", "text", "Ex. Fianarantsoa")}
-        {text("cinNumber", "text", "12 chiffres", { inputMode: "numeric", maxLength: 12 })}
-        {text("cinIssuedAt", "date", "", { max: today })}
+        {text("cinNumber", "text", "12 chiffres", {
+          inputMode: "numeric",
+          maxLength: 12,
+          "aria-invalid": !cinLocal.ok || Boolean(cinServer?.taken),
+        })}
+        {text("cinIssuedAt", "date", "", { max: today, min: birthValue || undefined })}
         {text("cinIssuedPlace", "text", "Ex. Antananarivo")}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <label className="block space-y-1 text-sm font-medium text-gray-700">
+          <span>Âge (calculé)</span>
+          <input
+            type="text"
+            readOnly
+            tabIndex={-1}
+            className={`${inputClass} cursor-not-allowed bg-gray-100 text-gray-600`}
+            value={ageLabel(birthValue) || (birthValue ? "Date invalide" : "")}
+            placeholder="Déduit de la date de naissance"
+          />
+        </label>
+
+        <div className="space-y-1 text-xs md:col-span-2">
+          {cinValue.length > 0 && cinLocal.province && (
+            <p className="text-gray-600">
+              Province : {cinLocal.province}
+              {cinLocal.district ? ` · District : ${cinLocal.district}` : cinValue.length >= 3 ? " · code district non listé" : ""}
+            </p>
+          )}
+          {!cinLocal.ok && <p className="font-semibold text-red-600">{cinLocal.message}</p>}
+          {cinValue.length > 0 && cinValue.length < 12 && cinLocal.ok && (
+            <p className="text-gray-500">{12 - cinValue.length} chiffre(s) restant(s).</p>
+          )}
+          {cinServer?.taken && (
+            <p className="font-semibold text-red-600">
+              Ce CIN est déjà enregistré{cinServer.takenBy ? ` pour ${cinServer.takenBy}` : ""} : saisie impossible.
+            </p>
+          )}
+          {cinServer && !cinServer.taken && cinLocal.ok && <p className="text-green-700">CIN disponible.</p>}
+        </div>
       </div>
 
       <label className="flex items-center gap-2 text-sm font-medium text-gray-700">

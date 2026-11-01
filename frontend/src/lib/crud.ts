@@ -15,6 +15,7 @@ export type FieldType =
   | "select"
   | "checkbox"
   | "geo"
+  | "zonehierarchy"
   | "identity"
   | "newperson"
   | "partners";
@@ -65,6 +66,10 @@ export interface FieldDef {
   statusFromDates?: { start: string; end: string };
   /** Champ « select » d'un encadrant : fixé sur la personne connectée quand c'est un tuteur */
   lockForTutor?: boolean;
+  /** Champ calculé automatiquement : affiché en lecture seule (non modifiable) */
+  readOnly?: boolean;
+  /** Texte affiché dans un champ en lecture seule tant qu'il n'a pas de valeur */
+  readOnlyPlaceholder?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,6 +108,12 @@ export interface ResourceConfig {
   createHref?: string;
   /** Bloc supplémentaire affiché sous la fiche détail */
   extra?: (item: Item) => ReactNode;
+  /** Boutons supplémentaires dans la colonne Actions de la liste (reçoit le rôle connecté) */
+  rowActions?: (item: Item, role: string) => ReactNode;
+  /** Bloc affiché entre la recherche et le tableau de la liste (reçoit les éléments filtrés) */
+  listExtra?: (items: Item[]) => ReactNode;
+  /** Tableau compact qui s'adapte à la largeur disponible (aucune barre de défilement horizontale) */
+  fitWidth?: boolean;
 }
 
 /* ---------- Appels API ---------- */

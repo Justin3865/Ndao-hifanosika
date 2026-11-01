@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
 import { logger } from "../config/logger";
+import { computeAge } from "../utils/cin";
+import { checkIdentityRules } from "../utils/identityRules";
 import { parseIdentity } from "../utils/identity";
 
 import { sendError } from "../middlewares/error.middleware";
@@ -147,6 +149,12 @@ function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
 
   Object.assign(data, identity.data);
 
+  // Âge calculé automatiquement depuis la date de naissance (non modifiable à la main)
+  if (identity.data.birthDate instanceof Date) {
+    const age = computeAge(identity.data.birthDate);
+    if (age !== null) data.age = age;
+  }
+
   return { ok: true, data };
 }
 
@@ -193,6 +201,15 @@ export async function createBeneficiary(
     if (!parsed.ok) {
       res.status(400).json({ success: false, message: parsed.message });
       return;
+    }
+
+    {
+      const rule = await checkIdentityRules(parsed.data, { names: { firstName, lastName } });
+
+      if (rule) {
+        res.status(400).json({ success: false, message: rule });
+        return;
+      }
     }
 
     if (!(await zoneExists(parsed.data.zoneId))) {
@@ -313,6 +330,15 @@ export async function updateBeneficiary(
     if (!parsed.ok) {
       res.status(400).json({ success: false, message: parsed.message });
       return;
+    }
+
+    {
+      const rule = await checkIdentityRules(parsed.data, { beneficiaryId: id });
+
+      if (rule) {
+        res.status(400).json({ success: false, message: rule });
+        return;
+      }
     }
 
     if (!(await zoneExists(parsed.data.zoneId))) {

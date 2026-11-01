@@ -7,10 +7,11 @@ import api from "@/lib/axios";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
+import { LearningReport } from "@/components/ai-charts/LearningReport";
 
 interface Metrics { accuracy: number; precision: number; recall: number; f1: number; auc: number }
 
-type Kind = "households" | "interns" | "projects";
+type Kind = "households" | "interns" | "stage_progress" | "projects";
 
 interface Overview {
   kind: Kind;
@@ -56,6 +57,9 @@ interface Report {
   baselineTest: Metrics;
   best: { key: string; name: string; auc: number; f1: number; accuracy: number } | null;
   confusion: { tp: number; fp: number; tn: number; fn: number };
+  stats?: Array<{ name: string; missingPct: number; mean: number; std: number; min: number; max: number; meanPositive: number | null; meanNegative: number | null; effect: number }>;
+  cv?: { k: number; results: Array<{ key: string; name: string; aucMean: number; aucStd: number; f1Mean: number; accuracyMean: number; folds: number[] }> } | null;
+  curve?: Array<{ size: number; trainAuc: number; testAuc: number }>;
   train: Row[];
   test: Row[];
   unlabeled: Row[];
@@ -288,6 +292,8 @@ export function DatasetsLab({ onChanged }: { onChanged?: () => void } = {}) {
 
             <p className="text-xs text-gray-500">Test : {report.confusion.tp + report.confusion.tn} bien classés sur {report.counts.test} · {report.confusion.fp} fausses alertes · {report.confusion.fn} cas manqués.</p>
           </div>
+
+          <LearningReport report={report} />
 
           <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-center gap-2">

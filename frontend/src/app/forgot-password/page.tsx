@@ -7,6 +7,7 @@ import { ArrowLeft, KeyRound, Loader2, Mail, MailCheck, Smartphone } from "lucid
 import { Logo } from "@/components/brand/Logo";
 import { toast } from "@/lib/toast";
 import { API_URL } from "@/lib/socket";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 type Channel = "email" | "sms";
 type Step = "request" | "email-sent" | "code";
@@ -139,7 +140,7 @@ export default function ForgotPasswordPage() {
                 ) : (
                   <>
                     <Smartphone className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-                    <input type="tel" autoComplete="tel" className={input} placeholder="034 12 345 67" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <input type="tel" {...phoneInputProps} className={input} placeholder="034 12 345 67" value={phone} onChange={(e) => setPhone(sanitizePhone(e.target.value))} />
                   </>
                 )}
               </div>

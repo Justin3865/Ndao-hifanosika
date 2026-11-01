@@ -380,7 +380,10 @@ export async function createActivity(
       });
     }
 
-    const activity = await prisma.activity.create({
+    const cleanTitle = title.trim();
+
+    const [activity] = await prisma.$transaction([
+    prisma.activity.create({
       data: {
         projectId: parsedProjectId,
 
@@ -426,7 +429,25 @@ export async function createActivity(
           },
         },
       },
-    });
+    }),
+
+    /*
+     * Jalon enregistré automatiquement en base avec l'activité
+     * (même transaction : les deux sont créés, ou aucun).
+     */
+    prisma.milestone.create({
+      data: {
+        projectId: parsedProjectId,
+        title: cleanTitle,
+        description:
+          typeof description === "string"
+            ? description.trim() || null
+            : null,
+        dueDate: parsedEndDate ?? parsedStartDate ?? null,
+        progress: 0,
+      },
+    }),
+    ]);
 
     return res.status(201).json({
       success: true,

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { CinHint } from "@/components/crud/CinHint";
+import { cinPrefixError, computeAge } from "@/lib/cin";
 import {
   ASSIGNABLE_ROLES,
   ROLE_LABELS,
@@ -13,6 +15,7 @@ import {
   UserPayload,
   fetchDepartments,
 } from "@/lib/usersApi";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 interface Props {
   mode: "create" | "edit";
@@ -102,6 +105,25 @@ export function UserEditorForm({
       return;
     }
 
+    if (cin) {
+      const prefix = cinPrefixError(cin, [form.cinIssuedPlace, form.birthPlace]);
+
+      if (prefix) {
+        setLocalError(prefix);
+        return;
+      }
+    }
+
+    if (form.birthDate && form.cinIssuedAt && form.cinIssuedAt <= form.birthDate) {
+      setLocalError("La date de délivrance du CIN doit être postérieure à la date de naissance.");
+      return;
+    }
+
+    if (form.cinDuplicata && form.cinDuplicataAt && form.cinIssuedAt && form.cinDuplicataAt < form.cinIssuedAt) {
+      setLocalError("La date du duplicata ne peut pas précéder la délivrance du CIN.");
+      return;
+    }
+
     const payload: UserPayload = {
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
@@ -156,7 +178,7 @@ export function UserEditorForm({
 
         <label className="space-y-1 text-sm font-medium text-gray-700">
           Téléphone
-          <input className={inputClass} value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+          <input className={inputClass} type="tel" {...phoneInputProps} placeholder="034 00 000 00" value={form.phone} onChange={(e) => set("phone", sanitizePhone(e.target.value))} />
         </label>
 
         <label className="space-y-1 text-sm font-medium text-gray-700">
@@ -214,6 +236,17 @@ export function UserEditorForm({
             </label>
 
             <label className="space-y-1 text-sm font-medium text-gray-700">
+              Âge (calculé)
+              <input
+                readOnly
+                tabIndex={-1}
+                className={`${inputClass} cursor-not-allowed bg-gray-100 text-gray-600`}
+                placeholder="Selon la date de naissance"
+                value={form.birthDate && computeAge(form.birthDate) !== null ? `${computeAge(form.birthDate)} ans` : ""}
+              />
+            </label>
+
+            <label className="space-y-1 text-sm font-medium text-gray-700">
               Lieu de naissance
               <input className={inputClass} placeholder="Ex. Fianarantsoa" value={form.birthPlace} onChange={(e) => set("birthPlace", e.target.value)} />
             </label>
@@ -221,6 +254,7 @@ export function UserEditorForm({
             <label className="space-y-1 text-sm font-medium text-gray-700">
               N° CIN
               <input className={inputClass} inputMode="numeric" maxLength={12} placeholder="12 chiffres" value={form.cinNumber} onChange={(e) => set("cinNumber", e.target.value.replace(/\D/g, "").slice(0, 12))} />
+              <CinHint cin={form.cinNumber} birthPlace={form.birthPlace} issuedPlace={form.cinIssuedPlace} userId={initial?.id} />
             </label>
 
             <label className="space-y-1 text-sm font-medium text-gray-700">
@@ -229,6 +263,7 @@ export function UserEditorForm({
                 type="date"
                 className={inputClass}
                 value={form.cinIssuedAt}
+                min={form.birthDate ? new Date(new Date(`${form.birthDate}T00:00:00`).getTime() + 86400000).toISOString().slice(0, 10) : undefined}
                 max={new Date().toISOString().slice(0, 10)}
                 onChange={(e) => set("cinIssuedAt", e.target.value)}
               />

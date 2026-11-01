@@ -19,8 +19,12 @@ import {
 import { confirmDialog, toast } from "@/lib/toast";
 import { GeoPicker } from "@/components/maps/GeoPicker";
 import { getStoredRole } from "@/lib/access";
-import { IDENTITY_KEYS, IdentityFields, identityName } from "@/components/crud/IdentityFields";
+import { IDENTITY_KEYS, IdentityFields, identityName, identityProblem } from "@/components/crud/IdentityFields";
+import api from "@/lib/axios";
+import { ageLabel, nextDay, statusFromDates } from "@/lib/madagascar";
 import { NEW_PERSON_KEYS, NewPersonFields, newPersonFilled, newPersonName } from "@/components/crud/NewPersonFields";
+import { PartnersField, parseIds } from "@/components/crud/PartnersField";
+import { ZoneHierarchyField } from "@/components/zones/ZoneHierarchyField";
 
 type Values = Record<string, string | boolean>;
 
@@ -52,6 +56,12 @@ function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
 
 function loadedEntries(field: FieldDef, item: Record<string, unknown>): Array<[string, string | boolean]> {
   if (field.type === "identity" || field.type === "newperson") return initialEntries(field);
+
+  // Partenaires du projet : identifiants « 1,4,7 » repris des liens existants
+  if (field.type === "partners") {
+    const links = Array.isArray(item?.partnerLinks) ? (item.partnerLinks as Array<{ partnerId?: number; partner?: { id?: number } }>) : [];
+    return [[field.name, links.map((l) => String(l.partnerId ?? l.partner?.id ?? "")).filter(Boolean).join(",")]];
+  }
 
   if (field.type === "geo") {
     const k = geoKeys(field);
@@ -108,6 +118,19 @@ export function ResourceFormPage({
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [statusTouched, setStatusTouched] = useState(false);
+
+  // Création depuis la fiche d'un projet : /…/create?projectId=ID présélectionne le projet
+  useEffect(() => {
+    if (isEdit || typeof window === "undefined") return;
+
+    const projectId = new URLSearchParams(window.location.search).get("projectId");
+
+    if (projectId && fields.some((field) => field.name === "projectId")) {
+      setValues((cur) => ({ ...cur, projectId: cur.projectId || projectId }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Chargement des listes déroulantes (projets, départements, ...)
   useEffect(() => {
@@ -139,7 +162,32 @@ export function ResourceFormPage({
   }, [config, id, isEdit]);
 
   const setValue = (name: string, value: string | boolean) =>
-    setValues((cur) => ({ ...cur, [name]: value }));
+    setValues((cur) => {
+      const next: Values = { ...cur, [name]: value };
+
+      for (const field of fields) {
+        // Date de fin : jamais avant (ni le même jour que) la date de début
+        if (field.after && name === field.after) {
+          const start = String(value);
+          const end = String(next[field.name] ?? "");
+          if (start && end && end <= start) next[field.name] = "";
+        }
+
+        // Statut : suit les dates tant que l'utilisateur ne l'a pas choisi lui-même (et sauf « Annulé »)
+        const auto = field.statusFromDates;
+        if (auto && (name === auto.start || name === auto.end) && !statusTouched && next[field.name] !== "CANCELLED") {
+          const derived = statusFromDates(String(next[auto.start] ?? ""), String(next[auto.end] ?? ""));
+          if (derived) next[field.name] = derived;
+        }
+      }
+
+      return next;
+    });
+
+  const onFieldChange = (field: FieldDef, value: string | boolean) => {
+    if (field.statusFromDates) setStatusTouched(true);
+    setValue(field.name, value);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -160,9 +208,56 @@ export function ResourceFormPage({
       }
     }
 
+    for (const field of fields) {
+      if (field.after) {
+        const start = String(values[field.after] ?? "");
+        const end = String(values[field.name] ?? "");
+
+        if (start && end && end <= start) {
+          setError(`« ${field.label} » doit être postérieure à « ${fields.find((f) => f.name === field.after)?.label ?? "la date de début"} ».`);
+          return;
+        }
+      }
+
+      if (field.type === "identity") {
+        const problem = identityProblem(values);
+
+        if (problem) {
+          setError(problem);
+          return;
+        }
+
+        // CIN déjà enregistré pour une autre personne : on bloque avant l'envoi
+        const cin = String(values[identityName("cinNumber")] ?? "");
+
+        if (cin.length === 12) {
+          try {
+            const res = await api.get("/profile/cin-check", {
+              params: { cin, userId: String(values[field.identityOf ?? ""] ?? "") || undefined },
+            });
+
+            if (res.data?.data?.taken) {
+              setError(`Ce numéro de CIN est déjà enregistré${res.data.data.takenBy ? ` pour ${res.data.data.takenBy}` : ""}.`);
+              return;
+            }
+          } catch {
+            /* le serveur refusera de toute façon un doublon à l'enregistrement */
+          }
+        }
+      }
+    }
+
     const payload: Record<string, unknown> = {};
 
     for (const field of fields) {
+      if (field.ageFrom) continue; // l'âge est calculé, jamais envoyé
+
+      // Partenaires : toujours envoyés (liste vide = aucun partenaire)
+      if (field.type === "partners") {
+        payload[field.name] = parseIds(String(values[field.name] ?? ""));
+        continue;
+      }
+
       if (field.type === "newperson") {
         if (String(values[field.identityOf ?? ""] ?? "") === "" && newPersonFilled(values)) {
           payload.newStudent = Object.fromEntries(
@@ -227,6 +322,14 @@ export function ResourceFormPage({
   const renderField = (field: FieldDef) => {
     const value = values[field.name];
 
+    if (field.type === "zonehierarchy") {
+      return <ZoneHierarchyField values={values} setMany={(patch) => setValues((cur) => ({ ...cur, ...patch }))} />;
+    }
+
+    if (field.type === "partners") {
+      return <PartnersField label={field.label} value={String(value ?? "")} onChange={(next) => setValue(field.name, next)} />;
+    }
+
     if (field.type === "newperson") {
       return (
         <NewPersonFields
@@ -283,6 +386,43 @@ export function ResourceFormPage({
       );
     }
 
+    if (field.readOnly) {
+      const shown = String(value ?? "").trim();
+
+      return (
+        <label className="block space-y-1 text-sm font-medium text-gray-700">
+          {field.label}
+          <input
+            readOnly
+            tabIndex={-1}
+            className={`${inputClass} cursor-not-allowed bg-gray-100 text-gray-600`}
+            value={shown !== "" ? `${shown} %` : ""}
+            placeholder={field.readOnlyPlaceholder ?? "Calculé automatiquement"}
+          />
+          {field.hint && (
+            <span className="block text-xs font-normal text-gray-500">{field.hint}</span>
+          )}
+        </label>
+      );
+    }
+
+    if (field.ageFrom) {
+      const label = ageLabel(String(values[field.ageFrom] ?? ""));
+
+      return (
+        <label className="block space-y-1 text-sm font-medium text-gray-700">
+          {field.label}
+          <input
+            readOnly
+            tabIndex={-1}
+            className={`${inputClass} cursor-not-allowed bg-gray-100 text-gray-600`}
+            value={label}
+            placeholder="Calculé à partir de la date de naissance"
+          />
+        </label>
+      );
+    }
+
     let control;
 
     if (field.type === "textarea") {
@@ -328,7 +468,7 @@ export function ResourceFormPage({
         <select
           className={inputClass}
           value={String(value)}
-          onChange={(e) => setValue(field.name, e.target.value)}
+          onChange={(e) => onFieldChange(field, e.target.value)}
         >
           <option value="">Sélectionner</option>
           {(field.options ?? []).map((option) => (
@@ -342,7 +482,7 @@ export function ResourceFormPage({
       control = (
         <input
           type={field.type}
-          min={field.min}
+          min={field.after ? nextDay(String(values[field.after] ?? "")) || undefined : field.min}
           max={field.max}
           maxLength={field.digitsOnly}
           inputMode={field.digitsOnly ? "numeric" : undefined}
@@ -389,7 +529,7 @@ export function ResourceFormPage({
                 <div
                   key={field.name}
                   className={
-                    field.full || field.type === "textarea" || field.type === "geo" ? "md:col-span-2" : ""
+                    field.full || field.type === "textarea" || field.type === "geo" || field.type === "partners" || field.type === "zonehierarchy" ? "md:col-span-2" : ""
                   }
                 >
                   {renderField(field)}

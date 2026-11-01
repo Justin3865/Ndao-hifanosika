@@ -16,13 +16,28 @@ interface Zone { id: number; name: string; region: string | null; latitude: numb
  */
 export default function LocationSection() {
   const [zones, setZones] = useState<Zone[]>([]);
+  const [hq, setHq] = useState<{ lat: number; lng: number } | null>(null);
+  const [mode, setMode] = useState<"satellite" | "plan">("satellite");
 
   useEffect(() => {
     fetch(`${API}/public/organization`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => setZones(j?.data?.zones ?? []))
+      .then((j) => {
+        setZones(j?.data?.zones ?? []);
+
+        const lat = Number(j?.data?.headquarters?.latitude);
+        const lng = Number(j?.data?.headquarters?.longitude);
+        setHq(Number.isFinite(lat) && Number.isFinite(lng) && j?.data?.headquarters ? { lat, lng } : null);
+      })
       .catch(() => setZones([]));
   }, []);
+
+  // Siège enregistré : la carte est centrée sur ses coordonnées avec un repère (pin) portant son nom ; sinon recherche par adresse
+  const mapQuery = hq ? encodeURIComponent(`${hq.lat},${hq.lng}(${ORG_NAME})`) : MAPS_QUERY;
+  // Siège connu : carte centrée sur ses coordonnées SANS repère Google (rouge), le repère bleu est dessiné au centre
+  const base = hq ? `https://maps.google.com/maps?ll=${hq.lat},${hq.lng}&hl=fr&output=embed` : `https://maps.google.com/maps?q=${mapQuery}&hl=fr&output=embed`;
+  const mapSrc = mode === "plan" ? `${base}&z=19` : `${base}&t=h&z=19`; // satellite + noms : le bâtiment de l'ONG est visible
+  const mapsLink = hq ? `https://www.google.com/maps/search/?api=1&query=${hq.lat}%2C${hq.lng}` : `https://www.google.com/maps/search/?api=1&query=${MAPS_QUERY}`;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -44,7 +59,7 @@ export default function LocationSection() {
             </div>
           </div>
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${MAPS_QUERY}`}
+            href={mapsLink}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
@@ -54,11 +69,37 @@ export default function LocationSection() {
           </a>
         </div>
 
-        <div className="border-t border-gray-100">
+        <div className="flex gap-2 border-t border-gray-100 px-3 py-2 sm:px-4">
+          {([["satellite", "Satellite"], ["plan", "Plan"]] as [typeof mode, string][]).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setMode(id)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                mode === id ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 text-blue-700 hover:bg-blue-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative border-t border-gray-100">
+          {hq && (
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 32"
+              className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-10 w-8 -translate-x-1/2 -translate-y-full drop-shadow-lg"
+            >
+              <path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z" fill="#2563eb" stroke="#ffffff" strokeWidth="1.5" />
+              <circle cx="12" cy="11.5" r="4" fill="#ffffff" />
+            </svg>
+          )}
           <iframe
             title="Localisation du siège de l'ONG Ndao Hifanosika à Fianarantsoa"
-            src={`https://maps.google.com/maps?q=${MAPS_QUERY}&output=embed`}
-            className="block h-[260px] w-full sm:h-[360px]"
+            key={mapSrc}
+            src={mapSrc}
+            className="block h-[380px] w-full sm:h-[540px]"
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen

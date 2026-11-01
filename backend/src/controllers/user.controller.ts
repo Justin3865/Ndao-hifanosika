@@ -19,7 +19,7 @@ import {
 import { sendError } from "../middlewares/error.middleware";
 import { getReqUser } from "../utils/dataScope";
 import { prisma } from "../config/database";
-import { parseIdentity } from "../utils/identity";
+import { cinOwnerName, parseIdentity } from "../utils/identity";
 
 /** Naissance + CIN saisis par l'administrateur (champs absents ignorés) */
 async function applyIdentity(user: any, body: Record<string, unknown>) {
@@ -250,6 +250,11 @@ export async function createUser(
       return res.status(400).json({ success: false, message: identityCheck.error });
     }
 
+    {
+      const owner = await cinOwnerName(identityCheck.data.cinNumber as string | null | undefined);
+      if (owner) return res.status(409).json({ success: false, message: `Ce numéro de CIN est déjà enregistré pour ${owner}.` });
+    }
+
     const user =
       await createUserService({
         firstName: String(
@@ -465,6 +470,11 @@ export async function updateUser(
 
     if (identityCheck.error) {
       return res.status(400).json({ success: false, message: identityCheck.error });
+    }
+
+    {
+      const owner = await cinOwnerName(identityCheck.data.cinNumber as string | null | undefined, id);
+      if (owner) return res.status(409).json({ success: false, message: `Ce numéro de CIN est déjà enregistré pour ${owner}.` });
     }
 
     const user =

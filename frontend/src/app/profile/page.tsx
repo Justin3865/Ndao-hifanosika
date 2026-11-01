@@ -8,6 +8,9 @@ import { AppLayout } from "@/components/layout";
 import { errorMessage, fmtDateTime } from "@/lib/crud";
 import { roleLabel, statusLabel } from "@/lib/roles";
 import { toast } from "@/lib/toast";
+import { CinHint } from "@/components/crud/CinHint";
+import { cinPrefixError, computeAge } from "@/lib/cin";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 interface Profile {
   id: number;
@@ -130,6 +133,25 @@ export default function ProfilePage() {
 
     if (cin && !/^\d{12}$/.test(cin)) {
       flash("err", "Le numéro de CIN doit contenir exactement 12 chiffres.");
+      return;
+    }
+
+    if (cin) {
+      const prefix = cinPrefixError(cin, [form.cinIssuedPlace, form.birthPlace]);
+
+      if (prefix) {
+        flash("err", prefix);
+        return;
+      }
+    }
+
+    if (form.birthDate && form.cinIssuedAt && form.cinIssuedAt <= form.birthDate) {
+      flash("err", "La date de délivrance du CIN doit être postérieure à la date de naissance.");
+      return;
+    }
+
+    if (form.cinDuplicata && form.cinDuplicataAt && form.cinIssuedAt && form.cinDuplicataAt < form.cinIssuedAt) {
+      flash("err", "La date du duplicata ne peut pas précéder la délivrance du CIN.");
       return;
     }
 
@@ -352,7 +374,7 @@ export default function ProfilePage() {
                   </label>
                   <label className="space-y-1 text-sm font-medium text-gray-700">
                     Téléphone
-                    <input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    <input className={inputClass} type="tel" {...phoneInputProps} value={form.phone} onChange={(e) => setForm({ ...form, phone: sanitizePhone(e.target.value) })} />
                   </label>
                   <label className="space-y-1 text-sm font-medium text-gray-700">
                     Date de naissance
@@ -362,6 +384,16 @@ export default function ProfilePage() {
                       value={form.birthDate}
                       max={new Date().toISOString().slice(0, 10)}
                       onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm font-medium text-gray-700">
+                    Âge (calculé automatiquement)
+                    <input
+                      readOnly
+                      tabIndex={-1}
+                      className={`${inputClass} cursor-not-allowed bg-gray-100 text-gray-600`}
+                      placeholder="Selon la date de naissance"
+                      value={form.birthDate && computeAge(form.birthDate) !== null ? `${computeAge(form.birthDate)} ans` : ""}
                     />
                   </label>
                   <label className="space-y-1 text-sm font-medium text-gray-700">
@@ -389,6 +421,12 @@ export default function ProfilePage() {
                         value={form.cinNumber}
                         onChange={(e) => setForm({ ...form, cinNumber: e.target.value.replace(/\D/g, "").slice(0, 12) })}
                       />
+                      <CinHint
+                        cin={form.cinNumber}
+                        birthPlace={form.birthPlace}
+                        issuedPlace={form.cinIssuedPlace}
+                        userId={(profile as unknown as { id?: number })?.id}
+                      />
                     </label>
                     <label className="space-y-1 text-sm font-medium text-gray-700">
                       Date de délivrance
@@ -396,6 +434,7 @@ export default function ProfilePage() {
                         type="date"
                         className={inputClass}
                         value={form.cinIssuedAt}
+                        min={form.birthDate ? new Date(new Date(`${form.birthDate}T00:00:00`).getTime() + 86400000).toISOString().slice(0, 10) : undefined}
                         max={new Date().toISOString().slice(0, 10)}
                         onChange={(e) => setForm({ ...form, cinIssuedAt: e.target.value })}
                       />
@@ -431,6 +470,7 @@ export default function ProfilePage() {
                           type="date"
                           className={inputClass}
                           value={form.cinDuplicataAt}
+                          min={form.cinIssuedAt || undefined}
                           max={new Date().toISOString().slice(0, 10)}
                           onChange={(e) => setForm({ ...form, cinDuplicataAt: e.target.value })}
                         />

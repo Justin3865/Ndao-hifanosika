@@ -180,6 +180,8 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
           )}
         </div>
 
+        {!loading && !error && config.listExtra?.(filtered)}
+
         {loading && <p className="text-sm text-gray-500">Chargement...</p>}
 
         {error && (
@@ -189,16 +191,16 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
         )}
 
         {!loading && !error && (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[720px] text-left text-sm">
+          <div className={`overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm`}>
+            <table className={`w-full text-left text-sm ${config.fitWidth ? "" : "min-w-[720px]"}`}>
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
                   {columns.map((column) => (
-                    <th key={column.header} className="px-4 py-3 font-semibold">
+                    <th key={column.header} className={`${config.fitWidth ? "px-1.5 text-[10px]" : "px-4"} py-3 font-semibold`}>
                       {column.header}
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  <th className={`${config.fitWidth ? "px-1.5 text-[10px]" : "px-4"} py-3 text-right font-semibold`}>Actions</th>
                 </tr>
               </thead>
 
@@ -217,13 +219,15 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
                 {visible.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     {columns.map((column) => (
-                      <td key={column.header} className="px-4 py-3 text-gray-700">
+                      <td key={column.header} className={`${config.fitWidth ? "px-1.5 text-xs" : "px-4"} py-3 text-gray-700`}>
                         {column.render(item)}
                       </td>
                     ))}
 
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
+                    <td className={`${config.fitWidth ? "px-1.5" : "px-4"} py-3`}>
+                      <div className={`flex justify-end gap-1 ${config.fitWidth ? "[&>a]:!p-1.5 [&>button]:!p-1.5" : ""}`}>
+                        {config.rowActions?.(item, role)}
+
                         <Link
                           href={`${config.basePath}/${item.id}`}
                           className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"

@@ -19,6 +19,7 @@ import type {
   Departement,
   DepartementStatus,
 } from "./DepartementTable";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 export interface DepartementFormData {
   name: string;
@@ -233,9 +234,11 @@ export function DepartementForm({
             <Input
               value={formData.phone}
               onChange={(e) =>
-                updateField("phone", e.target.value)
+                updateField("phone", sanitizePhone(e.target.value))
               }
-              placeholder="+261 34 00 000 00"
+              placeholder="034 00 000 00"
+              type="tel"
+              {...phoneInputProps}
             />
           </div>
         </div>

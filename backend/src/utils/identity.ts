@@ -3,6 +3,9 @@
  * au profil, à la gestion des utilisateurs et aux certificats.
  */
 
+import { prisma } from "../config/database";
+import { ageFrom, checkCinPrefix } from "./cinDistricts";
+
 export type IdentityResult = { data: Record<string, unknown>; error?: string };
 
 export const toText = (value: unknown): string | null => {
@@ -54,12 +57,25 @@ export function parseIdentity(
   if (src.cinNumber !== undefined) {
     const cin = cleanCin(src.cinNumber);
     if (cin && !isValidCin(cin)) return { data, error: "Le numéro de CIN doit contenir exactement 12 chiffres." };
+
+    if (cin) {
+      const prefix = checkCinPrefix(cin, src.cinIssuedPlace === undefined ? null : toText(src.cinIssuedPlace));
+      if (!prefix.ok) return { data, error: prefix.message };
+    }
+
     data.cinNumber = cin;
   }
 
   if (src.cinIssuedAt !== undefined) {
     const date = toDate(src.cinIssuedAt);
     if (date === "invalid" || (date && !isPastDate(date))) return { data, error: "Date de délivrance du CIN invalide." };
+
+    // Le CIN ne peut pas être délivré avant la naissance (ni à un enfant de moins d'un an)
+    const birth = withBirth && src.birthDate !== undefined ? toDate(src.birthDate) : null;
+    if (date && birth && birth !== "invalid" && date.getTime() < birth.getTime()) {
+      return { data, error: "La date de délivrance du CIN ne peut pas précéder la date de naissance." };
+    }
+
     data.cinIssuedAt = date;
   }
 
@@ -73,6 +89,11 @@ export function parseIdentity(
   if (src.cinDuplicataAt !== undefined && data.cinDuplicata !== false) {
     const date = toDate(src.cinDuplicataAt);
     if (date === "invalid" || (date && !isPastDate(date))) return { data, error: "Date du duplicata invalide." };
+    const issued = data.cinIssuedAt instanceof Date ? data.cinIssuedAt : toDate(src.cinIssuedAt);
+    if (date && issued && issued !== "invalid" && date.getTime() < issued.getTime()) {
+      return { data, error: "La date du duplicata ne peut pas précéder la date de délivrance du CIN." };
+    }
+
     data.cinDuplicataAt = date;
   }
 
@@ -111,4 +132,17 @@ export function missingIdentity(user: {
   if (!user.cinIssuedPlace) missing.push("Lieu de délivrance du CIN");
   if (user.cinDuplicata && !user.cinDuplicataAt) missing.push("Date du duplicata");
   return missing;
+}
+
+export { ageFrom };
+
+/** Un autre compte utilise-t-il déjà ce CIN ? (`userId` = la personne en cours de modification, ignorée) */
+export async function cinOwnerName(cin: string | null | undefined, userId?: number | null): Promise<string | null> {
+  if (!cin) return null;
+  const other = await prisma.user.findFirst({
+    where: { cinNumber: cin, ...(userId ? { id: { not: userId } } : {}) },
+    select: { firstName: true, lastName: true },
+  });
+
+  return other ? `${other.firstName} ${other.lastName}`.trim() : null;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useState } from "react";
-import { Building2, Check, ImagePlus, Plus, X } from "lucide-react";
+import { Building2, Check, ImagePlus, Pencil, Plus, X } from "lucide-react";
 import api from "@/lib/axios";
 import { errorMessage } from "@/lib/crud";
 
@@ -91,6 +91,12 @@ export function PartnersField({
   const [logo, setLogo] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState("FUNDING_PARTNER");
+  const [editSlogan, setEditSlogan] = useState("");
+  const [editLogo, setEditLogo] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const selected = parseIds(value);
   const list = options ?? partners;
@@ -127,6 +133,58 @@ export function PartnersField({
       setLogo(await readLogo(file));
     } catch (err) {
       setError((err as Error).message);
+    }
+  };
+
+  const startEdit = (partner: PartnerItem) => {
+    setAdding(false);
+    setError("");
+    setEditingId(partner.id);
+    setEditName(partner.name);
+    setEditType(partner.type || "FUNDING_PARTNER");
+    setEditSlogan(partner.slogan ?? "");
+    setEditLogo(partner.logoUrl ?? "");
+  };
+
+  const handleEditLogo = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      setError("");
+      setEditLogo(await readLogo(file));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  /** Modifie un partenaire déjà enregistré (PUT /partners/:id). */
+  const handleUpdate = async () => {
+    if (editingId === null) return;
+
+    if (!editName.trim()) {
+      setError("Le nom du partenaire est obligatoire.");
+      return;
+    }
+
+    setEditSaving(true);
+    setError("");
+
+    try {
+      const res = await api.put(`/partners/${editingId}`, {
+        name: editName.trim(),
+        type: editType,
+        slogan: editSlogan.trim(),
+        logoUrl: editLogo || null,
+      });
+      const updated: PartnerItem = res.data?.partner;
+      setPartners((cur) => (cur ? cur.map((p) => (p.id === editingId ? { ...p, ...updated } : p)) : cur));
+      setEditingId(null);
+    } catch (err) {
+      setError(errorMessage(err, "Modification du partenaire impossible."));
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -179,6 +237,7 @@ export function PartnersField({
           type="button"
           onClick={() => {
             setAdding((v) => !v);
+            setEditingId(null);
             setError("");
           }}
           className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
@@ -188,6 +247,8 @@ export function PartnersField({
         </button>
         )}
       </div>
+
+      {error && !adding && editingId === null && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
 
       {list === undefined && <p className="text-sm text-gray-500">Chargement des partenaires...</p>}
       {list === null && (
@@ -203,11 +264,11 @@ export function PartnersField({
             const on = selected.includes(partner.id);
 
             return (
+              <div key={partner.id} className="relative">
               <button
-                key={partner.id}
                 type="button"
                 onClick={() => toggle(partner.id)}
-                className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2 text-left transition ${
+                className={`flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2 pr-9 text-left transition ${
                   on ? "border-blue-600 bg-blue-50" : "border-gray-200 hover:bg-gray-50"
                 }`}
               >
@@ -225,8 +286,100 @@ export function PartnersField({
                 </span>
                 {on && <Check className="h-4 w-4 shrink-0 text-blue-700" />}
               </button>
+              {allowCreate && !options && (
+                <button
+                  type="button"
+                  title="Modifier le partenaire (nom, slogan, logo)"
+                  onClick={() => startEdit(partner)}
+                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow hover:bg-blue-700"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+              </div>
             );
           })}
+        </div>
+      )}
+
+      {allowCreate && editingId !== null && (
+        <div
+          className="space-y-3 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/40 p-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+              void handleUpdate();
+            }
+          }}
+        >
+          <p className="text-sm font-semibold text-gray-800">Modifier le partenaire</p>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block space-y-1 text-xs font-medium text-gray-700">
+              Nom du partenaire *
+              <input className={inputClass} value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </label>
+
+            <label className="block space-y-1 text-xs font-medium text-gray-700">
+              Type
+              <select className={inputClass} value={editType} onChange={(e) => setEditType(e.target.value)}>
+                {TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="block space-y-1 text-xs font-medium text-gray-700">
+            Slogan du partenaire
+            <input className={inputClass} value={editSlogan} maxLength={200} onChange={(e) => setEditSlogan(e.target.value)} />
+          </label>
+
+          <div className="flex items-center gap-3">
+            <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+              {editLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={editLogo} alt="Logo" className="h-full w-full object-contain" />
+              ) : (
+                <ImagePlus className="h-6 w-6 text-gray-400" />
+              )}
+            </span>
+
+            <label className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+              {editLogo ? "Changer le logo" : "Ajouter un logo"}
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={handleEditLogo} />
+            </label>
+
+            {editLogo && (
+              <button type="button" onClick={() => setEditLogo("")} className="text-xs text-red-600 hover:underline">
+                Retirer
+              </button>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(null);
+                setError("");
+              }}
+              className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleUpdate}
+              disabled={editSaving}
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {editSaving ? "Enregistrement..." : "Enregistrer"}
+            </button>
+          </div>
         </div>
       )}
 

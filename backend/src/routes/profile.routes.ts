@@ -5,7 +5,8 @@ import { logger } from "../config/logger";
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import { getReqUser } from "../utils/dataScope";
-import { identitySelect, missingIdentity, parseIdentity } from "../utils/identity";
+import { cinOwnerName, identitySelect, missingIdentity, parseIdentity } from "../utils/identity";
+import { checkCinPrefix } from "../utils/cinDistricts";
 
 import { sendError } from "../middlewares/error.middleware";
 /** Profil de l'utilisateur CONNECTÉ (jamais d'id dans l'URL). */
@@ -38,6 +39,35 @@ const profileSelect = {
 } as const;
 
 /** Identité d'un utilisateur (stagiaire…) : préremplit les formulaires de l'encadrement */
+/** Vérification en direct d'un CIN : préfixe (district) + déjà utilisé par une autre personne ? */
+router.get("/cin-check", async (req: Request, res: Response) => {
+  try {
+    const cin = String(req.query.cin ?? "").replace(/[\s.\-]/g, "");
+    const userId = Number(req.query.userId);
+    const place = req.query.place ? String(req.query.place) : null;
+
+    if (!/^\d{12}$/.test(cin)) return res.json({ success: true, data: { valid: false, taken: false } });
+
+    const prefix = checkCinPrefix(cin, place);
+    const owner = await cinOwnerName(cin, Number.isInteger(userId) && userId > 0 ? userId : undefined);
+
+    res.json({
+      success: true,
+      data: {
+        valid: prefix.ok,
+        message: prefix.message ?? null,
+        province: prefix.province ?? null,
+        district: prefix.district ?? null,
+        taken: Boolean(owner),
+        takenBy: owner,
+      },
+    });
+  } catch (error) {
+    logger.error("Erreur vérification CIN", error);
+    sendError(res, error, "Erreur serveur");
+  }
+});
+
 router.get("/identity/:userId", authorizeRoles("ADMIN", "DIRECTION", "RH", "COORDINATOR"), async (req: Request, res: Response) => {
   try {
     const userId = Number(req.params.userId);
@@ -99,6 +129,12 @@ router.put("/", async (req: Request, res: Response) => {
 
     if (identity.error) {
       return res.status(400).json({ success: false, message: identity.error });
+    }
+
+    const owner = await cinOwnerName(identity.data.cinNumber as string | null | undefined, me!.id);
+
+    if (owner) {
+      return res.status(409).json({ success: false, message: `Ce numéro de CIN est déjà enregistré pour ${owner}.` });
     }
 
     const user = await prisma.user.update({

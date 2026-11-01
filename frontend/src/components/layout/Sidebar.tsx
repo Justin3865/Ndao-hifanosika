@@ -12,7 +12,6 @@ import {
   Building2,
   ClipboardList,
   FileText,
-  Flag,
   Globe,
   GraduationCap,
   Heart,
@@ -56,7 +55,7 @@ const groups = [
     items: [
       { href: "/projects", label: "Projets", icon: Briefcase },
       { href: "/activities", label: "Activités", icon: Activity },
-      { href: "/milestones", label: "Jalons", icon: Flag },
+      // Jalons : déplacés dans la fiche du projet (/projects/[id])
       { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
       { href: "/evaluations", label: "Évaluations", icon: ClipboardList },
       // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"

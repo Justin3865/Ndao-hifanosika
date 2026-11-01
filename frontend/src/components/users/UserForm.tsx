@@ -26,6 +26,7 @@ import type {
   UserRole,
   UserStatus,
 } from "./UserTable";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 export interface UserFormData {
   name: string;
@@ -249,10 +250,11 @@ export function UserForm({
             id="phone"
             type="tel"
             label="Téléphone"
-            placeholder="+261 34 12 345 67"
+            placeholder="034 12 345 67"
+            {...phoneInputProps}
             value={formData.phone}
             onChange={(e) =>
-              updateField("phone", e.target.value)
+              updateField("phone", sanitizePhone(e.target.value))
             }
             icon={<Phone className="h-4 w-4" />}
           />

@@ -10,6 +10,7 @@ import { errorMessage, fetchLookup, type LookupItem } from "@/lib/crud";
 import { roleLabel } from "@/lib/roles";
 import { PartnersField, parseIds } from "@/components/crud/PartnersField";
 import { toast } from "@/lib/toast";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 interface InternshipOption {
   id: number;
@@ -930,7 +931,7 @@ export default function CreateCertificatePage() {
             {field(
               "holderPhone",
               "Téléphone",
-              <input type="tel" className={inputClass} placeholder="Ex. 034 00 000 00" value={form.holderPhone} onChange={(e) => set("holderPhone", e.target.value)} />,
+              <input type="tel" {...phoneInputProps} className={inputClass} placeholder="Ex. 034 00 000 00" value={form.holderPhone} onChange={(e) => set("holderPhone", sanitizePhone(e.target.value))} />,
             )}
             {field(
               "holderBirthDate",

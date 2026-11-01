@@ -25,8 +25,8 @@ export const nameSchema = z.string()
 export const phoneSchema = z.string()
   .optional()
   .refine(
-    (val) => !val || /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/.test(val),
-    "Numéro de téléphone invalide"
+    (val) => !val || /^[0-9]{10}$/.test(val),
+    "Le numéro de téléphone doit contenir exactement 10 chiffres"
   );
 
 // ----- Validation des URLs -----
