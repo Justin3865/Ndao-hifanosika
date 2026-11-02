@@ -68,9 +68,15 @@ export async function getInternshipCertificateSuggestion(internshipId: number): 
   let locationSource: LocationSource | null = null;
 
   // 1) lieu le plus fréquent parmi les activités du projet
-  if (internship.projectId) {
+  // Tous les projets rattachés au stagiaire (projet principal + cases cochées)
+  const links = await prisma.internshipProject.findMany({ where: { internshipId }, select: { projectId: true } });
+  const linkedProjectIds = Array.from(
+    new Set([...(internship.projectId ? [internship.projectId] : []), ...links.map((l) => l.projectId)]),
+  );
+
+  if (linkedProjectIds.length > 0) {
     const activities = await prisma.activity.findMany({
-      where: { projectId: internship.projectId },
+      where: { projectId: { in: linkedProjectIds } },
       select: { location: true },
     });
     const counts = new Map<string, number>();

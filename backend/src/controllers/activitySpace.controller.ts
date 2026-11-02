@@ -4,7 +4,7 @@ import { logger } from "../config/logger";
 import { sendError } from "../middlewares/error.middleware";
 import { getReqUser } from "../utils/dataScope";
 import { notifyUsers } from "../utils/notify";
-import { closePeriod, computeMerit, HONOR_MIN_SCORE as MERIT_HONOR_MIN, Level, levelOf, MeritRow, validPeriod } from "../services/merit.service";
+import { closePeriod, computeMerit, reopenGroup, ensurePeriodClosed, Group, GROUPS, isGroup, levelOf, MeritRow, snapshotGroup, validPeriod } from "../services/merit.service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
@@ -465,28 +465,25 @@ export const deleteComment = wrap("Erreur lors de la suppression", async (req, r
 /* Ordre de mérite                                                        */
 /* ------------------------------------------------------------------ */
 
-type Visible = { rows: Record<Level, MeritRow[]>; scope: "all" | "supervised" | "self" };
+type Visible = { rows: Record<Group, MeritRow[]>; scope: "all" | "supervised" | "self" };
+
+const mapGroups = <T,>(fn: (group: Group) => T): Record<Group, T> => ({ L3: fn("L3"), M2: fn("M2"), AUTRE: fn("AUTRE") });
+
+/** Groupe (L3 / M2 / Autre) dans lequel figure un stagiaire ; à défaut, sa promotion. */
+const groupOfUser = (cohorts: Record<Group, MeritRow[]>, user: { id: number; role: string }): Group =>
+  GROUPS.find((group) => cohorts[group].some((row) => row.userId === user.id)) ?? levelOf(user.role);
 
 /** Qui voit quoi : encadrement = classement complet ; tuteur = ses stagiaires ; stagiaire = lui seul + tableau d'honneur. */
-async function visibleRows(user: { id: number; role: string }, cohorts: Record<Level, MeritRow[]>): Promise<Visible | null> {
+async function visibleRows(user: { id: number; role: string }, cohorts: Record<Group, MeritRow[]>): Promise<Visible | null> {
   if (MERIT_FULL.includes(user.role)) return { rows: cohorts, scope: "all" };
 
   if (isTutor(user.role)) {
     const ids = new Set(await supervisedInterns(user.id));
-    return {
-      scope: "supervised",
-      rows: { L3: cohorts.L3.filter((r) => ids.has(r.userId)), M2: cohorts.M2.filter((r) => ids.has(r.userId)) },
-    };
+    return { scope: "supervised", rows: mapGroups((group) => cohorts[group].filter((r) => ids.has(r.userId))) };
   }
 
   if (isIntern(user.role)) {
-    const level = levelOf(user.role);
-    const other: Level = level === "L3" ? "M2" : "L3";
-
-    return {
-      scope: "self",
-      rows: { [level]: cohorts[level].filter((r) => r.userId === user.id), [other]: [] } as Record<Level, MeritRow[]>,
-    };
+    return { scope: "self", rows: mapGroups((group) => cohorts[group].filter((r) => r.userId === user.id)) };
   }
 
   return null;
@@ -497,7 +494,7 @@ const scoreOn20Of = (row: { score: number; details?: { scale?: number } | null }
   row.details?.scale === 20 ? row.score : Math.round((row.score / 5) * 100) / 100;
 
 /** Tableau d'honneur : uniquement les stagiaires ayant au moins 16/20 (aucun premier / deuxième / troisième sinon). */
-const HONOR_MIN_SCORE = MERIT_HONOR_MIN;
+const HONOR_MIN_SCORE = 16;
 const honorBoard = (cohort: MeritRow[]) =>
   cohort
     .filter((row) => row.score >= HONOR_MIN_SCORE)
@@ -506,7 +503,9 @@ const honorBoard = (cohort: MeritRow[]) =>
 
 export const getMerit = wrap("Erreur lors du calcul de l'ordre de mérite", async (req, res) => {
   const user = me(req);
-  const result = await computeMerit(validPeriod(req.query.period));
+  const period = validPeriod(req.query.period);
+  await ensurePeriodClosed(period); // année terminée : archivage automatique dans l'historique
+  const result = await computeMerit(period);
   const visible = await visibleRows(user, result.cohorts);
 
   if (!visible) return fail(res, 403, "Accès refusé.");
@@ -523,14 +522,17 @@ export const getMerit = wrap("Erreur lors du calcul de l'ordre de mérite", asyn
       averages: result.averages,
       unranked: visible.scope === "all" ? result.unranked : undefined,
       generatedAt: result.generatedAt,
-      cohorts: { L3: strip(visible.rows.L3), M2: strip(visible.rows.M2) },
+      closed: result.closed ?? false,
+      closedAt: result.closedAt ?? null,
+      groups: result.groups,
+      cohorts: { L3: strip(visible.rows.L3), M2: strip(visible.rows.M2), AUTRE: strip(visible.rows.AUTRE) },
       // le tableau d'honneur (3 premiers) est visible par tous, dans la promotion du stagiaire
       honor: isIntern(user.role)
-        ? { [levelOf(user.role)]: honorBoard(result.cohorts[levelOf(user.role)]) }
-        : { L3: honorBoard(result.cohorts.L3), M2: honorBoard(result.cohorts.M2) },
+        ? { [groupOfUser(result.cohorts, user)]: honorBoard(result.cohorts[groupOfUser(result.cohorts, user)]) }
+        : mapGroups((group) => honorBoard(result.cohorts[group])),
       cohortSizes: isIntern(user.role)
-        ? { [levelOf(user.role)]: result.cohorts[levelOf(user.role)].length }
-        : { L3: result.cohorts.L3.length, M2: result.cohorts.M2.length },
+        ? { [groupOfUser(result.cohorts, user)]: result.cohorts[groupOfUser(result.cohorts, user)].length }
+        : mapGroups((group) => result.cohorts[group].length),
     },
   });
 });
@@ -541,25 +543,50 @@ export const getMyMerit = wrap("Erreur lors du calcul de votre rang", async (req
   if (!isIntern(user.role)) return res.json({ success: true, data: null });
 
   const result = await computeMerit(validPeriod(req.query.period));
-  const row = result.cohorts[levelOf(user.role)].find((r) => r.userId === user.id) ?? null;
+  const group = groupOfUser(result.cohorts, user);
+  const row = result.cohorts[group].find((r) => r.userId === user.id) ?? null;
 
   res.json({
     success: true,
     data: row
       ? { period: result.period, rank: row.rank, cohortSize: row.cohortSize, score: row.score, badge: row.badge, level: row.level }
-      : { period: result.period, rank: null, cohortSize: result.cohorts[levelOf(user.role)].length, score: null, badge: null, level: levelOf(user.role) },
+      : { period: result.period, rank: null, cohortSize: result.cohorts[group].length, score: null, badge: null, level: levelOf(user.role) },
   });
 });
 
-/** POST /merit/close — enregistre le classement de la période dans l'historique. */
+/** POST /merit/close — enregistre le classement d'un groupe (L3, M2 ou Autre) de la période dans l'historique. */
 export const closeMerit = wrap("Erreur lors de la clôture de la période", async (req, res) => {
   const user = me(req);
   if (!MERIT_FULL.includes(user.role)) return fail(res, 403, "Accès refusé.");
 
   const period = validPeriod(req.body?.period);
-  const { saved, honored } = await closePeriod(period, user.id);
+  const group = req.body?.group;
+  if (!isGroup(group)) return fail(res, 400, "Groupe invalide (L3, M2 ou Autre).");
 
-  res.json({ success: true, data: { period, saved, honored } });
+  const label = group === "AUTRE" ? "Autre" : group;
+
+  // Déjà clôturé et aucun nouvel avancement depuis : rien à enregistrer de plus
+  if ((await computeMerit(period)).groups?.[group].closed) return fail(res, 409, `${label} ${period} est déjà clôturé : le classement est dans l'historique.`);
+
+  const { saved } = await closePeriod(period, user.id, group);
+  if (saved === 0) return fail(res, 400, `Aucun stagiaire classé en ${label} ${period} : rien à clôturer.`);
+
+  res.json({ success: true, data: { period, group, saved } });
+});
+
+/** POST /merit/reopen — annule la clôture d'un groupe : ses stagiaires reviennent dans le classement en cours. */
+export const reopenMerit = wrap("Erreur lors de la réouverture", async (req, res) => {
+  const user = me(req);
+  if (!MERIT_FULL.includes(user.role)) return fail(res, 403, "Accès refusé.");
+
+  const period = validPeriod(req.body?.period);
+  const group = req.body?.group;
+  if (!isGroup(group)) return fail(res, 400, "Groupe invalide (L3, M2 ou Autre).");
+
+  const { removed } = await reopenGroup(period, group);
+  if (removed === 0) return fail(res, 404, "Ce groupe n'est pas clôturé.");
+
+  res.json({ success: true, data: { period, group, removed } });
 });
 
 /** GET /merit/history — périodes clôturées ; ?period=2025 → classement détaillé de cette période. */
@@ -568,7 +595,10 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
 
   // Stagiaire : son propre parcours, période par période
   if (isIntern(user.role)) {
-    const rows = await db.meritSnapshot.findMany({ where: { userId: user.id }, orderBy: { period: "desc" } });
+    await ensurePeriodClosed(String(new Date().getFullYear() - 1));
+    const rows = (await db.meritSnapshot.findMany({ where: { userId: user.id }, orderBy: { period: "desc" } })).filter(
+      (r: { level: string; details: { group?: unknown; scale?: number } | null }) => snapshotGroup(r) !== null,
+    );
 
     return res.json({
       success: true,
@@ -585,29 +615,34 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
 
   if (!MERIT_FULL.includes(user.role) && !isTutor(user.role)) return fail(res, 403, "Accès refusé.");
 
+  await ensurePeriodClosed(String(new Date().getFullYear() - 1)); // l'année écoulée est archivée automatiquement
+
   const allowed = isTutor(user.role) ? await supervisedInterns(user.id) : null;
   const where = allowed ? { userId: { in: allowed } } : {};
 
-  const grouped = await db.meritSnapshot.groupBy({
-    by: ["period"],
-    where,
-    _count: { _all: true },
-    _max: { createdAt: true },
-    orderBy: { period: "desc" },
-  });
+  // périodes clôturées : lignes valides seulement (les anciennes clôtures « tous groupes » sans groupe sont ignorées)
+  const all: Array<{ period: string; level: string; createdAt: Date; details: { group?: unknown; scale?: number } | null }> = (
+    await db.meritSnapshot.findMany({ where, select: { period: true, level: true, createdAt: true, details: true } })
+  ).filter((row: { level: string; createdAt: Date; details: { group?: unknown; scale?: number } | null }) => snapshotGroup(row) !== null);
 
-  const periods = grouped.map((g: { period: string; _count: { _all: number }; _max: { createdAt: Date } }) => ({
-    period: g.period,
-    count: g._count._all,
-    closedAt: g._max.createdAt,
-  }));
+  const byPeriod = new Map<string, { period: string; count: number; closedAt: Date }>();
+  for (const row of all) {
+    const known = byPeriod.get(row.period);
+    byPeriod.set(row.period, {
+      period: row.period,
+      count: (known?.count ?? 0) + 1,
+      closedAt: known && known.closedAt > row.createdAt ? known.closedAt : row.createdAt,
+    });
+  }
+  const periods = [...byPeriod.values()].sort((a, b) => b.period.localeCompare(a.period));
 
-  const selected = req.query.period ? String(req.query.period) : periods[0]?.period;
-  let cohorts: Record<Level, unknown[]> | null = null;
+  const requested = req.query.period ? String(req.query.period) : undefined;
+  const selected = requested && periods.some((p: { period: string }) => p.period === requested) ? requested : periods[0]?.period;
+  let cohorts: Record<Group, unknown[]> | null = null;
 
   if (selected) {
     const rows = await db.meritSnapshot.findMany({
-      where: { period: selected, ...where },
+      where: { ...where, period: selected },
       orderBy: [{ level: "asc" }, { rank: "asc" }],
     });
     const users = await db.user.findMany({
@@ -616,10 +651,14 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
     });
     const name = new Map<number, string>(users.map((u: { id: number; firstName: string; lastName: string }) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
 
-    const shape = (level: Level) =>
+    type Snap = { userId: number; rank: number; cohortSize: number; score: number; badge: string | null; details: { scale?: number; group?: unknown; components?: unknown; counts?: unknown; stage?: unknown } | null; level: string };
+    // groupe enregistré à la clôture (L3 / M2 / Autre) ; les anciennes lignes sans groupe retombent sur la promotion
+    const groupOfSnap = (r: Snap) => snapshotGroup(r);
+
+    const shape = (group: Group) =>
       rows
-        .filter((r: { level: string }) => r.level === level)
-        .map((r: { userId: number; rank: number; cohortSize: number; score: number; badge: string | null; details: { scale?: number; components?: unknown; counts?: unknown; stage?: unknown } | null }) => ({
+        .filter((r: Snap) => groupOfSnap(r) === group)
+        .map((r: Snap) => ({
           userId: r.userId,
           name: name.get(r.userId) ?? "—",
           rank: r.rank,
@@ -630,28 +669,11 @@ export const getMeritHistory = wrap("Erreur lors de la lecture de l'historique",
           components: r.details?.scale === 20 ? r.details?.components ?? null : null,
           counts: r.details?.scale === 20 ? r.details?.counts ?? null : null,
           stage: r.details?.scale === 20 ? r.details?.stage ?? null : null,
+          level: r.level,
         }));
 
-    cohorts = { L3: shape("L3"), M2: shape("M2") };
+    cohorts = { L3: shape("L3"), M2: shape("M2"), AUTRE: shape("AUTRE") };
   }
 
-  // tableau d'honneur de la période clôturée (≥ 16/20, 3 premiers) — le classement complet reste dans `cohorts`
-  const honorOf = (list: unknown[] | undefined) =>
-    (list ?? [])
-      .map((r) => r as { rank: number; name: string; score: number; badge: string | null })
-      .filter((r) => r.score >= HONOR_MIN_SCORE)
-      .slice(0, 3)
-      .map((r) => ({ rank: r.rank, name: r.name, score: r.score, badge: r.badge }));
-
-  res.json({
-    success: true,
-    data: {
-      scope: allowed ? "supervised" : "all",
-      periods,
-      selected: selected ?? null,
-      mine: [],
-      cohorts,
-      honor: cohorts ? { L3: honorOf(cohorts.L3), M2: honorOf(cohorts.M2) } : null,
-    },
-  });
+  res.json({ success: true, data: { scope: allowed ? "supervised" : "all", periods, selected: selected ?? null, mine: [], cohorts } });
 });

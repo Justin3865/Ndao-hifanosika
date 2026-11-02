@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 
+import { renumberMatricules } from "../utils/matricule";
 import { notifyUsers } from "../utils/notify";
 import { deliverToUser } from "../services/delivery.service";
 import { logger } from "../config/logger";
@@ -654,6 +655,13 @@ export async function deleteUser(
     }
 
     await deleteUserService(id);
+
+    // Un stagiaire supprimé libère son matricule : les suivants sont remis en ordre
+    try {
+      await renumberMatricules();
+    } catch (error) {
+      logger.error("Renumérotation des matricules impossible", error);
+    }
 
     return res.status(200).json({
       success: true,

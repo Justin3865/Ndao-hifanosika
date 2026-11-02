@@ -125,6 +125,13 @@ export default function ProjectFinalEvaluationPage() {
     void load();
   }, [load]);
 
+  // Arrivée depuis « Avis des partenaires / bénéficiaires » : descend jusqu'aux avis une fois chargés
+  useEffect(() => {
+    if (data && typeof window !== "undefined" && window.location.hash === "#avis") {
+      document.getElementById("avis")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [data]);
+
   const remove = async (feedbackId: number) => {
     if (!(await confirmDialog("Supprimer cet avis ? La note du projet sera recalculée."))) return;
 
@@ -145,7 +152,7 @@ export default function ProjectFinalEvaluationPage() {
         </Link>
 
         {loading && <p className="text-sm text-gray-500">Calcul en cours...</p>}
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>}
 
         {data && (
           <>
@@ -251,13 +258,13 @@ export default function ProjectFinalEvaluationPage() {
             {/* ----- Lecture automatique ----- */}
             <div className="grid gap-4 lg:grid-cols-3">
               <Bullets title="Points forts" items={data.strengths} tone="text-green-700" icon={<ThumbsUp className="h-4 w-4" />} />
-              <Bullets title="Points à améliorer" items={data.weaknesses} tone="text-red-700" icon={<ThumbsDown className="h-4 w-4" />} />
+              <Bullets title="Points à améliorer" items={data.weaknesses} tone="text-amber-700" icon={<ThumbsDown className="h-4 w-4" />} />
               <Bullets title="Recommandations" items={data.recommendations} tone="text-blue-700" icon={<Lightbulb className="h-4 w-4" />} />
             </div>
 
             {/* ----- Avis recueillis ----- */}
             {data.feedback.length > 0 && (
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div id="avis" className="scroll-mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                 <div className="border-b border-gray-100 px-4 py-3 font-semibold text-gray-900">Avis recueillis</div>
                 <ul className="divide-y divide-gray-100">
                   {data.feedback.map((item) => (
@@ -273,7 +280,7 @@ export default function ProjectFinalEvaluationPage() {
                       <div className="flex items-center gap-3">
                         <span className="font-semibold text-gray-900">{item.score}/5</span>
                         {canWrite && (
-                          <button type="button" onClick={() => remove(item.id)} aria-label="Supprimer l'avis" className="rounded-lg p-2 text-red-600 hover:bg-red-50">
+                          <button type="button" onClick={() => remove(item.id)} aria-label="Supprimer l'avis" className="rounded-lg p-2 text-amber-600 hover:bg-amber-50">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         )}

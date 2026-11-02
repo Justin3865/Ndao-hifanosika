@@ -5,6 +5,7 @@ import { logger } from "../config/logger";
 import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 
 import { sendError } from "../middlewares/error.middleware";
+import { parseParticipantIds, syncParticipants, withParticipants } from "../services/activityParticipants.service";
 function getAuthUser(req: Request) {
   return (req as AuthenticatedRequest).user;
 }
@@ -137,7 +138,7 @@ export async function getActivities(
     return res.status(200).json({
       success: true,
       count: activities.length,
-      activities,
+      activities: await withParticipants(activities),
     });
   } catch (error) {
     logger.error(
@@ -215,9 +216,11 @@ export async function getActivityById(
       });
     }
 
+    const [withPeople] = await withParticipants([activity]);
+
     return res.status(200).json({
       success: true,
-      activity,
+      activity: withPeople,
     });
   } catch (error) {
     logger.error(
@@ -255,6 +258,7 @@ export async function createActivity(
       endDate,
       status,
       budget,
+      participantIds,
     } = req.body;
 
     const parsedProjectId =
@@ -449,10 +453,22 @@ export async function createActivity(
     }),
     ]);
 
+    const wantedParticipants = parseParticipantIds(participantIds);
+
+    if (wantedParticipants && wantedParticipants.length > 0) {
+      await syncParticipants(
+        { id: activity.id, title: activity.title },
+        wantedParticipants,
+        user.id,
+      );
+    }
+
+    const [withPeople] = await withParticipants([activity]);
+
     return res.status(201).json({
       success: true,
       message: "Activité créée avec succès.",
-      activity,
+      activity: withPeople,
     });
   } catch (error) {
     logger.error(
@@ -541,9 +557,11 @@ export async function updateActivity(
       endDate,
       status,
       budget,
+      participantIds,
     } = req.body;
 
     const data: any = {};
+    const wantedParticipants = parseParticipantIds(participantIds);
 
     /*
      * Changement de projet éventuel.
@@ -698,7 +716,7 @@ export async function updateActivity(
       data.budget = parsedBudget;
     }
 
-    if (Object.keys(data).length === 0) {
+    if (Object.keys(data).length === 0 && wantedParticipants === undefined) {
       return res.status(400).json({
         success: false,
         message: "Aucune donnée à modifier.",
@@ -735,12 +753,22 @@ export async function updateActivity(
       },
     });
 
+    if (wantedParticipants !== undefined) {
+      await syncParticipants(
+        { id: activity.id, title: activity.title },
+        wantedParticipants,
+        user.id,
+      );
+    }
+
     void recordSnapshot(activity.projectId);
+
+    const [withPeople] = await withParticipants([activity]);
 
     return res.status(200).json({
       success: true,
       message: "Activité modifiée avec succès.",
-      activity,
+      activity: withPeople,
     });
   } catch (error) {
     logger.error(

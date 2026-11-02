@@ -38,6 +38,8 @@ interface Certificate {
   holderCinDuplicata?: boolean;
   holderCinDuplicataAt?: string | null;
   slogan?: string | null;
+  /** Slogan de chaque projet (nom + slogan), figé à la délivrance */
+  projectSlogans?: Array<{ name: string; slogan: string }> | null;
   project?: { id: number; name: string; slogan?: string | null } | null;
   partnerLinks?: Array<{
     id: number;
@@ -150,14 +152,14 @@ function Cachet() {
 
   if (missing) {
     return (
-      <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-dashed border-blue-900/50 px-3 text-center text-[9px] font-semibold uppercase leading-tight text-blue-900/60">
+      <div className="flex h-36 w-36 items-center justify-center rounded-full border-2 border-dashed border-blue-900/50 px-5 text-center text-[11px] font-semibold uppercase leading-tight text-blue-900/60">
         Cachet officiel de l&apos;ONG
       </div>
     );
   }
 
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src="/images/cachet.png" alt="Cachet officiel de l'association" onError={() => setMissing(true)} className="h-24 w-24 object-contain" />;
+  return <img src="/images/cachet.png" alt="Cachet officiel de l'association" onError={() => setMissing(true)} className="h-36 w-36 object-contain" />;
 }
 
 /**
@@ -233,8 +235,12 @@ export default function CertificatePage() {
     if (!isProjectTitle) return null;
 
     const label = name && !isSameName(name, item.holderName) ? name : projectName;
-    return label ? `${label}${item.slogan ? ` : ${item.slogan}` : ""}` : null;
+    // Stagiaire & co : nom du projet seul (son slogan est toujours imprimé dessous) ; bénéficiaire : « nom : slogan »
+    return label ? `${label}${item.type === "BENEFICIARY" && item.slogan ? ` : ${item.slogan}` : ""}` : null;
   })();
+
+  /** Slogans toujours imprimés sous les logos (nom du projet au-dessus, slogan en dessous), sauf bénéficiaire avec « nom : slogan » */
+  const showSlogans = !!item && (item.type !== "BENEFICIARY" || !projectMission);
 
   /** Département et/ou thème saisis : phrase « … dans le département : X intitulé « thème » » (sauf bénéficiaire) */
   const deptName = item?.departmentName?.trim() || "";
@@ -344,41 +350,79 @@ export default function CertificatePage() {
 
                 <div className="relative z-10">
                   {/* En-tête */}
-                  {/* Logos alignés sur une même ligne : Ndao Hifanosika à gauche, puis les partenaires vers la droite */}
-                  <div className="flex flex-wrap items-start justify-center gap-x-8 gap-y-4">
-                    <div className="flex w-[150px] flex-col items-center">
-                      <div className="flex h-14 items-center justify-center">
-                        <Logo print size={56} withText={false} />
-                      </div>
-                      <p className="mt-1 text-[11px] font-semibold text-[#0A4A70]">Ndao Hifanosika</p>
-                      <p className="text-[10px] text-gray-500">Suivi &amp; Évaluation</p>
-                    </div>
+                  {/* Logos : 4 par ligne (Ndao Hifanosika en premier, puis les partenaires), la 5e va à la ligne suivante */}
+                  <div className="flex flex-col items-center gap-y-4">
+                    {(() => {
+                      type HeaderLogo = { key: string; kind: "org" } | { key: string; kind: "partner"; partner: NonNullable<Certificate["partnerLinks"]>[number] };
+                      const logos: HeaderLogo[] = [
+                        { key: "org", kind: "org" },
+                        ...(item.partnerLinks ?? []).map((partner): HeaderLogo => ({ key: `p${partner.id}`, kind: "partner", partner })),
+                      ];
+                      const rows: HeaderLogo[][] = [];
+                      for (let i = 0; i < logos.length; i += 4) rows.push(logos.slice(i, i + 4));
 
-                    {item.partnerLinks?.map((partner) => (
-                      <Fragment key={partner.id}>
-                        <span className="h-14 w-px self-start bg-[#1B9AA0]/40" aria-hidden="true" />
-                        <div className="flex w-[150px] flex-col items-center">
-                          <div className="flex h-14 w-full items-center justify-center">
-                            {partner.logoSnapshot ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={partner.logoSnapshot} alt={partner.nameSnapshot} className="max-h-14 max-w-[130px] object-contain" />
-                            ) : (
-                              <span className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-[#0F6BA0] text-lg font-bold text-[#0F6BA0]">
-                                {partner.nameSnapshot.slice(0, 2).toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1 text-[11px] font-semibold text-gray-800">{partner.nameSnapshot}</p>
-                          {partner.sloganSnapshot && <p className="text-[10px] italic text-gray-500">« {partner.sloganSnapshot} »</p>}
+                      return rows.map((row, r) => (
+                        <div key={r} className="flex items-start justify-center gap-x-5">
+                          {row.map((logo, i) => (
+                            <Fragment key={logo.key}>
+                              {i > 0 && <span className="h-14 w-px self-start bg-[#1B9AA0]/40" aria-hidden="true" />}
+                              {logo.kind === "org" ? (
+                                <div className="flex w-[130px] flex-col items-center">
+                                  <div className="flex h-14 items-center justify-center">
+                                    <Logo print size={56} withText={false} />
+                                  </div>
+                                  <p className="mt-1 text-[11px] font-semibold text-[#0A4A70]">Ndao Hifanosika</p>
+                                  <p className="text-[10px] text-gray-500">« Suivi &amp; Évaluation »</p>
+                                </div>
+                              ) : (
+                                <div className="flex w-[130px] flex-col items-center">
+                                  <div className="flex h-14 w-full items-center justify-center">
+                                    {logo.partner.logoSnapshot ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={logo.partner.logoSnapshot} alt={logo.partner.nameSnapshot} className="max-h-14 max-w-[120px] object-contain" />
+                                    ) : (
+                                      <span className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-[#0F6BA0] text-lg font-bold text-[#0F6BA0]">
+                                        {logo.partner.nameSnapshot.slice(0, 2).toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-[11px] font-semibold text-gray-800">{logo.partner.nameSnapshot}</p>
+                                  {logo.partner.sloganSnapshot && <p className="text-[10px] italic text-gray-500">« {logo.partner.sloganSnapshot} »</p>}
+                                </div>
+                              )}
+                            </Fragment>
+                          ))}
                         </div>
-                      </Fragment>
-                    ))}
+                      ));
+                    })()}
                   </div>
+
+                  {/* Slogans : juste sous les logos, un par projet (nom du projet au-dessus, son slogan en dessous) */}
+                  {showSlogans && item.projectSlogans && item.projectSlogans.length > 0 ? (
+                    <div className="mx-auto mt-3 flex max-w-3xl flex-wrap items-start justify-center gap-x-6 gap-y-2">
+                      {item.projectSlogans.map((ps, i) => (
+                        <div key={`${ps.name}-${i}`} className="flex flex-col items-center">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{ps.name}</span>
+                          <span className="font-serif text-sm italic text-[#1B9AA0]">« {ps.slogan} »</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    item.slogan && showSlogans && (
+                      <div className="mx-auto mt-3 flex max-w-2xl flex-col items-center">
+                        {item.project?.name && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{item.project.name}</span>
+                        )}
+                        <span className="font-serif text-sm italic text-[#1B9AA0]">« {item.slogan} »</span>
+                      </div>
+                    )
+                  )}
+
                   <p className="mt-2 text-[11px] text-gray-500">{ORG.name} — {ORG.address}</p>
                   {orgContactLine() && <p className="text-[11px] text-gray-500">{orgContactLine()}</p>}
 
                   {/* Titre */}
-                  <h1 className="mt-4 text-3xl font-extrabold uppercase tracking-[0.25em] text-[#0F6BA0]">
+                  <h1 className="mt-4 text-4xl font-extrabold uppercase tracking-[0.18em] text-[#0F6BA0]">
                     {HEADLINE[item.type] ?? "Certificat"}
                   </h1>
                   <div className="mx-auto mt-2 flex h-1 w-40 overflow-hidden rounded-full">
@@ -389,13 +433,9 @@ export default function CertificatePage() {
                   <p className="mx-auto mt-2 w-fit rounded-full bg-[#0F6BA0]/10 px-4 py-0.5 font-mono text-xs font-semibold text-[#0A4A70]">
                     N° {item.code}
                   </p>
-                  {item.slogan && !projectMission && (
-                    <p className="mx-auto mt-2 max-w-2xl font-serif text-sm italic text-[#1B9AA0]">« {item.slogan} »</p>
-                  )}
-
                   {/* Titulaire */}
                   <p className="mt-4 text-sm text-gray-600">L&apos;ONG Ndao Hifanosika certifie que</p>
-                  <p className="mx-auto mt-1 w-fit border-b-2 border-[#1B9AA0]/50 px-6 pb-1 font-serif text-4xl font-bold text-[#0A4A70]">
+                  <p className="mx-auto mt-1 w-fit border-b-2 border-[#1B9AA0]/50 max-w-full px-6 pb-1 font-serif text-3xl font-bold text-[#0A4A70] [overflow-wrap:anywhere]">
                     {item.holderName}
                   </p>
 
@@ -470,9 +510,6 @@ export default function CertificatePage() {
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-[#0F6BA0]">Mention</p>
                         <p className="text-sm font-bold text-gray-900">
                           {item.mention}
-                          {typeof item.finalScore === "number" && (
-                            <span className="ml-1 text-xs font-semibold text-gray-500">({item.finalScore.toFixed(1).replace(".", ",")}/20)</span>
-                          )}
                         </p>
                       </div>
                     )}
@@ -500,7 +537,11 @@ export default function CertificatePage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-5">
-                        <Cachet />
+                        {/* Cachet réduit à 144 px, décalé à droite de 56 px et remonté de 22 px :
+                            son bord inférieur est aligné sur la ligne « Ndao Hifanosika ». */}
+                        <div className="relative -my-6 translate-x-14 -translate-y-[22px]">
+                          <Cachet />
+                        </div>
                         <div className="text-center text-xs">
                           {/* Espace réservé à la signature de la Direction (image : public/images/signature.png) */}
                           <div className="flex h-16 w-48 items-end justify-center border-b border-gray-400 pb-0.5">

@@ -3,11 +3,10 @@
 // Les rôles d'écriture reflètent authorizeRoles() du backend.
 
 import Link from "next/link";
+import { RenumberMatriculesButton } from "@/components/crud/RenumberMatriculesButton";
 import { ClipboardCheck } from "lucide-react";
 import { ActivitySpace } from "@/components/activities/ActivitySpace";
 import { ProjectMilestones } from "@/components/milestones/ProjectMilestones";
-import { ProjectActivities } from "@/components/projects/ProjectActivities";
-import { InternshipProgress } from "@/components/internships/InternshipProgress";
 import { StatusBadge } from "@/components/crud/StatusBadge";
 import { LEVEL_COLORS, ZONE_LEVELS, ZoneMap, zoneLevelDetails, zoneLevelLabel, zonePlaces } from "@/components/zones/ZoneMap";
 import { ZonesOverview } from "@/components/zones/ZonesOverview";
@@ -128,12 +127,7 @@ export const projectsConfig: ResourceConfig = {
     },
   ],
   titleOf: (p) => p.name,
-  extra: (p) => (
-    <>
-      <ProjectActivities projectId={p.id} />
-      <ProjectMilestones projectId={p.id} />
-    </>
-  ),
+  extra: (p) => <ProjectMilestones projectId={p.id} />,
   searchOf: (p) => `${p.name} ${p.code} ${p.department?.name ?? ""} ${p.objective ?? ""} ${p.slogan ?? ""} ${(p.partnerLinks ?? []).map((l: { partner?: { name?: string } }) => l.partner?.name ?? "").join(" ")}`,
   rowActions: (p, role) =>
     SUIVI_EVAL_ROLES.includes(role) ? (
@@ -182,11 +176,16 @@ export const activitiesConfig: ResourceConfig = {
     { name: "endDate", label: "Date de fin", type: "date" },
     { name: "status", label: "Statut", type: "select", options: statusOptions(ACTIVITY_STATUS) },
     { name: "budget", label: "Budget (Ar)", type: "number", min: 0 },
+    { name: "participantIds", label: "Participants", type: "participants" },
   ],
   detail: (a) => [
     { label: "Projet", value: a.project?.name ?? `#${a.projectId}` },
     { label: "Statut", value: <StatusBadge status={a.status} /> },
     { label: "Lieu", value: a.location || "—" },
+    {
+      label: "Participants",
+      value: Array.isArray(a.participants) && a.participants.length ? a.participants.map((p: { name: string }) => p.name).join(", ") : "—",
+    },
     { label: "Période", value: period(a.startDate, a.endDate) },
     { label: "Budget", value: fmtMoney(a.budget) },
     { label: "Description", value: a.description || "—" },
@@ -415,6 +414,16 @@ export const evaluationsConfig: ResourceConfig = {
 const INTERNSHIP_STATUS = ["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
 const INTERNSHIP_WRITERS = ["ADMIN", "RH", "COORDINATOR", ...TUTEURS];
 
+/** Projets rattachés à un stage (liste `projects`, sinon projet principal historique). */
+function internshipProjects(i: any, mode: "full" | "name" = "full"): string {
+  const list: Array<{ code?: string; name?: string }> =
+    Array.isArray(i?.projects) && i.projects.length ? i.projects : i?.project ? [i.project] : [];
+
+  return list.length
+    ? list.map((p) => (mode === "name" || !p.code ? p.name : `${p.code} — ${p.name}`)).join(", ")
+    : "—";
+}
+
 export const internshipsConfig: ResourceConfig = {
   title: "Stages",
   singular: "un stage",
@@ -423,23 +432,44 @@ export const internshipsConfig: ResourceConfig = {
   listKey: "data",
   itemKey: "data",
   columns: [
-    { header: "Projet", render: (i) => <span className="block min-w-[70px] text-xs break-words">{i.project ? `${i.project.code} — ${i.project.name}` : "—"}</span> },
-    { header: "Stagiaire", render: (i) => <span className="block min-w-[100px] text-xs break-words">{personName(i.student)}</span> },
-    { header: "Stage", render: (i) => <span className="block min-w-[70px] text-xs font-medium text-gray-900 [overflow-wrap:anywhere]">{i.title}</span> },
-    { header: "Thème", render: (i) => <span className="block min-w-[110px] max-w-[140px] text-xs break-words">{i.theme || "—"}</span> },
-    { header: "Établissement", render: (i) => <span className="block min-w-[50px] text-xs break-words">{i.institution || "—"}</span> },
+    { header: "Projets", render: (i) => <span className="mx-auto block w-full min-w-[70px] text-xs break-words">{internshipProjects(i)}</span> },
+    { header: "Stagiaire", group: true, render: (i) => <span className="mx-auto block w-full min-w-[100px] text-xs break-words">{personName(i.student)}</span> },
+    {
+      header: "Matricule",
+      group: true,
+      render: (i, group) => {
+        const all = Array.from(new Set((group ?? [i]).map((g) => g.student?.matricule).filter(Boolean)));
+
+        return (
+          <span className="mx-auto block w-full min-w-[100px] whitespace-nowrap text-xs">
+            {all.length ? all.map((m) => <span key={m} className="block">{m}</span>) : "—"}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Stage",
+      render: (i) => (
+        <span className="mx-auto block w-full min-w-[70px] text-xs font-medium text-gray-900 [overflow-wrap:anywhere]">
+          {i.title}
+        </span>
+      ),
+    },
+    { header: "Thème", render: (i) => <span className="mx-auto block w-full min-w-[110px] max-w-[140px] text-xs break-words">{i.theme || "—"}</span> },
+    { header: "Établissement", render: (i) => <span className="mx-auto block w-full min-w-[50px] text-xs break-words">{i.institution || "—"}</span> },
     { header: "Période", render: (i) => <span className="block min-w-[65px] text-xs">{period(i.startDate, i.endDate)}</span> },
     { header: "Statut", render: (i) => <span className="block whitespace-nowrap"><StatusBadge status={i.status} /></span> },
-    { header: "Tuteur", render: (i) => <span className="block min-w-[75px] text-xs break-words">{personName(i.supervisor)}</span> },
+    { header: "Tuteur", render: (i) => <span className="mx-auto block w-full min-w-[75px] text-xs break-words">{i.supervisor ? personName(i.supervisor) : i.supervisorName || "—"}</span> },
   ],
   fields: [
     { name: "title", label: "Intitulé du stage", type: "text", required: true },
-    { name: "projectId", label: "Projet", type: "select", lookup: "projects" },
     { name: "theme", label: "Thème du stage", type: "text", required: true, full: true, hint: "Sujet du stagiaire : repris automatiquement sur son certificat (sinon l'intitulé du stage)." },
     { name: "studentId", label: "Stagiaire", type: "select", lookup: "students", required: true, requiredUnless: "newPerson" },
     { name: "newPerson", label: "Nouveau stagiaire", type: "newperson", identityOf: "studentId", hideOnEdit: true, full: true },
+    { name: "matricule", label: "Matricule du stagiaire (N° d'inscription)", type: "matricule", identityOf: "studentId" },
     { name: "identity", label: "Informations du stagiaire", type: "identity", identityOf: "studentId", full: true },
-    { name: "supervisorId", label: "Tuteur", type: "select", lookup: "tutors" },
+    { name: "projectIds", label: "Projets (cochez un ou plusieurs)", type: "projects", full: true },
+    { name: "supervisorId", label: "Tuteur", type: "select", lookup: "tutors", allowAddTutor: true, otherText: { name: "supervisorName", label: "Nom du tuteur", placeholder: "Ex. Rakoto Jean" } },
     { name: "institution", label: "Établissement", type: "text" },
     { name: "startDate", label: "Date de début", type: "date", required: true },
     { name: "endDate", label: "Date de fin", type: "date", required: true, after: "startDate" },
@@ -455,17 +485,18 @@ export const internshipsConfig: ResourceConfig = {
   ],
   detail: (i) => [
     { label: "Stagiaire", value: personName(i.student) },
-    { label: "Tuteur", value: personName(i.supervisor) },
-    { label: "Projet", value: i.project?.name ?? "—" },
+    { label: "Matricule", value: i.student?.matricule || "—" },
+    ...(i.student?.studentLevel ? [{ label: "Niveau", value: String(i.student.studentLevel) }] : []),
+    { label: "Tuteur", value: i.supervisor ? personName(i.supervisor) : i.supervisorName || "—" },
+    { label: "Projets", value: internshipProjects(i, "name") },
     { label: "Thème", value: i.theme || "—" },
     { label: "Établissement", value: i.institution || "—" },
     { label: "Période", value: period(i.startDate, i.endDate) },
     { label: "Statut", value: <StatusBadge status={i.status} /> },
     { label: "Description", value: i.description || "—" },
   ],
-  extra: (i) => <InternshipProgress internshipId={i.id} />,
   titleOf: (i) => i.title,
-  searchOf: (i) => `${i.title} ${i.theme ?? ""} ${i.project?.code ?? ""} ${i.project?.name ?? ""} ${personName(i.student)} ${personName(i.supervisor)} ${i.institution ?? ""}`,
+  searchOf: (i) => `${i.title} ${i.theme ?? ""} ${internshipProjects(i)} ${personName(i.student)} ${i.student?.matricule ?? ""} ${personName(i.supervisor)} ${i.supervisorName ?? ""} ${i.institution ?? ""}`,
   rowActions: (i, role) =>
     SUIVI_EVAL_ROLES.includes(role) ? (
       <Link
@@ -477,9 +508,17 @@ export const internshipsConfig: ResourceConfig = {
       </Link>
     ) : null,
   statusFilter: { field: "status", options: statusOptions(INTERNSHIP_STATUS) },
+  // Les stages d'une même personne (même CIN, sinon même compte) sont groupés sous une seule cellule Stagiaire / Matricule
+  groupBy: (i) => i.student?.personKey ?? `id:${i.student?.id ?? i.id}`,
+  // Même personne (même CIN / même matricule) : une seule ligne par stagiaire (le stage le plus récent) ; les autres sont masqués, pas supprimés
+  uniqueBy: (i) => (i.student?.personKey ? `p:${i.student.personKey}` : i.student?.matricule ? `m:${i.student.matricule}` : `s:${i.id}`),
+  // Tableau compact (sans barre de défilement horizontale)
+  fitWidth: true,
   createRoles: INTERNSHIP_WRITERS,
   editRoles: INTERNSHIP_WRITERS,
+  // Suppression d'un stage (ADMIN, RH) : les matricules sont ensuite remis en ordre côté serveur
   deleteRoles: ["ADMIN", "RH"],
+  listExtra: () => <RenumberMatriculesButton />,
 };
 
 /* ------------------------------------------------------------------ */

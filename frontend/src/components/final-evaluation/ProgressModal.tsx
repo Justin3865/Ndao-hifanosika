@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Users, X } from "lucide-react";
 import api from "@/lib/axios";
-import { errorMessage, fmtDate, fmtDateTime, fmtMoney } from "@/lib/crud";
+import { canSeeBudget, errorMessage, fmtDate, fmtDateTime, fmtMoney } from "@/lib/crud";
+import { getStoredRole } from "@/lib/access";
+import { ParticipantsField } from "@/components/crud/ParticipantsField";
+import { getLastActivity, setLastActivity } from "@/lib/lastActivity";
 import { FeedbackForm } from "@/components/final-evaluation/FeedbackForm";
 import { FeedbackKind, ProjectEvaluationDetail, fetchProjectEvaluation } from "@/lib/finalEvaluation";
 
@@ -28,12 +31,13 @@ interface ActivityRow {
   status: string;
   updatedAt?: string | null;
   location?: string | null;
+  budget?: number | string | null;
   startDate?: string | null;
   endDate?: string | null;
-  budget?: number | string | null;
+  participantIds?: number[];
+  participants?: Array<{ id: number; name: string }>;
 }
-
-const EMPTY_ACTIVITY = { title: "", progress: "0", location: "", startDate: "", endDate: "", budget: "", description: "" };
+const EMPTY_ACT = { title: "", progress: "0", location: "", budget: "", startDate: "", endDate: "", participantIds: "" };
 interface TaskRow { id: number; title: string; status: string; progress: number; updatedAt?: string | null }
 interface EvalRow { id: number; title: string; overallScore: number | null }
 
@@ -53,7 +57,19 @@ const TASK_STATUS: Record<string, string> = {
 };
 
 export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Props) {
-  const [id, setId] = useState<number | "">(initialId ?? options[0]?.id ?? "");
+  // Dernière activité créée / modifiée : son projet est présélectionné (sauf si un projet précis est demandé)
+  const last = mode === "project" ? getLastActivity() : null;
+  const lastInOptions = last && options.some((o) => o.id === last.projectId) ? last : null;
+
+  const [id, setId] = useState<number | "">(initialId ?? lastInOptions?.projectId ?? options[0]?.id ?? "");
+  // Activité mise en évidence (sélectionnée automatiquement) : celle qui vient d'être modifiée / ajoutée
+  const [focusId, setFocusId] = useState<number | null>(lastInOptions?.activityId ?? null);
+  const [openPeople, setOpenPeople] = useState<number | null>(lastInOptions?.activityId ?? null);
+  const [peopleDrafts, setPeopleDrafts] = useState<Record<number, string>>({});
+  const focusRef = useRef<HTMLDivElement | null>(null);
+  const focusIdRef = useRef<number | null>(focusId);
+  focusIdRef.current = focusId;
+  const showBudget = canSeeBudget(getStoredRole());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,7 +77,7 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
   const [detail, setDetail] = useState<ProjectEvaluationDetail | null>(null);
   const [adding, setAdding] = useState<FeedbackKind | null>(null);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
-  const [act, setAct] = useState(EMPTY_ACTIVITY);
+  const [act, setAct] = useState(EMPTY_ACT);
 
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [taskDrafts, setTaskDrafts] = useState<Record<number, { progress: string; status: string }>>({});
@@ -86,9 +102,13 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
     try {
       if (mode === "project") {
         const res = await api.get(`/manual-progress/projects/${id}/activities`);
-        const rows: ActivityRow[] = res.data?.activities ?? [];
+        const loaded: ActivityRow[] = res.data?.activities ?? [];
+        // Dernière activité modifiée en tête (celle qui vient d'être créée / modifiée d'abord)
+        const stamp = (a: ActivityRow) => new Date(a.updatedAt ?? 0).getTime();
+        const rows = [...loaded].sort((a, b) => Number(b.id === focusIdRef.current) - Number(a.id === focusIdRef.current) || stamp(b) - stamp(a));
         setActivities(rows);
         setDrafts(Object.fromEntries(rows.map((r) => [r.id, String(r.progress)])));
+        setPeopleDrafts(Object.fromEntries(rows.map((r) => [r.id, (r.participantIds ?? []).join(",")])));
         // satisfaction (partenaires / bénéficiaires) : ne bloque pas le reste si indisponible
         try {
           setDetail(await fetchProjectEvaluation(id));
@@ -121,6 +141,53 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
     load();
   }, [load]);
 
+  // Fait défiler jusqu'à l'activité sélectionnée automatiquement
+  useEffect(() => {
+    if (mode === "project" && focusId !== null && activities.some((a) => a.id === focusId)) {
+      focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [mode, focusId, activities]);
+
+  /** Changement de projet par l'utilisateur : la sélection automatique ne concerne plus ce projet. */
+  function changeTarget(next: number) {
+    setId(next);
+    const l = getLastActivity();
+    setFocusId(mode === "project" && l && l.projectId === next ? l.activityId : null);
+    setOpenPeople(mode === "project" && l && l.projectId === next ? l.activityId : null);
+  }
+
+  async function addActivity() {
+    if (id === "") return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await api.post(`/manual-progress/projects/${id}/activities`, {
+        title: act.title,
+        progress: Number(act.progress),
+        location: act.location,
+        budget: act.budget === "" ? undefined : Number(act.budget),
+        startDate: act.startDate || undefined,
+        endDate: act.endDate || undefined,
+        participantIds: act.participantIds.split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0),
+      });
+      const created = res.data?.activity;
+      setMsg({ ok: true, text: res.data?.message ?? "Activité ajoutée." });
+      setAct(EMPTY_ACT);
+      if (created?.id) {
+        setLastActivity(Number(id), created.id);
+        focusIdRef.current = created.id;
+        setFocusId(created.id);
+        setOpenPeople(null);
+      }
+      await load();
+      onSaved();
+    } catch (e) {
+      setMsg({ ok: false, text: errorMessage(e, "Enregistrement impossible.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function run(fn: () => Promise<{ data?: { message?: string } }>, after?: () => void) {
     setBusy(true);
     setMsg(null);
@@ -150,7 +217,7 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
         </div>
 
         <label className={label}>{mode === "project" ? "Projet" : "Stage"}</label>
-        <select className={`${input} mb-4`} value={id} onChange={(e) => setId(Number(e.target.value))}>
+        <select className={`${input} mb-4`} value={id} onChange={(e) => changeTarget(Number(e.target.value))}>
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.label}
@@ -159,7 +226,7 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
         </select>
 
         {msg && (
-          <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${msg.ok ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500" : "border-red-300 bg-red-50 text-red-700"}`}>
+          <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${msg.ok ? "border-green-500/40 bg-green-500/10 text-green-500" : "border-amber-300 bg-amber-50 text-amber-700"}`}>
             {msg.text}
           </div>
         )}
@@ -174,8 +241,22 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
             <div className={box}>
               <p className="mb-2 text-sm font-semibold text-gray-900">Activités existantes</p>
               {activities.length === 0 && <p className="text-sm text-gray-500">Aucune activité pour ce projet.</p>}
-              {activities.map((a) => (
-                <div key={a.id} className="mb-2">
+              {activities.map((a) => {
+                const focused = a.id === focusId;
+                const draftIds = peopleDrafts[a.id] ?? "";
+                const savedIds = (a.participantIds ?? []).join(",");
+                const details = [
+                  a.location ? `Lieu : ${a.location}` : null,
+                  a.startDate || a.endDate ? `Période : ${fmtDate(a.startDate)} → ${fmtDate(a.endDate)}` : null,
+                  showBudget && a.budget !== null && a.budget !== undefined && a.budget !== "" ? `Budget : ${fmtMoney(a.budget)}` : null,
+                ].filter(Boolean);
+
+                return (
+                <div
+                  key={a.id}
+                  ref={focused ? focusRef : undefined}
+                  className={`mb-2 rounded-lg ${focused ? "border border-blue-500 bg-blue-500/10 p-2 ring-2 ring-blue-500/40" : ""}`}
+                >
                   <div className="flex items-center gap-2">
                   <span className="flex-1 truncate text-sm text-gray-800">{a.title}</span>
                   <input
@@ -196,16 +277,46 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
                     OK
                   </button>
                   </div>
-                  {(a.location || a.startDate || a.endDate || a.budget) && (
-                    <p className="mt-0.5 text-[11px] text-gray-500">
-                      {a.location ? `Lieu : ${a.location} · ` : ""}
-                      {a.startDate || a.endDate ? `Période : ${fmtDate(a.startDate)} → ${fmtDate(a.endDate)} · ` : ""}
-                      {a.budget ? `Budget : ${fmtMoney(a.budget)}` : ""}
-                    </p>
-                  )}
+                  {details.length > 0 && <p className="mt-0.5 text-[11px] text-gray-500">{details.join(" · ")}</p>}
                   {a.updatedAt && <p className="mt-0.5 text-[11px] text-gray-500">Mis à jour le {fmtDateTime(a.updatedAt)}</p>}
+
+                  <button
+                    type="button"
+                    onClick={() => setOpenPeople(openPeople === a.id ? null : a.id)}
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:underline"
+                  >
+                    <Users className="h-3 w-3" />
+                    Participants ({(a.participantIds ?? []).length})
+                  </button>
+
+                  {openPeople === a.id && (
+                    <div className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3">
+                      <ParticipantsField
+                        compact
+                        selectedOnly
+                        value={draftIds}
+                        onChange={(next) => setPeopleDrafts({ ...peopleDrafts, [a.id]: next })}
+                        disabled={busy}
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || draftIds === savedIds}
+                        className={btn}
+                        onClick={() =>
+                          run(() =>
+                            api.put(`/manual-progress/activities/${a.id}/participants`, {
+                              participantIds: draftIds.split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0),
+                            }),
+                          )
+                        }
+                      >
+                        Enregistrer les participants
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className={box}>
@@ -223,11 +334,13 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
                   <label className={label}>Lieu</label>
                   <input className={input} value={act.location} onChange={(e) => setAct({ ...act, location: e.target.value })} placeholder="Fianarantsoa" />
                 </div>
-                <div>
-                  <label className={label}>Budget (Ar)</label>
-                  <input type="number" min={0} className={input} value={act.budget} onChange={(e) => setAct({ ...act, budget: e.target.value })} />
-                </div>
-                <div>
+                {showBudget && (
+                  <div>
+                    <label className={label}>Budget (Ar)</label>
+                    <input type="number" min={0} className={input} value={act.budget} onChange={(e) => setAct({ ...act, budget: e.target.value })} />
+                  </div>
+                )}
+                <div className="sm:col-span-2">
                   <label className={label}>Date de début</label>
                   <input type="date" className={input} value={act.startDate} onChange={(e) => setAct({ ...act, startDate: e.target.value })} />
                 </div>
@@ -236,29 +349,14 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
                   <input type="date" className={input} min={act.startDate || undefined} value={act.endDate} onChange={(e) => setAct({ ...act, endDate: e.target.value })} />
                 </div>
                 <div className="sm:col-span-3">
-                  <label className={label}>Description</label>
-                  <input className={input} value={act.description} onChange={(e) => setAct({ ...act, description: e.target.value })} placeholder="Objectif ou détails de l'activité" />
+                  <ParticipantsField compact value={act.participantIds} onChange={(next) => setAct({ ...act, participantIds: next })} disabled={busy} />
                 </div>
               </div>
               <button
                 type="button"
                 disabled={busy || id === ""}
                 className={`${btn} mt-3`}
-                onClick={() =>
-                  run(
-                    () =>
-                      api.post(`/manual-progress/projects/${id}/activities`, {
-                        title: act.title,
-                        progress: Number(act.progress),
-                        location: act.location,
-                        startDate: act.startDate || undefined,
-                        endDate: act.endDate || undefined,
-                        budget: act.budget === "" ? undefined : Number(act.budget),
-                        description: act.description,
-                      }),
-                    () => setAct(EMPTY_ACTIVITY),
-                  )
-                }
+                onClick={addActivity}
               >
                 <Plus className="h-4 w-4" /> Ajouter l&apos;activité
               </button>

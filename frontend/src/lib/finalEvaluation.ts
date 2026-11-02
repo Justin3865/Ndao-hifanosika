@@ -145,10 +145,10 @@ export const fmtPct = (value: number | null | undefined): string =>
 
 export const VERDICT_COLORS: Record<string, string> = {
   Excellent: "bg-green-100 text-green-700",
-  "Très bien": "bg-blue-100 text-blue-700",
-  Bien: "bg-amber-100 text-amber-800",
-  Passable: "bg-orange-100 text-orange-800",
-  "À améliorer": "bg-red-100 text-red-700",
+  "Très bien": "bg-green-100 text-green-700",
+  Bien: "bg-blue-100 text-blue-700",
+  Passable: "bg-amber-100 text-amber-800",
+  "À améliorer": "bg-amber-100 text-amber-800",
 };
 
 export const PHASE_LABELS: Record<Phase, string> = {
@@ -162,5 +162,5 @@ export const PHASE_COLORS: Record<Phase, string> = {
   FINAL: "bg-green-100 text-green-700",
   INTERIM: "bg-blue-100 text-blue-700",
   NOT_STARTED: "bg-gray-100 text-gray-600",
-  CANCELLED: "bg-red-100 text-red-700",
+  CANCELLED: "bg-amber-100 text-amber-800",
 };

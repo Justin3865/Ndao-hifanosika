@@ -3,7 +3,7 @@
 import { MENTIONS, MENTION_TONE, type Mention } from "@/lib/mention";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Database, Loader2, Search, ShieldAlert, X } from "lucide-react";
+import { CheckCircle2, Database, Loader2, Lock, Search, ShieldAlert, X } from "lucide-react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { errorMessage, fetchLookup, type LookupItem } from "@/lib/crud";
@@ -15,6 +15,8 @@ import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 interface InternshipOption {
   id: number;
   projectId?: number | null;
+  /** Tous les projets rattachés au stage (cochés dans « Nouveau stage ») */
+  projectIds?: number[];
   title: string;
   status: string;
   student?: { firstName: string; lastName: string };
@@ -364,9 +366,35 @@ export default function CreateCertificatePage() {
   // Stage choisi : le projet du stage est sélectionné automatiquement
   useEffect(() => {
     if (!isInternship || !internshipId) return;
-    const linked = internships.find((i) => String(i.id) === internshipId)?.projectId;
-    if (linked) setProjectIds([String(linked)]);
+    const internship = internships.find((i) => String(i.id) === internshipId);
+    if (!internship) return;
+
+    // Tous les projets rattachés au stagiaire sont cochés automatiquement (projet principal en secours)
+    const linked = internship.projectIds?.length ? internship.projectIds : internship.projectId ? [internship.projectId] : [];
+    setProjectIds(linked.map(String));
   }, [isInternship, internshipId, internships]);
+
+  // Source de vérité : on relit le stage choisi pour cocher automatiquement TOUS ses projets
+  useEffect(() => {
+    if (!isInternship || !internshipId) return;
+
+    let cancelled = false;
+
+    api
+      .get(`/internships/${internshipId}`)
+      .then((res) => {
+        if (cancelled) return;
+        const item = res.data?.data as { projectIds?: number[]; projectId?: number | null } | undefined;
+        if (!item) return;
+        const ids = item.projectIds?.length ? item.projectIds : item.projectId ? [item.projectId] : [];
+        setProjectIds(ids.map(String));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isInternship, internshipId]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((cur) => ({ ...cur, [key]: value }));
 
@@ -553,6 +581,18 @@ export default function CreateCertificatePage() {
     : ["holderName", "holderEmail", "departmentName", "theme", "holderPhone", "holderBirthDate", "holderBirthPlace", "holderCin", "holderCinIssuedAt", "holderCinIssuedPlace"];
 
   const missingInDb = selected ? tracked.filter((field) => !dbValues[field]) : [];
+
+  // Stage terminé : ce qui vient de la base de données est verrouillé, champ par champ.
+  // Seuls restent modifiables : le type, le cas particulier, le stage, et les champs ABSENTS de la base.
+  const lockInternship = isInternship && !specialCase;
+
+  /** Champ verrouillé : stage sans choix (tout fermé) ou valeur déjà présente dans la base de données. */
+  const isLocked = (key: DbField) => lockInternship && (!internshipId || (!!selected && !!dbValues[key]));
+
+  const projectsLocked = lockInternship;
+  const mentionLocked = lockInternship && !!suggestion?.mention;
+  const duplicataLocked = lockInternship && (!internshipId || (!!selected && selected.cinDuplicata));
+  const locationLocked = lockInternship && (!internshipId || !!suggestion?.missionLocation);
 
   /** Champ avec son étiquette « dans la base / absent de la base » */
   const field = (key: DbField, label: string, input: ReactNode, className = "") => (
@@ -849,8 +889,19 @@ export default function CreateCertificatePage() {
             </div>
           )}
 
+          {lockInternship && (
+            <p className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+              <Lock className="h-3.5 w-3.5 shrink-0" />
+              {!internshipId
+                ? "Choisissez d'abord un stage terminé : ses projets et les informations du stagiaire seront remplis automatiquement."
+                : missingInDb.length === 0
+                  ? "Toutes les informations viennent de la base de données : elles sont verrouillées. Changez de stage pour les modifier."
+                  : "Les informations déjà présentes dans la base de données sont verrouillées : seuls les champs absents de la base restent modifiables."}
+            </p>
+          )}
+
           {/* ---------- Projets : slogans et partenaires imprimés sur le certificat ---------- */}
-          <div className="space-y-3 rounded-2xl border border-pink-200 bg-pink-50/40 p-4">
+          <fieldset disabled={projectsLocked} className="m-0 min-w-0 space-y-3 rounded-2xl border border-pink-200 bg-pink-50/40 p-4">
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium text-gray-700">
                 Projets (slogans et partenaires imprimés sur le certificat — sélection multiple)
@@ -924,24 +975,24 @@ export default function CreateCertificatePage() {
             ) : (
               <p className="text-xs text-gray-500">Choisissez un ou plusieurs projets : leurs partenaires (logo, nom, slogan) s&apos;afficheront ici.</p>
             )}
-          </div>
+          </fieldset>
 
           {/* ---------- Identité du titulaire + lieu de mission ---------- */}
           <div className="grid gap-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:grid-cols-3">
             {field(
               "holderPhone",
               "Téléphone",
-              <input type="tel" {...phoneInputProps} className={inputClass} placeholder="Ex. 034 00 000 00" value={form.holderPhone} onChange={(e) => set("holderPhone", sanitizePhone(e.target.value))} />,
+              <input type="tel" {...phoneInputProps} className={inputClass} placeholder="Ex. 034 00 000 00" disabled={isLocked("holderPhone")} value={form.holderPhone} onChange={(e) => set("holderPhone", sanitizePhone(e.target.value))} />,
             )}
             {field(
               "holderBirthDate",
               "Date de naissance",
-              <input type="date" className={inputClass} value={form.holderBirthDate} onChange={(e) => set("holderBirthDate", e.target.value)} />,
+              <input type="date" className={inputClass} disabled={isLocked("holderBirthDate")} value={form.holderBirthDate} onChange={(e) => set("holderBirthDate", e.target.value)} />,
             )}
             {field(
               "holderBirthPlace",
               "Lieu de naissance",
-              <input className={inputClass} placeholder="Ex. Fianarantsoa" value={form.holderBirthPlace} onChange={(e) => set("holderBirthPlace", e.target.value)} />,
+              <input className={inputClass} placeholder="Ex. Fianarantsoa" disabled={isLocked("holderBirthPlace")} value={form.holderBirthPlace} onChange={(e) => set("holderBirthPlace", e.target.value)} />,
             )}
 
             {field(
@@ -951,25 +1002,26 @@ export default function CreateCertificatePage() {
                 className={inputClass}
                 inputMode="numeric"
                 placeholder="12 chiffres"
-                value={form.holderCin}
+                disabled={isLocked("holderCin")} value={form.holderCin}
                 onChange={(e) => set("holderCin", e.target.value)}
               />,
             )}
             {field(
               "holderCinIssuedAt",
               "Date de délivrance du CIN",
-              <input type="date" className={inputClass} value={form.holderCinIssuedAt} onChange={(e) => set("holderCinIssuedAt", e.target.value)} />,
+              <input type="date" className={inputClass} disabled={isLocked("holderCinIssuedAt")} value={form.holderCinIssuedAt} onChange={(e) => set("holderCinIssuedAt", e.target.value)} />,
             )}
             {field(
               "holderCinIssuedPlace",
               "Lieu de délivrance du CIN",
-              <input className={inputClass} placeholder="Ex. Antananarivo" value={form.holderCinIssuedPlace} onChange={(e) => set("holderCinIssuedPlace", e.target.value)} />,
+              <input className={inputClass} placeholder="Ex. Antananarivo" disabled={isLocked("holderCinIssuedPlace")} value={form.holderCinIssuedPlace} onChange={(e) => set("holderCinIssuedPlace", e.target.value)} />,
             )}
 
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 md:col-span-2">
               <input
                 type="checkbox"
                 checked={form.holderCinDuplicata}
+                disabled={duplicataLocked}
                 onChange={(e) => set("holderCinDuplicata", e.target.checked)}
                 className="h-4 w-4"
               />
@@ -982,7 +1034,7 @@ export default function CreateCertificatePage() {
             {form.holderCinDuplicata ? (
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Date du duplicata
-                <input type="date" className={inputClass} value={form.holderCinDuplicataAt} onChange={(e) => set("holderCinDuplicataAt", e.target.value)} />
+                <input type="date" className={inputClass} disabled={lockInternship && !!selected?.cinDuplicataAt} value={form.holderCinDuplicataAt} onChange={(e) => set("holderCinDuplicataAt", e.target.value)} />
               </label>
             ) : (
               <span className="hidden md:block" />
@@ -994,7 +1046,7 @@ export default function CreateCertificatePage() {
               <input
                 className={inputClass}
                 placeholder="Ex. Suivi et Évaluation"
-                value={form.departmentName}
+                disabled={isLocked("departmentName")} value={form.departmentName}
                 onChange={(e) => set("departmentName", e.target.value)}
               />,
             )}
@@ -1005,7 +1057,7 @@ export default function CreateCertificatePage() {
               <input
                 className={inputClass}
                 placeholder="Ex. Suivi des indicateurs du projet"
-                value={form.theme}
+                disabled={isLocked("theme")} value={form.theme}
                 onChange={(e) => set("theme", e.target.value)}
               />,
               "md:col-span-2",
@@ -1013,7 +1065,7 @@ export default function CreateCertificatePage() {
 
             <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-3">
               {isInternship ? "Lieu de stage" : "Lieu de mission"}
-              <input className={inputClass} placeholder="Ex. Fianarantsoa (un lieu, pas un département)" value={form.missionLocation} onChange={(e) => set("missionLocation", e.target.value)} />
+              <input className={inputClass} placeholder="Ex. Fianarantsoa (un lieu, pas un département)" disabled={locationLocked} value={form.missionLocation} onChange={(e) => set("missionLocation", e.target.value)} />
               {isInternship && suggestion?.missionLocation && form.missionLocation === suggestion.missionLocation && (
                 <span className="block text-xs font-normal text-emerald-700">
                   ✓ Rempli automatiquement d&apos;après {LOCATION_SOURCE_LABEL[suggestion.locationSource ?? ""] ?? "le suivi & évaluation"}.
@@ -1030,7 +1082,7 @@ export default function CreateCertificatePage() {
 
           {selected?.source === "USER" && !specialCase && (
             <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
-              <input type="checkbox" checked={saveToProfile} onChange={(e) => setSaveToProfile(e.target.checked)} className="mt-0.5 h-4 w-4" />
+              <input type="checkbox" disabled={lockInternship && !!selected && missingInDb.length === 0} checked={saveToProfile} onChange={(e) => setSaveToProfile(e.target.checked)} className="mt-0.5 h-4 w-4" />
               <span>
                 Compléter la fiche de <b>{selected.name}</b> dans la base de données avec les informations saisies
                 <span className="block text-xs text-gray-500">Seuls les champs encore vides sont remplis : rien d&apos;existant n&apos;est écrasé.</span>
@@ -1042,7 +1094,7 @@ export default function CreateCertificatePage() {
             <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
               <label className="block space-y-1 text-sm font-medium text-gray-700">
                 Mention
-                <select className={inputClass} value={mention} onChange={(e) => setMention(e.target.value)} disabled={!internshipId}>
+                <select className={inputClass} value={mention} onChange={(e) => setMention(e.target.value)} disabled={!internshipId || mentionLocked}>
                   <option value="">
                     {suggestion?.mention
                       ? `Automatique — ${suggestion.mention} (${suggestion.finalScoreOn20?.toFixed(1)}/20)`

@@ -10,6 +10,7 @@ import { getReqUser } from "../utils/dataScope";
 import { sendEmail } from "../utils/mailer";
 import { notifyUsers } from "../utils/notify";
 import { isSameName } from "../utils/names";
+import { getOrAssignMatricule } from "../utils/matricule";
 
 const router = Router();
 export const publicCertificateRouter = Router();
@@ -36,6 +37,32 @@ async function nextCode(type: string): Promise<string> {
 
   const max = rows.reduce((m, r) => Math.max(m, Number(r.code.slice(prefix.length)) || 0), 0);
   return `${prefix}${String(max + 1).padStart(4, "0")}`;
+}
+
+/**
+ * Code (N°) du certificat.
+ * Certificat de stage d'un stagiaire : son matricule (NH-2026-STG-0001), toujours le même.
+ * Un 2e certificat du même stagiaire (autre stage, ancien certificat révoqué) : suffixe -2, -3…
+ * Autres cas : numérotation séquentielle par catégorie.
+ */
+async function codeFor(type: string, userId: number | null): Promise<string> {
+  if (type === "INTERNSHIP" && userId) {
+    const { matricule } = await getOrAssignMatricule(userId);
+
+    const rows: Array<{ code: string }> = await db.certificate.findMany({
+      where: { code: { startsWith: matricule } },
+      select: { code: true },
+    });
+
+    const used = new Set(rows.map((r) => r.code));
+    if (!used.has(matricule)) return matricule;
+
+    let n = 2;
+    while (used.has(`${matricule}-${n}`)) n++;
+    return `${matricule}-${n}`;
+  }
+
+  return nextCode(type);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -552,6 +579,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     const resolvedProjectId: number | null = resolvedProjectIds[0] ?? null;
 
     let projectSlogan: string | null = null;
+    let projectSlogans: Array<{ name: string; slogan: string }> | null = null;
     let projectPartners: Array<{ partnerId: number; role: string | null; nameSnapshot: string; sloganSnapshot: string | null; logoSnapshot: string | null; displayOrder: number }> = [];
 
     const toSnapshot = (partner: Json, index: number, role: string | null = null) => ({
@@ -582,6 +610,11 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
       const slogans = Array.from(new Set<string>(ordered.map((p) => String(p.slogan ?? "").trim()).filter(Boolean)));
       projectSlogan = slogans.length ? slogans.join(" · ") : null;
+      // Projet par projet : nom + slogan (affichés côte à côte sous les logos)
+      const perProject = ordered
+        .map((p) => ({ name: String(p.name), slogan: String(p.slogan ?? "").trim() }))
+        .filter((p) => p.slogan);
+      projectSlogans = perProject.length ? perProject : null;
 
       const seen = new Set<number>();
       const merged: Array<{ partner: Json; role: string | null }> = [];
@@ -649,7 +682,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       try {
         row = await db.certificate.create({
           data: {
-            code: await nextCode(type),
+            code: await codeFor(type, userId),
             type,
             holderName,
             holderEmail,
@@ -678,6 +711,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
             beneficiaryId,
             userId,
             slogan: projectSlogan,
+            projectSlogans: projectSlogans ?? undefined,
             partnerLinks: projectPartners.length ? { create: projectPartners } : undefined,
             issuedById: getReqUser(req)?.id ?? null,
           },
@@ -778,7 +812,7 @@ publicCertificateRouter.get("/:code", async (req: Request, res: Response) => {
   try {
     const code = String(req.params.code).toUpperCase();
 
-    if (!/^NH-\d{4}-(?:[A-Z]{3}-\d{4,}|[A-Z0-9]{8})$/.test(code)) {
+    if (!/^NH-\d{4}-(?:[A-Z]{3}-\d{4,}(?:-\d{1,3})?|[A-Z0-9]{8})$/.test(code)) {
       return res.status(404).json({ success: false, status: "NOT_FOUND" });
     }
 

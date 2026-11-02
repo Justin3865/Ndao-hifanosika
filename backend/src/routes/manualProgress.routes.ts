@@ -16,6 +16,7 @@ import { authorizeRoles } from "../middlewares/role.middleware";
 import { getReqUser, canSeeInternship } from "../utils/dataScope";
 import { PRESENCE_MONTHS } from "../services/internshipMonitoring.service";
 import { recordSnapshot, statusFromProgress } from "../services/monitoring.service";
+import { parseParticipantIds, syncParticipants, withParticipants } from "../services/activityParticipants.service";
 
 const router = Router();
 router.use(authenticate);
@@ -56,6 +57,9 @@ const limitOf = (i: { startDate: Date; endDate: Date | null; durationMonths: num
   const months = i.durationMonths || (role ? (String(role).endsWith("M2") ? PRESENCE_MONTHS.M2 : PRESENCE_MONTHS.L3) : null);
   return months ? monthsEnd(i.startDate, months) : i.endDate;
 };
+/** Un stage qui reçoit un avancement est « en cours » : il entre aussitôt dans l'ordre de mérite. */
+const activateInternship = (internshipId: number) =>
+  prisma.internship.updateMany({ where: { id: internshipId, status: "PENDING" }, data: { status: "IN_PROGRESS" } });
 const bad = (res: Response, message: string) => res.status(400).json({ success: false, message });
 const fail = (res: Response, e: unknown, message: string) => {
   logger.error(`[manual-progress] ${message}`, e);
@@ -71,12 +75,12 @@ router.get("/projects/:id/activities", authorizeRoles(...PROJECT_WRITE), async (
     const activities = await prisma.activity.findMany({
       where: { projectId },
       select: {
-        id: true, title: true, progress: true, status: true, startDate: true, endDate: true, updatedAt: true,
-        location: true, budget: true, description: true,
+        id: true, title: true, progress: true, status: true, startDate: true, endDate: true,
+        location: true, budget: true, updatedAt: true,
       },
-      orderBy: { id: "asc" },
+      orderBy: { updatedAt: "desc" },
     });
-    return res.json({ success: true, activities });
+    return res.json({ success: true, activities: await withParticipants(activities) });
   } catch (e) {
     return fail(res, e, "Impossible de lister les activités.");
   }
@@ -95,13 +99,6 @@ router.post("/projects/:id/activities", authorizeRoles(...PROJECT_WRITE), async 
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
     if (!project) return res.status(404).json({ success: false, message: "Projet introuvable." });
 
-    // champs facultatifs de la fiche activité : lieu, période, budget, description
-    const startDate = date(req.body?.startDate);
-    const endDate = date(req.body?.endDate);
-    if (startDate && endDate && endDate < startDate) return bad(res, "La date de fin doit être postérieure à la date de début.");
-    const budget = num(req.body?.budget);
-    if (budget !== null && budget < 0) return bad(res, "Le budget ne peut pas être négatif.");
-
     const rounded = Math.round(progress);
     const status = statusFromProgress(rounded, "PLANNED");
     const now = new Date();
@@ -109,11 +106,10 @@ router.post("/projects/:id/activities", authorizeRoles(...PROJECT_WRITE), async 
       data: {
         projectId,
         title,
-        startDate,
-        endDate,
         location: str(req.body?.location),
-        description: str(req.body?.description),
-        ...(budget !== null ? { budget } : {}),
+        budget: num(req.body?.budget),
+        startDate: date(req.body?.startDate),
+        endDate: date(req.body?.endDate),
         progress: rounded,
         status,
         createdById: user.id,
@@ -121,10 +117,41 @@ router.post("/projects/:id/activities", authorizeRoles(...PROJECT_WRITE), async 
         ...(status === "COMPLETED" ? { actualEndDate: now } : {}),
       },
     });
+    const participantIds = parseParticipantIds(req.body?.participantIds);
+    if (participantIds && participantIds.length > 0) {
+      await syncParticipants({ id: activity.id, title: activity.title }, participantIds, user.id);
+    }
     await recordSnapshot(projectId, `Saisie manuelle : activité « ${title} » à ${rounded} %`);
     return res.status(201).json({ success: true, message: "Activité ajoutée.", activity });
   } catch (e) {
     return fail(res, e, "Impossible d'ajouter l'activité.");
+  }
+});
+
+/** Participants (stagiaires) d'une activité existante : remplace la liste par celle fournie. */
+router.put("/activities/:id/participants", authorizeRoles(...PROJECT_WRITE), async (req: Request, res: Response) => {
+  try {
+    const id = int(req.params.id);
+    const user = getReqUser(req);
+    if (!id || !user) return bad(res, "Activité invalide.");
+    const ids = parseParticipantIds(req.body?.participantIds);
+    if (ids === undefined) return bad(res, "Liste de participants invalide.");
+
+    const activity = await prisma.activity.findUnique({
+      where: { id },
+      select: { id: true, title: true, projectId: true, project: { select: { createdById: true } } },
+    });
+    if (!activity) return res.status(404).json({ success: false, message: "Activité introuvable." });
+    if (user.role === "COORDINATOR" && activity.project.createdById !== user.id)
+      return res.status(403).json({ success: false, message: "Vous ne pouvez pas modifier cette activité." });
+
+    await syncParticipants({ id: activity.id, title: activity.title }, ids, user.id);
+    // Remonte l'activité en tête de liste (dernière modifiée)
+    await prisma.activity.update({ where: { id: activity.id }, data: { updatedAt: new Date() } });
+    const [saved] = await withParticipants([{ id: activity.id }]);
+    return res.json({ success: true, message: "Participants enregistrés.", participantIds: saved.participantIds });
+  } catch (e) {
+    return fail(res, e, "Impossible d'enregistrer les participants.");
   }
 });
 
@@ -239,6 +266,7 @@ router.post("/internships/:id/tasks", authorizeRoles(...STAGE_WRITE), async (req
       },
       select: { id: true, title: true, status: true, progress: true },
     });
+    await activateInternship(internship.id);
     return res.status(201).json({ success: true, message: "Tâche ajoutée.", task });
   } catch (e) {
     return fail(res, e, "Impossible d'ajouter la tâche.");
@@ -280,6 +308,7 @@ router.patch("/internships/:id/tasks/:taskId", authorizeRoles(...STAGE_WRITE), a
       },
       select: { id: true, title: true, status: true, progress: true },
     });
+    await activateInternship(internship.id);
     return res.json({ success: true, message: "Tâche mise à jour.", task });
   } catch (e) {
     return fail(res, e, "Impossible de mettre à jour la tâche.");

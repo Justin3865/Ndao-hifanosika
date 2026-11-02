@@ -7,7 +7,7 @@
 
 type Values = Record<string, string | boolean>;
 
-export const NEW_PERSON_KEYS = ["firstName", "lastName", "email", "role"] as const;
+export const NEW_PERSON_KEYS = ["firstName", "lastName", "email", "role", "otherLevel"] as const;
 export type NewPersonKey = (typeof NEW_PERSON_KEYS)[number];
 
 export const newPersonName = (key: NewPersonKey) => `newPerson.${key}`;
@@ -69,8 +69,22 @@ export function NewPersonFields({
           >
             <option value="STAGIAIRE_L3">Stagiaire L3</option>
             <option value="STAGIAIRE_M2">Stagiaire M2</option>
+            <option value="AUTRE">Autre…</option>
           </select>
         </label>
+
+        {!disabled && String(values[newPersonName("role")]) === "AUTRE" && (
+          <label className="block space-y-1 text-sm font-medium text-gray-700">
+            Précisez le niveau *
+            <input
+              type="text"
+              className={inputClass}
+              placeholder="Ex. Licence 2, Doctorat, Formation professionnelle…"
+              value={String(values[newPersonName("otherLevel")] ?? "")}
+              onChange={(e) => setValue(newPersonName("otherLevel"), e.target.value)}
+            />
+          </label>
+        )}
       </div>
     </div>
   );

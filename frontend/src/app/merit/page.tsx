@@ -6,12 +6,14 @@ import { AppLayout } from "@/components/layout";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage, fmtDateTime } from "@/lib/crud";
 import {
+  Group,
   HistoryData,
   Level,
   MeritData,
   MeritKey,
   MeritRow,
   closeMeritPeriod,
+  reopenMeritGroup,
   fetchMerit,
   fetchMeritHistory,
 } from "@/lib/activitySpace";
@@ -20,12 +22,12 @@ import { confirmDialog, toast } from "@/lib/toast";
 const CLOSERS = ["ADMIN", "DIRECTION", "COORDINATOR", "RH"];
 const BADGE: Record<string, string> = {
   Excellent: "bg-green-100 text-green-700",
-  "Très bien": "bg-blue-100 text-blue-700",
-  Bien: "bg-amber-100 text-amber-800",
-  Passable: "bg-orange-100 text-orange-800",
-  "À améliorer": "bg-red-100 text-red-700",
+  "Très bien": "bg-green-100 text-green-700",
+  Bien: "bg-blue-100 text-blue-700",
+  Passable: "bg-amber-100 text-amber-800",
+  "À améliorer": "bg-amber-100 text-amber-800",
 };
-const MEDAL = ["text-amber-500", "text-slate-400", "text-orange-600"];
+const MEDAL = ["text-amber-500", "text-slate-400", "text-blue-500"];
 const COMPONENT_LABELS: Array<[MeritKey, string]> = [
   ["progress", "Avancement"],
   ["completion", "Achèvement"],
@@ -127,7 +129,7 @@ function RankingTable({ rows, highlightId }: { rows: MeritRow[]; highlightId?: n
 export default function MeritPage() {
   const [role, setRole] = useState("");
   const [tab, setTab] = useState<"ranking" | "history">("ranking");
-  const [level, setLevel] = useState<Level | "AUTRE">("L3");
+  const [level, setLevel] = useState<Group>("L3");
   const [period, setPeriod] = useState(String(new Date().getFullYear()));
   const [merit, setMerit] = useState<MeritData | null>(null);
   const [history, setHistory] = useState<HistoryData | null>(null);
@@ -171,29 +173,43 @@ export default function MeritPage() {
     if (role) void loadRanking();
   }, [role, loadRanking]);
 
+  const reopen = async () => {
+    if (!(await confirmDialog(`Rouvrir ${groupLabel} ${period} ? Sa clôture sera supprimée de l'historique et ses stagiaires reviendront dans le classement en cours.`))) return;
+
+    try {
+      await reopenMeritGroup(period, level);
+      toast.success(`${groupLabel} ${period} rouvert.`);
+      setHistory(null);
+      await loadRanking();
+    } catch (err) {
+      toast.error(errorMessage(err, "Réouverture impossible."));
+    }
+  };
+
+  // stagiaire : ouvre directement le groupe où il figure (L3, M2 ou Autre)
+  useEffect(() => {
+    if (!isIntern || !merit) return;
+    const own = (["L3", "M2", "AUTRE"] as Group[]).find((group) => merit.cohorts[group]?.length > 0);
+    if (own) setLevel(own);
+  }, [isIntern, merit]);
+
   useEffect(() => {
     if (role && tab === "history") void loadHistory();
   }, [role, tab, loadHistory]);
 
+  const groupLabel = level === "AUTRE" ? "Autre" : level;
+
   const close = async () => {
-    if (!(await confirmDialog(`Clôturer la période ${period} et enregistrer le classement dans l'historique ?`))) return;
+    if (!(await confirmDialog(`Clôturer ${groupLabel} ${period} et enregistrer son classement dans l'historique ? Les autres groupes ne sont pas touchés.`))) return;
 
     setClosing(true);
 
     try {
-      const result = await closeMeritPeriod(period);
-
-      if (!result || result.saved === 0) {
-        toast.error(`Aucun stagiaire classé en ${period} : rien à enregistrer dans l'historique.`);
-        return;
-      }
-
-      toast.success(`Classement ${period} enregistré dans l'historique (${result.saved} stagiaire(s)).`);
-
-      // le classement clôturé passe directement dans l'historique, sur la période qui vient d'être enregistrée
+      await closeMeritPeriod(period, level);
+      toast.success(`Classement ${groupLabel} ${period} enregistré dans l'historique.`);
       setHistory(null);
       setHistoryPeriod(period);
-      setTab("history");
+      await loadRanking(); // le classement en cours de ce groupe est maintenant vide
     } catch (err) {
       toast.error(errorMessage(err, "Clôture impossible."));
     } finally {
@@ -201,52 +217,11 @@ export default function MeritPage() {
     }
   };
 
-  // « Autre » : stagiaires dont la durée de stage n'est ni 2 mois (L3) ni 6 mois (M2) — classés entre eux
-  const otherRows = useMemo(() => {
-    const all = [...(merit?.cohorts.L3 ?? []), ...(merit?.cohorts.M2 ?? [])].filter(
-      (row) => row.stage?.durationMonths !== null && row.stage?.durationMonths !== undefined && row.stage.durationMonths !== (row.level === "M2" ? 6 : 2),
-    );
-    all.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"));
-    const ranked: MeritRow[] = [];
-    all.forEach((row, index) => {
-      // égalité de moyenne = même rang
-      const rank = index > 0 && ranked[index - 1].score === row.score ? ranked[index - 1].rank : index + 1;
-      ranked.push({ ...row, rank, cohortSize: all.length });
-    });
-    return ranked;
-  }, [merit]);
-
-  const rows = level === "AUTRE" ? otherRows : merit?.cohorts[level] ?? [];
+  const rows = merit?.cohorts[level] ?? [];
   const mine = isIntern ? rows[0] : undefined;
   // Tableau d'honneur : réservé aux stagiaires ayant au moins 16/20 (sinon aucun)
-  const honor =
-    level === "AUTRE"
-      ? otherRows.filter((row) => row.score >= 16).slice(0, 3).map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }))
-      : (merit?.honor[level] ?? []).filter((entry) => entry.score >= 16);
-  const historyLevel: Level | "AUTRE" = level;
-
-  // Historique : « Autre » = stagiaires dont la durée de stage n'est ni 2 mois (L3) ni 6 mois (M2), reclassés entre eux
-  const historyRows = useMemo(() => {
-    const cohorts = history?.cohorts;
-    if (!cohorts) return [] as MeritRow[];
-    if (historyLevel !== "AUTRE") return cohorts[historyLevel] ?? [];
-
-    const all = [...(cohorts.L3 ?? []), ...(cohorts.M2 ?? [])].filter(
-      (row) => row.stage?.durationMonths !== null && row.stage?.durationMonths !== undefined && row.stage.durationMonths !== (row.level === "M2" ? 6 : 2),
-    );
-    all.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"));
-    const ranked: MeritRow[] = [];
-    all.forEach((row, index) => {
-      const rank = index > 0 && ranked[index - 1].score === row.score ? ranked[index - 1].rank : index + 1;
-      ranked.push({ ...row, rank, cohortSize: all.length });
-    });
-    return ranked;
-  }, [history, historyLevel]);
-
-  const historyHonor =
-    historyLevel === "AUTRE"
-      ? historyRows.filter((row) => row.score >= 16).slice(0, 3).map((row) => ({ rank: row.rank, name: row.name, score: row.score, badge: row.badge }))
-      : (history?.honor?.[historyLevel] ?? []).filter((entry) => entry.score >= 16);
+  const honor = (merit?.honor[level] ?? []).filter((entry) => entry.score >= 16);
+  const historyRows = history?.cohorts?.[level] ?? [];
 
   const tabClass = (active: boolean) =>
     `inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition ${active ? "bg-blue-700 text-white" : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`;
@@ -277,18 +252,18 @@ export default function MeritPage() {
             {tab === "ranking" && CLOSERS.includes(role) && (
               <button
                 type="button"
-                disabled={closing}
+                disabled={closing || merit?.groups?.[level]?.closed}
                 onClick={close}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-600 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
               >
                 <History className="h-4 w-4" />
-                Clôturer la période {period}
+                {merit?.groups?.[level]?.closed ? `${groupLabel} ${period} clôturé` : `Clôturer ${groupLabel} ${period}`}
               </button>
             )}
           </div>
         </div>
 
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>}
 
         {/* ------------------------- CLASSEMENT ------------------------- */}
         {tab === "ranking" && (
@@ -319,6 +294,40 @@ export default function MeritPage() {
 
             </div>
 
+            {merit?.groups?.[level]?.closedAt && !merit.groups[level].closed && (
+              <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+                {groupLabel} {merit.period} clôturé le {new Date(merit.groups[level].closedAt as string).toLocaleDateString("fr-FR")} : seuls les stagiaires ayant un nouvel avancement depuis cette date sont classés. Le reste est dans l&apos;historique.
+                {CLOSERS.includes(role) && (
+                  <button type="button" onClick={reopen} className="ml-3 rounded-lg border border-blue-500 px-3 py-1.5 text-xs font-semibold hover:bg-blue-500/20">
+                    Rouvrir
+                  </button>
+                )}
+              </div>
+            )}
+
+            {merit?.groups?.[level]?.closed && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+                <span>
+                  {groupLabel} {merit.period} est clôturé : tous les stagiaires de ce groupe sont dans l&apos;historique. Aucun classement en cours.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHistoryPeriod(merit.period);
+                    setTab("history");
+                  }}
+                  className="rounded-lg border border-blue-500 px-3 py-1.5 text-xs font-semibold hover:bg-blue-500/20"
+                >
+                  Voir l&apos;historique
+                </button>
+                {CLOSERS.includes(role) && (
+                  <button type="button" onClick={reopen} className="rounded-lg border border-blue-500 px-3 py-1.5 text-xs font-semibold hover:bg-blue-500/20">
+                    Rouvrir
+                  </button>
+                )}
+              </div>
+            )}
+
             {loading && <p className="text-sm text-gray-500">Chargement...</p>}
 
             {merit && isIntern && (
@@ -327,7 +336,7 @@ export default function MeritPage() {
                   <div className="flex flex-wrap items-center justify-between gap-6">
                     <div>
                       <p className="text-sm text-gray-500">
-                        Votre position — promotion {level}, {merit.period}
+                        Votre position — {groupLabel}, {merit.period}
                       </p>
                       <p className="mt-1 text-4xl font-bold text-gray-900">
                         {mine.rank}
@@ -381,8 +390,8 @@ export default function MeritPage() {
                 <p className="font-medium text-gray-900">Comment le score est calculé</p>
                 <p className="mt-1">
                   Moyenne sur 20 calculée automatiquement à partir du stage : avancement des tâches {merit.weights.progress}% · achèvement (tâches terminées) {merit.weights.completion}% · évaluation du tuteur{" "}
-                  {merit.weights.evaluation}% · rapports rendus {merit.weights.reports}% · présence pointée {merit.weights.presence}% (ignorée tant qu&apos;aucun pointage GPS n&apos;existe). Une donnée absente est ignorée (poids réajustés). Classement séparé L3 / M2, égalité de moyenne = même rang.
-                  {level !== "AUTRE" && merit.averages?.[level] !== undefined && merit.averages?.[level] !== null ? ` Moyenne de la promotion ${level} : ${fmt20(merit.averages[level] as number)}/20.` : ""}
+                  {merit.weights.evaluation}% · rapports rendus {merit.weights.reports}% · présence pointée {merit.weights.presence}% (ignorée tant qu&apos;aucun pointage GPS n&apos;existe). Une donnée absente est ignorée (poids réajustés). Classement séparé L3 / M2 / Autre (chaque groupe se clôture séparément), égalité de moyenne = même rang.
+                  {merit.averages?.[level] !== undefined && merit.averages?.[level] !== null ? ` Moyenne du groupe ${groupLabel} : ${fmt20(merit.averages[level] as number)}/20.` : ""}
                   {merit.unranked !== undefined ? ` ${merit.unranked} stagiaire(s) sans participation ne sont pas classés.` : ""}
                 </p>
               </div>
@@ -391,8 +400,6 @@ export default function MeritPage() {
         )}
 
         {/* ------------------------- HISTORIQUE ------------------------- */}
-        {tab === "history" && !history && !error && <p className="text-sm text-gray-500">Chargement...</p>}
-
         {tab === "history" && history && (
           <>
             {history.scope === "self" ? (
@@ -452,26 +459,13 @@ export default function MeritPage() {
                         key={value}
                         type="button"
                         onClick={() => setLevel(value)}
-                        className={`px-5 py-3 text-sm font-medium ${historyLevel === value ? "bg-blue-700 text-white" : "text-gray-700 hover:bg-gray-50"}`}
+                        className={`px-5 py-3 text-sm font-medium ${level === value ? "bg-blue-700 text-white" : "text-gray-700 hover:bg-gray-50"}`}
                       >
                         {value === "AUTRE" ? "Autre" : value}
                       </button>
                     ))}
                   </div>
                 </div>
-
-                {historyHonor.length > 0 && (
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    {historyHonor.map((entry) => (
-                      <div key={entry.rank} className={`${card} text-center`}>
-                        <Medal className={`mx-auto h-8 w-8 ${MEDAL[entry.rank - 1] ?? "text-gray-400"}`} />
-                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Tableau d&apos;honneur — {entry.rank}{entry.rank === 1 ? "er" : "e"}</p>
-                        <p className="mt-1 font-semibold text-gray-900">{entry.name}</p>
-                        <p className="text-sm text-gray-600">{fmt20(entry.score)}/20</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                   <RankingTable rows={historyRows} />

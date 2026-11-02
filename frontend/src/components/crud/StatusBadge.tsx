@@ -5,7 +5,7 @@ export function StatusBadge({ status }: { status?: string | null }) {
 
   return (
     <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${
         STATUS_COLORS[status] ?? "bg-gray-100 text-gray-700"
       }`}
     >

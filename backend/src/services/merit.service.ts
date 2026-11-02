@@ -23,6 +23,11 @@ export const MERIT_WEIGHTS = { progress: 30, completion: 20, evaluation: 30, rep
 export const MERIT_SCALE = 20;
 
 export type Level = "L3" | "M2";
+/** Groupe de classement : L3, M2, ou « Autre » (durée de stage hors norme : ni 2 mois pour L3, ni 6 mois pour M2). Chaque groupe se clôture séparément. */
+export type Group = Level | "AUTRE";
+export const GROUPS: Group[] = ["L3", "M2", "AUTRE"];
+export const isGroup = (value: unknown): value is Group => value === "L3" || value === "M2" || value === "AUTRE";
+
 export type MeritKey = keyof typeof MERIT_WEIGHTS;
 /** Chaque composante en % (0-100), null = pas encore de donnée. */
 export type MeritComponents = Record<MeritKey, number | null>;
@@ -46,12 +51,17 @@ export interface MeritResult {
   period: string;
   weights: typeof MERIT_WEIGHTS;
   scale: number;
-  cohorts: Record<Level, MeritRow[]>;
-  /** moyenne /20 de chaque promotion */
-  averages: Record<Level, number | null>;
+  cohorts: Record<Group, MeritRow[]>;
+  /** moyenne /20 de chaque groupe */
+  averages: Record<Group, number | null>;
+  /** état de clôture de chaque groupe (clôture indépendante : les stages ne finissent pas tous en même temps) */
+  groups?: Record<Group, { closedAt: string | null; closed: boolean }>;
   /** stagiaires actifs sans stage exploitable sur la période (non classés) */
   unranked: number;
   generatedAt: string;
+  /** période clôturée : le classement a été archivé dans l'historique, plus aucun classement en cours */
+  closed?: boolean;
+  closedAt?: string | null;
 }
 
 const clamp = (n: number, min = 0, max = 100) => Math.min(Math.max(n, min), max);
@@ -61,10 +71,20 @@ export const round = (value: number, digits = 2) => Math.round(value * 10 ** dig
 export const badgeFor = (score: number): string =>
   score >= 16 ? "Excellent" : score >= 14 ? "Très bien" : score >= 12 ? "Bien" : score >= 10 ? "Passable" : "À améliorer";
 
+export const groupOf = (row: Pick<MeritRow, "level" | "stage">): Group => {
+  const months = row.stage?.durationMonths;
+  return months !== null && months !== undefined && months !== (row.level === "M2" ? 6 : 2) ? "AUTRE" : row.level;
+};
+
 export const levelOf = (role: string): Level => (String(role).endsWith("M2") ? "M2" : "L3");
 
 export function currentPeriod(): string {
   return String(new Date().getFullYear());
+}
+
+/** Une période (année civile) n'est terminée qu'une fois l'année écoulée : avant, elle ne peut être ni clôturée ni archivée. */
+export function isPeriodOver(period: string): boolean {
+  return Number(period) < new Date().getFullYear();
 }
 
 export function validPeriod(value: unknown): string {
@@ -109,7 +129,100 @@ const mean = (values: Array<number | null>): number | null => {
   return list.length ? list.reduce((a, b) => a + b, 0) / list.length : null;
 };
 
+type SnapshotLite = { id?: number; level: string; createdAt: Date; details?: { group?: unknown; scale?: number } | null };
+
+/**
+ * Groupe d'une ligne d'historique. Une ligne de classement /20 (stage) sans groupe est une ancienne clôture « tous groupes » :
+ * elle est ignorée (null). Les très anciens classements (activités, /100) retombent sur leur promotion.
+ */
+export const snapshotGroup = (row: { level: string; details?: { group?: unknown; scale?: number } | null }): Group | null => {
+  if (isGroup(row.details?.group)) return row.details.group;
+  if (row.details?.scale === 20) return null;
+  return isGroup(row.level) ? row.level : null;
+};
+
+/** Date de clôture de chaque groupe d'une période (null = groupe ouvert). */
+export async function closedAtsOf(period: string): Promise<Record<Group, Date | null>> {
+  const rows: SnapshotLite[] = await db.meritSnapshot.findMany({ where: { period }, select: { level: true, createdAt: true, details: true } });
+  const out: Record<Group, Date | null> = { L3: null, M2: null, AUTRE: null };
+
+  for (const row of rows) {
+    const group = snapshotGroup(row);
+    if (group && (!out[group] || row.createdAt > (out[group] as Date))) out[group] = row.createdAt;
+  }
+
+  return out;
+}
+
+/** Dernière date de clôture d'une période, tous groupes confondus (null = rien de clôturé). */
+export async function closedAtOf(period: string): Promise<Date | null> {
+  const all = Object.values(await closedAtsOf(period)).filter((d): d is Date => d !== null);
+  return all.length ? new Date(Math.max(...all.map((d) => d.getTime()))) : null;
+}
+
+/** Stagiaires ayant un nouvel avancement (tâche ajoutée / modifiée) ou une nouvelle évaluation depuis une date. */
+async function internsActiveSince(since: Date): Promise<Set<number>> {
+  const [tasks, evaluations] = await Promise.all([
+    db.internshipTask.findMany({ where: { updatedAt: { gt: since } }, select: { internship: { select: { studentId: true } } } }),
+    db.internshipEvaluation.findMany({ where: { updatedAt: { gt: since } }, select: { internship: { select: { studentId: true } } } }),
+  ]);
+
+  return new Set<number>(
+    [...tasks, ...evaluations].map((row: { internship: { studentId: number } }) => row.internship.studentId),
+  );
+}
+
+const rankRows = (rows: MeritRow[]) =>
+  rows.forEach((row, index) => {
+    // égalité de moyenne = même rang
+    row.rank = index > 0 && rows[index - 1].score === row.score ? rows[index - 1].rank : index + 1;
+    row.cohortSize = rows.length;
+  });
+
+/**
+ * Classement en cours d'une période, groupe par groupe (L3, M2, Autre).
+ * Quand un groupe est clôturé, ses stagiaires sont dans l'historique et son classement en cours repart vide ;
+ * dès qu'un nouvel avancement (ou une évaluation) est saisi, le stagiaire concerné réapparaît aussitôt.
+ * Les autres groupes ne sont pas touchés : on peut clôturer L3, puis M2, puis Autre, chacun à la fin de ses stages.
+ */
 export async function computeMerit(period: string): Promise<MeritResult> {
+  const live = await computeMeritLive(period);
+  const closedAts = await closedAtsOf(period);
+  const cohorts: Record<Group, MeritRow[]> = { L3: live.cohorts.L3, M2: live.cohorts.M2, AUTRE: live.cohorts.AUTRE };
+  const averages: Record<Group, number | null> = { ...live.averages };
+  const groups = { L3: { closedAt: null, closed: false }, M2: { closedAt: null, closed: false }, AUTRE: { closedAt: null, closed: false } } as Record<
+    Group,
+    { closedAt: string | null; closed: boolean }
+  >;
+
+  for (const group of GROUPS) {
+    const closedAt = closedAts[group];
+    if (!closedAt) continue;
+
+    const fresh = await internsActiveSince(closedAt);
+    const rows = live.cohorts[group].filter((row) => fresh.has(row.userId));
+    rankRows(rows);
+    cohorts[group] = rows;
+
+    const average = mean(rows.map((row) => row.score));
+    averages[group] = average === null ? null : round(average);
+    groups[group] = { closedAt: closedAt.toISOString(), closed: rows.length === 0 };
+  }
+
+  const latest = await closedAtOf(period);
+
+  return {
+    ...live,
+    cohorts,
+    averages,
+    groups,
+    closed: GROUPS.every((g) => groups[g].closed) && latest !== null,
+    closedAt: latest ? latest.toISOString() : null,
+  };
+}
+
+/** Calcul du classement à partir des données du stage (sans tenir compte de la clôture). */
+export async function computeMeritLive(period: string): Promise<MeritResult> {
   const year = Number(period);
   const yearStart = new Date(Date.UTC(year, 0, 1));
   const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
@@ -154,7 +267,8 @@ export async function computeMerit(period: string): Promise<MeritResult> {
     }
   }
 
-  const cohorts: Record<Level, MeritRow[]> = { L3: [], M2: [] };
+  const cohorts: Record<Group, MeritRow[]> = { L3: [], M2: [], AUTRE: [] };
+  const pushRow = (row: MeritRow) => cohorts[groupOf(row)].push(row);
   let unranked = 0;
 
   for (const user of interns as Array<{ id: number; firstName: string; lastName: string; role: string }>) {
@@ -179,7 +293,7 @@ export async function computeMerit(period: string): Promise<MeritResult> {
 
     const stage = titles.get(user.id);
 
-    cohorts[levelOf(user.role)].push({
+    pushRow({
       userId: user.id,
       name: `${user.firstName} ${user.lastName}`.trim(),
       level: levelOf(user.role),
@@ -205,9 +319,9 @@ export async function computeMerit(period: string): Promise<MeritResult> {
     });
   }
 
-  const averages: Record<Level, number | null> = { L3: null, M2: null };
+  const averages: Record<Group, number | null> = { L3: null, M2: null, AUTRE: null };
 
-  for (const level of ["L3", "M2"] as Level[]) {
+  for (const level of GROUPS) {
     const rows = cohorts[level].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "fr"));
 
     rows.forEach((row, index) => {
@@ -231,70 +345,68 @@ export async function computeMerit(period: string): Promise<MeritResult> {
   };
 }
 
-/** Promotion « Autre » : durée de stage ni 2 mois (L3) ni 6 mois (M2) — même règle que l'écran Ordre de mérite. */
-export const isOtherGroup = (row: Pick<MeritRow, "level" | "stage">): boolean => {
-  const months = row.stage?.durationMonths;
-  return months !== null && months !== undefined && months !== (row.level === "M2" ? 6 : 2);
-};
+/** Clôture un groupe (L3, M2 ou Autre) d'une période : enregistre son classement dans l'historique (relançable : met à jour). */
+export async function closePeriod(period: string, closedById: number | null, group: Group): Promise<{ saved: number }> {
+  const result = await computeMeritLive(period);
+  const rows = result.cohorts[group];
+  let saved = 0;
 
-export const HONOR_MIN_SCORE = 16;
+  if (rows.length > 0) {
+    // repart d'un historique propre pour ce groupe : supprime les lignes périmées (stagiaires qui ne sont plus dans le classement)
+    const existing: SnapshotLite[] = await db.meritSnapshot.findMany({ where: { period }, select: { id: true, level: true, createdAt: true, details: true } });
+    const stale = existing.filter((row) => snapshotGroup(row) === group).map((row) => row.id);
+    if (stale.length) await db.meritSnapshot.deleteMany({ where: { id: { in: stale } } });
+  }
+
+  for (const row of rows) {
+    const data = {
+      level: row.level,
+      rank: row.rank,
+      cohortSize: row.cohortSize,
+      score: row.score,
+      badge: row.badge,
+      // scale = 20 : distingue les classements /20 (stage) des anciens classements /100 (activités)
+      details: { scale: MERIT_SCALE, group, components: row.components, counts: row.counts, stage: row.stage, name: row.name },
+      closedById,
+    };
+
+    await db.meritSnapshot.upsert({
+      where: { period_userId: { period, userId: row.userId } },
+      create: { period, userId: row.userId, ...data },
+      update: { ...data, createdAt: new Date() },
+    });
+    saved += 1;
+  }
+
+  return { saved };
+}
+
+const autoChecked = new Set<string>();
 
 /**
- * Clôture une période : enregistre TOUT le classement dans l'historique (relançable : met à jour).
- * Tous les stagiaires classés sont enregistrés, qu'ils figurent ou non au tableau d'honneur.
+ * Clôture automatique de fin d'année : dès que l'année d'une période est terminée (à partir du 01/01 suivant),
+ * les groupes pas encore clôturés sont archivés dans l'historique la première fois que la période est consultée.
+ * Rien n'est fait pour une année en cours (clôture manuelle, groupe par groupe) ni pour un groupe déjà clôturé.
  */
-export async function closePeriod(
-  period: string,
-  closedById: number,
-): Promise<{ saved: number; honored: number }> {
-  const result = await computeMerit(period);
-  const savedIds: number[] = [];
-  let honored = 0;
+export async function ensurePeriodClosed(period: string): Promise<void> {
+  if (!isPeriodOver(period) || autoChecked.has(period)) return;
 
-  for (const level of ["L3", "M2"] as Level[]) {
-    const honorIds = new Set(
-      result.cohorts[level]
-        .filter((row) => row.score >= HONOR_MIN_SCORE)
-        .slice(0, 3)
-        .map((row) => row.userId),
-    );
+  const closedAts = await closedAtsOf(period);
 
-    for (const row of result.cohorts[level]) {
-      const onHonorBoard = honorIds.has(row.userId);
-      if (onHonorBoard) honored += 1;
-
-      const data = {
-        level: row.level,
-        rank: row.rank,
-        cohortSize: row.cohortSize,
-        score: row.score,
-        badge: row.badge,
-        // scale = 20 : distingue les classements /20 (stage) des anciens classements /100 (activités)
-        details: {
-          scale: MERIT_SCALE,
-          components: row.components,
-          counts: row.counts,
-          stage: row.stage,
-          name: row.name,
-          group: isOtherGroup(row) ? "AUTRE" : row.level,
-          honor: onHonorBoard,
-        },
-        closedById,
-      };
-
-      await db.meritSnapshot.upsert({
-        where: { period_userId: { period, userId: row.userId } },
-        create: { period, userId: row.userId, ...data },
-        update: { ...data, createdAt: new Date() },
-      });
-      savedIds.push(row.userId);
-    }
+  for (const group of GROUPS) {
+    if (!closedAts[group]) await closePeriod(period, null, group);
   }
 
-  // re-clôture : retire de l'historique les stagiaires qui ne sont plus classés, pour éviter des rangs incohérents
-  if (savedIds.length > 0) {
-    await db.meritSnapshot.deleteMany({ where: { period, userId: { notIn: savedIds } } });
-  }
+  autoChecked.add(period);
+}
 
-  return { saved: savedIds.length, honored };
+/** Rouvre un groupe d'une période : supprime sa clôture de l'historique, ses stagiaires reviennent dans le classement en cours. */
+export async function reopenGroup(period: string, group: Group): Promise<{ removed: number }> {
+  const rows: SnapshotLite[] = await db.meritSnapshot.findMany({ where: { period }, select: { id: true, level: true, createdAt: true, details: true } });
+  const ids = rows.filter((row) => snapshotGroup(row) === group).map((row) => row.id);
+
+  if (ids.length) await db.meritSnapshot.deleteMany({ where: { id: { in: ids } } });
+  autoChecked.delete(period);
+
+  return { removed: ids.length };
 }

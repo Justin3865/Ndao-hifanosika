@@ -43,7 +43,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return items.filter((item) => {
+    const matching = items.filter((item) => {
       const matchesSearch =
         !query || config.searchOf(item).toLowerCase().includes(query);
 
@@ -54,11 +54,69 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
 
       return matchesSearch && matchesStatus;
     });
+
+    // Une seule ligne par clé (ex. par matricule) : les doublons sont masqués, leur nombre est conservé
+    if (!config.uniqueBy) return matching;
+
+    const kept = new Map<string, (typeof matching)[number]>();
+
+    for (const item of matching) {
+      const key = config.uniqueBy(item);
+      const first = kept.get(key);
+
+      if (first) first._hiddenCount = (first._hiddenCount ?? 0) + 1;
+      else kept.set(key, { ...item, _hiddenCount: 0 });
+    }
+
+    return Array.from(kept.values());
   }, [items, search, status, config]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Pages : avec un regroupement, un groupe (une même personne / un même matricule) n'est jamais coupé entre deux pages
+  const pages = useMemo(() => {
+    if (!config.groupBy) return null;
+
+    const result: typeof filtered[] = [];
+    let currentPage: typeof filtered = [];
+    let i = 0;
+
+    while (i < filtered.length) {
+      const key = config.groupBy(filtered[i]);
+      let end = i + 1;
+
+      while (end < filtered.length && config.groupBy(filtered[end]) === key) end++;
+
+      const block = filtered.slice(i, end);
+
+      if (currentPage.length > 0 && currentPage.length + block.length > PAGE_SIZE) {
+        result.push(currentPage);
+        currentPage = [];
+      }
+
+      currentPage = currentPage.concat(block);
+      i = end;
+    }
+
+    if (currentPage.length > 0) result.push(currentPage);
+
+    return result;
+  }, [filtered, config]);
+
+  const totalPages = pages ? Math.max(1, pages.length) : Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, totalPages);
-  const visible = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const visible = pages ? (pages[current - 1] ?? []) : filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+
+  // Regroupement : lignes consécutives de même clé (colonnes `group` fusionnées une fois par groupe)
+  const groupKeys = config.groupBy ? visible.map((item) => config.groupBy!(item)) : [];
+  const groupInfo = visible.map((_, idx) => {
+    if (!config.groupBy) return { first: true, size: 1, items: [visible[idx]] };
+
+    const first = idx === 0 || groupKeys[idx] !== groupKeys[idx - 1];
+    let size = 1;
+
+    while (idx + size < visible.length && groupKeys[idx + size] === groupKeys[idx]) size++;
+
+    return { first, size, items: first ? visible.slice(idx, idx + size) : [] };
+  });
 
   const showBudget = canSeeBudget(role);
   const columns = config.columns.filter((column) => showBudget || !isBudgetLabel(column.header));
@@ -99,7 +157,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{config.title}</h1>
             <p className="text-sm text-gray-500">
-              {config.subtitle ?? `${items.length} élément(s)`}
+              {config.subtitle ?? `${filtered.length} élément(s)`}
             </p>
           </div>
 
@@ -116,7 +174,7 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
               </Link>
               <Link
                 href="/stages?nouvelle=1"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#D01C7F] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#b3176c]"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
                 Nouvelle offre
@@ -192,15 +250,15 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
 
         {!loading && !error && (
           <div className={`overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm`}>
-            <table className={`w-full text-left text-sm ${config.fitWidth ? "" : "min-w-[720px]"}`}>
+            <table className={`w-full ${config.centerCells ? "text-center" : "text-left"} text-sm ${config.fitWidth ? "" : "min-w-[720px]"}`}>
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
                   {columns.map((column) => (
-                    <th key={column.header} className={`${config.fitWidth ? "px-1.5 text-[10px]" : "px-4"} py-3 font-semibold`}>
+                    <th key={column.header} className={`${config.fitWidth ? "px-1.5 text-[10px]" : "px-4"} py-3 ${config.centerCells ? "text-center align-middle" : ""} font-semibold`}>
                       {column.header}
                     </th>
                   ))}
-                  <th className={`${config.fitWidth ? "px-1.5 text-[10px]" : "px-4"} py-3 text-right font-semibold`}>Actions</th>
+                  <th className={`${config.fitWidth ? "px-1.5 text-[10px]" : "px-4"} py-3 ${config.centerCells ? "text-center" : "text-right"} font-semibold`}>Actions</th>
                 </tr>
               </thead>
 
@@ -216,16 +274,32 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
                   </tr>
                 )}
 
-                {visible.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    {columns.map((column) => (
-                      <td key={column.header} className={`${config.fitWidth ? "px-1.5 text-xs" : "px-4"} py-3 text-gray-700`}>
-                        {column.render(item)}
-                      </td>
-                    ))}
+                {visible.map((item, idx) => (
+                  <tr key={item.id} className={`hover:bg-gray-50 ${config.groupBy && groupInfo[idx].first && idx > 0 ? "border-t-2 border-gray-200" : ""}`}>
+                    {columns.map((column) => {
+                      if (config.groupBy && column.group) {
+                        if (!groupInfo[idx].first) return null;
+
+                        return (
+                          <td
+                            key={column.header}
+                            rowSpan={groupInfo[idx].size}
+                            className={`${config.fitWidth ? "px-1.5 text-xs" : "px-4"} py-3 ${config.centerCells ? "text-center" : ""} align-middle text-gray-700`}
+                          >
+                            {column.render(item, groupInfo[idx].items)}
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td key={column.header} className={`${config.fitWidth ? "px-1.5 text-xs" : "px-4"} py-3 ${config.centerCells ? "text-center" : ""} align-middle text-gray-700`}>
+                          {column.render(item)}
+                        </td>
+                      );
+                    })}
 
                     <td className={`${config.fitWidth ? "px-1.5" : "px-4"} py-3`}>
-                      <div className={`flex justify-end gap-1 ${config.fitWidth ? "[&>a]:!p-1.5 [&>button]:!p-1.5" : ""}`}>
+                      <div className={`flex ${config.centerCells ? "justify-center" : "justify-end"} gap-1 ${config.fitWidth ? "[&>a]:!p-1.5 [&>button]:!p-1.5" : ""}`}>
                         {config.rowActions?.(item, role)}
 
                         <Link

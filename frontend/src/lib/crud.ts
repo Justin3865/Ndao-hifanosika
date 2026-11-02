@@ -18,7 +18,10 @@ export type FieldType =
   | "zonehierarchy"
   | "identity"
   | "newperson"
-  | "partners";
+  | "matricule"
+  | "partners"
+  | "participants"
+  | "projects";
 
 export interface Option {
   value: string;
@@ -66,6 +69,10 @@ export interface FieldDef {
   statusFromDates?: { start: string; end: string };
   /** Champ « select » d'un encadrant : fixé sur la personne connectée quand c'est un tuteur */
   lockForTutor?: boolean;
+  /** Champ « select » d'un encadrant : propose « + Ajouter un tuteur » (ADMIN, RH, COORDINATOR) */
+  allowAddTutor?: boolean;
+  /** Champ « select » : ajoute l'option « Autre… » qui ouvre une saisie libre stockée dans un autre champ */
+  otherText?: { name: string; label: string; placeholder?: string };
   /** Champ calculé automatiquement : affiché en lecture seule (non modifiable) */
   readOnly?: boolean;
   /** Texte affiché dans un champ en lecture seule tant qu'il n'a pas de valeur */
@@ -77,7 +84,10 @@ export type Item = any;
 
 export interface ColumnDef {
   header: string;
-  render: (item: Item) => ReactNode;
+  /** `group` : les éléments du même groupe (voir `groupBy`) quand la colonne est fusionnée */
+  render: (item: Item, group?: Item[]) => ReactNode;
+  /** Colonne fusionnée (rowSpan) sur les lignes consécutives d'un même groupe (voir `groupBy` de la config) */
+  group?: boolean;
 }
 
 export interface DetailRow {
@@ -106,6 +116,10 @@ export interface ResourceConfig {
   /** Libellé du bouton de suppression (ex. « Révoquer ») */
   deleteLabel?: string;
   createHref?: string;
+  /** Regroupe les lignes consécutives de même clé : les colonnes `group` ne s'affichent qu'une fois par groupe */
+  groupBy?: (item: Item) => string;
+  /** Une seule ligne par clé : les éléments suivants de même clé sont masqués (le premier est gardé, `_hiddenCount` = nombre masqués) */
+  uniqueBy?: (item: Item) => string;
   /** Bloc supplémentaire affiché sous la fiche détail */
   extra?: (item: Item) => ReactNode;
   /** Boutons supplémentaires dans la colonne Actions de la liste (reçoit le rôle connecté) */
@@ -114,6 +128,8 @@ export interface ResourceConfig {
   listExtra?: (items: Item[]) => ReactNode;
   /** Tableau compact qui s'adapte à la largeur disponible (aucune barre de défilement horizontale) */
   fitWidth?: boolean;
+  /** Contenu des cellules centré (horizontalement et verticalement), titres compris */
+  centerCells?: boolean;
 }
 
 /* ---------- Appels API ---------- */
@@ -135,12 +151,13 @@ export async function saveItem(
   config: ResourceConfig,
   id: string | number | null,
   payload: Record<string, unknown>
-): Promise<void> {
-  if (id === null) {
-    await api.post(config.endpoint, payload);
-  } else {
-    await api.put(`${config.endpoint}/${id}`, payload);
-  }
+): Promise<Item | undefined> {
+  const res =
+    id === null
+      ? await api.post(config.endpoint, payload)
+      : await api.put(`${config.endpoint}/${id}`, payload);
+
+  return res.data?.[config.itemKey];
 }
 
 export async function removeItem(

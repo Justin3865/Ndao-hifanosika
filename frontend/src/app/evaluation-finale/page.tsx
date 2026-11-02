@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Award, GraduationCap, Briefcase, Plus } from "lucide-react";
+import { Award, GraduationCap, Briefcase, Plus, X } from "lucide-react";
 import { AppLayout } from "@/components/layout";
 import { ProgressModal } from "@/components/final-evaluation/ProgressModal";
 import { PercentBar, PhaseTag, ScoreBar, Stat, VerdictTag, card, th } from "@/components/final-evaluation/parts";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage } from "@/lib/crud";
 import {
+  FeedbackKind,
   InternshipsOverview,
   Level,
   PROJECT_READ_ROLES,
@@ -22,6 +24,7 @@ import {
 type Tab = "projects" | "internships";
 
 export default function FinalEvaluationPage() {
+  const router = useRouter();
   const [role, setRole] = useState("");
   const [tab, setTab] = useState<Tab>("projects");
   const [level, setLevel] = useState<Level | "ALL" | "AUTRE">("ALL");
@@ -30,6 +33,7 @@ export default function FinalEvaluationPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+  const [avis, setAvis] = useState<FeedbackKind | null>(null);
   const [modal, setModal] = useState<{ mode: "project" | "internship"; id: number | null } | null>(null);
 
   const canSeeProjects = PROJECT_READ_ROLES.includes(role);
@@ -37,7 +41,7 @@ export default function FinalEvaluationPage() {
   const canAddProjectProgress = ["ADMIN", "DIRECTION", "COORDINATOR"].includes(role);
   const canAddStageProgress = ["ADMIN", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"].includes(role);
   const addClass =
-    "inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-500 transition hover:bg-emerald-500/20";
+    "inline-flex items-center gap-2 rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm font-medium text-green-500 transition hover:bg-green-500/20";
 
   useEffect(() => {
     const current = getStoredRole();
@@ -80,6 +84,15 @@ export default function FinalEvaluationPage() {
     [internships, level],
   );
 
+  /** Avis : un seul projet concerné → on va directement à ses avis ; sinon la liste par projet s'ouvre. */
+  const openAvis = (kind: FeedbackKind) => {
+    const withAvis = (projects?.projects ?? []).filter((p) => (kind === "PARTNER" ? p.satisfaction.partners.count : p.satisfaction.beneficiaries.count) > 0);
+    if (withAvis.length === 1) router.push(`/evaluation-finale/projets/${withAvis[0].projectId}#avis`);
+    else setAvis(kind);
+  };
+
+  const scrollToTable = () => document.getElementById("projects-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   const tabClass = (active: boolean) =>
     `inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition ${active ? "bg-blue-700 text-white" : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`;
 
@@ -121,25 +134,25 @@ export default function FinalEvaluationPage() {
           </div>
         </div>
 
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>}
         {loading && <p className="text-sm text-gray-500">Calcul en cours...</p>}
 
         {/* ------------------------- PROJETS ------------------------- */}
         {tab === "projects" && projects && (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Projets évalués" value={`${projects.summary.evaluated}/${projects.summary.count}`} hint={`${projects.summary.final} évaluation(s) finale(s)`} />
-              <Stat label="Moyenne générale" value={fmt20(projects.summary.average)} />
-              <Stat label="Avis des partenaires" value={String(projects.summary.satisfactionPartners)} hint="questionnaires pris en compte" />
-              <Stat label="Avis des bénéficiaires" value={String(projects.summary.satisfactionBeneficiaries)} hint="questionnaires pris en compte" />
+              <Stat label="Projets évalués" value={`${projects.summary.evaluated}/${projects.summary.count}`} hint={`${projects.summary.final} évaluation(s) finale(s)`} onClick={scrollToTable} />
+              <Stat label="Moyenne générale" value={fmt20(projects.summary.average)} onClick={scrollToTable} />
+              <Stat label="Avis des partenaires" value={String(projects.summary.satisfactionPartners)} hint="questionnaires pris en compte" onClick={() => openAvis("PARTNER")} />
+              <Stat label="Avis des bénéficiaires" value={String(projects.summary.satisfactionBeneficiaries)} hint="questionnaires pris en compte" onClick={() => openAvis("BENEFICIARY")} />
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div id="projects-table" className="scroll-mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
               {projects.projects.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-gray-500">Aucun projet à évaluer.</p>
               ) : (
                 <div className="overflow-hidden">
-                  <table className="w-full table-fixed text-left text-sm">
+                  <table className="w-full table-fixed text-center text-sm">
                     <colgroup>
                       {[5, 17, 10, 13, 9, 9, 10, 12, 6].map((w, i) => (
                         <col key={i} style={{ width: `${w}%` }} />
@@ -148,14 +161,14 @@ export default function FinalEvaluationPage() {
                     </colgroup>
                     <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                       <tr>
-                        <th className={th}>Rang</th>
-                        <th className={th}>Projet</th>
-                        <th className={th}>Phase</th>
-                        <th className={th}>Note</th>
-                        <th className={th}>Mention</th>
-                        <th className={th}>Partenaires</th>
-                        <th className={th}>Bénéficiaires</th>
-                        <th className={th}>Fiabilité</th>
+                        <th className={`${th} text-center`}>Rang</th>
+                        <th className={`${th} text-center`}>Projet</th>
+                        <th className={`${th} text-center`}>Phase</th>
+                        <th className={`${th} text-center`}>Note</th>
+                        <th className={`${th} text-center`}>Mention</th>
+                        <th className={`${th} text-center`}>Partenaires</th>
+                        <th className={`${th} text-center`}>Bénéficiaires</th>
+                        <th className={`${th} text-center`}>Fiabilité</th>
                         <th className={th} />
                         {canAddProjectProgress && <th className={th} />}
                       </tr>
@@ -163,37 +176,37 @@ export default function FinalEvaluationPage() {
                     <tbody className="divide-y divide-gray-100">
                       {projects.projects.map((project) => (
                         <tr key={project.projectId} className="hover:bg-gray-50">
-                          <td className="px-2 py-3 font-semibold text-gray-700">{project.rank || "—"}</td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center font-semibold text-gray-700">{project.rank || "—"}</td>
+                          <td className="px-2 py-3 text-center">
                             <p className="font-medium text-gray-900">{project.name}</p>
                             <p className="text-xs text-gray-500">{project.code}</p>
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <PhaseTag phase={project.phase} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <ScoreBar value={project.score} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <VerdictTag verdict={project.verdict} />
                           </td>
-                          <td className="px-2 py-3 text-gray-700">
+                          <td className="px-2 py-3 text-center text-gray-700">
                             {project.satisfaction.partners.average !== null ? `${project.satisfaction.partners.average}/5 (${project.satisfaction.partners.count})` : "—"}
                           </td>
-                          <td className="px-2 py-3 text-gray-700">
+                          <td className="px-2 py-3 text-center text-gray-700">
                             {project.satisfaction.beneficiaries.average !== null ? `${project.satisfaction.beneficiaries.average}/5 (${project.satisfaction.beneficiaries.count})` : "—"}
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <PercentBar value={project.coverage} />
                           </td>
-                          <td className="px-2 py-3 text-right">
+                          <td className="px-2 py-3 text-center">
                             <Link href={`/evaluation-finale/projets/${project.projectId}`} className="font-medium text-blue-700 hover:underline">
                               Détail
                             </Link>
                           </td>
                           {canAddProjectProgress && (
-                            <td className="px-2 py-3 text-right">
-                              <button type="button" onClick={() => setModal({ mode: "project", id: project.projectId })} className="whitespace-nowrap font-medium text-emerald-500 hover:underline">+ Avancement</button>
+                            <td className="px-2 py-3 text-center">
+                              <button type="button" onClick={() => setModal({ mode: "project", id: project.projectId })} className="whitespace-nowrap font-medium text-green-500 hover:underline">+ Avancement</button>
                             </td>
                           )}
                         </tr>
@@ -242,7 +255,7 @@ export default function FinalEvaluationPage() {
                 <p className="px-4 py-8 text-center text-sm text-gray-500">Aucun stage à évaluer.</p>
               ) : (
                 <div className="overflow-hidden">
-                  <table className="w-full table-fixed text-left text-sm">
+                  <table className="w-full table-fixed text-center text-sm">
                     <colgroup>
                       {[6, 15, 17, 10, 13, 9, 11, 11].map((w, i) => (
                         <col key={i} style={{ width: `${w}%` }} />
@@ -251,49 +264,49 @@ export default function FinalEvaluationPage() {
                     </colgroup>
                     <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                       <tr>
-                        <th className={th}>Rang</th>
-                        <th className={th}>Stagiaire</th>
-                        <th className={th}>Stage</th>
-                        <th className={th}>Phase</th>
-                        <th className={th}>Note</th>
-                        <th className={th}>Mention</th>
-                        <th className={th}>Avancement</th>
-                        <th className={th}>Achèvement</th>
+                        <th className={`${th} text-center`}>Rang</th>
+                        <th className={`${th} text-center`}>Stagiaire</th>
+                        <th className={`${th} text-center`}>Stage</th>
+                        <th className={`${th} text-center`}>Phase</th>
+                        <th className={`${th} text-center`}>Note</th>
+                        <th className={`${th} text-center`}>Mention</th>
+                        <th className={`${th} text-center`}>Avancement</th>
+                        <th className={`${th} text-center`}>Achèvement</th>
                         {canAddStageProgress && <th className={th} />}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {stages.map((stage) => (
                         <tr key={stage.id} className="hover:bg-gray-50">
-                          <td className="px-2 py-3 font-semibold text-gray-700">{stage.rank ? `${stage.rank}/${stage.cohortSize}` : "—"}</td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center font-semibold text-gray-700">{stage.rank ? `${stage.rank}/${stage.cohortSize}` : "—"}</td>
+                          <td className="px-2 py-3 text-center">
                             <p className="font-medium text-gray-900">
                               {stage.student.firstName} {stage.student.lastName}
                             </p>
                             <p className="text-xs text-gray-500">{stage.level}</p>
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <p className="text-gray-900">{stage.title}</p>
                             {stage.project && <p className="text-xs text-gray-500">{stage.project.name}</p>}
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <PhaseTag phase={stage.phase} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <ScoreBar value={stage.score} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <VerdictTag verdict={stage.verdict} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <PercentBar value={stage.components.progress} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-2 py-3 text-center">
                             <PercentBar value={stage.components.completion} />
                           </td>
                           {canAddStageProgress && (
-                            <td className="px-2 py-3 text-right">
-                              <button type="button" onClick={() => setModal({ mode: "internship", id: stage.id })} className="whitespace-nowrap font-medium text-emerald-500 hover:underline">+ Avancement</button>
+                            <td className="px-2 py-3 text-center">
+                              <button type="button" onClick={() => setModal({ mode: "internship", id: stage.id })} className="whitespace-nowrap font-medium text-green-500 hover:underline">+ Avancement</button>
                             </td>
                           )}
                         </tr>
@@ -317,6 +330,59 @@ export default function FinalEvaluationPage() {
           </>
         )}
       </div>
+      {avis && projects && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4" role="dialog" aria-modal="true" onClick={() => setAvis(null)}>
+          <div className="my-8 w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">{avis === "PARTNER" ? "Avis des partenaires" : "Avis des bénéficiaires"}</h2>
+              <button type="button" onClick={() => setAvis(null)} aria-label="Fermer" className="rounded-lg p-1 text-gray-500 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mb-4 text-xs text-gray-500">
+              {avis === "PARTNER" ? projects.summary.satisfactionPartners : projects.summary.satisfactionBeneficiaries} questionnaire(s) pris en compte, par projet.
+            </p>
+
+            {(() => {
+              const rows = projects.projects
+                .map((p) => ({ p, s: avis === "PARTNER" ? p.satisfaction.partners : p.satisfaction.beneficiaries }))
+                .filter((r) => r.s.count > 0);
+
+              if (rows.length === 0) return <p className="py-6 text-center text-sm text-gray-500">Aucun avis enregistré pour le moment.</p>;
+
+              return (
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="px-2 py-2 font-semibold">Projet</th>
+                      <th className="px-2 py-2 text-center font-semibold">Avis</th>
+                      <th className="px-2 py-2 text-center font-semibold">Moyenne</th>
+                      <th className="px-2 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.map(({ p, s }) => (
+                      <tr key={p.projectId}>
+                        <td className="px-2 py-3">
+                          <p className="font-medium text-gray-900">{p.name}</p>
+                          <p className="text-xs text-gray-500">{p.code}</p>
+                        </td>
+                        <td className="px-2 py-3 text-center text-gray-700">{s.count}</td>
+                        <td className="px-2 py-3 text-center font-semibold text-gray-900">{s.average !== null ? `${s.average}/5` : "—"}</td>
+                        <td className="px-2 py-3 text-right">
+                          <Link href={`/evaluation-finale/projets/${p.projectId}`} className="font-medium text-blue-700 hover:underline">
+                            Voir les avis
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
+          </div>
+        </div>
+      )}
       {modal && (
         <ProgressModal
           mode={modal.mode}

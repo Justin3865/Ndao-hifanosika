@@ -6,6 +6,9 @@ import {
   createInternship,
   updateInternship,
   deleteInternship,
+  getStudentMatricule,
+  createTutor,
+  renumberInternshipMatricules,
 } from "../controllers/internship.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
@@ -33,6 +36,22 @@ router.get(
 );
 
 /**
+ * GET /api/internships/matricule?studentId=
+ * (déclaré avant « /:id »)
+ */
+router.get(
+  "/matricule",
+  authorizeRoles(
+    "ADMIN",
+    "RH",
+    "COORDINATOR",
+    "TUTEUR_L3",
+    "TUTEUR_M2",
+  ),
+  getStudentMatricule,
+);
+
+/**
  * GET /api/internships/:id
  */
 router.get(
@@ -47,6 +66,31 @@ router.get(
     "STAGIAIRE_M2",
   ),
   getInternshipById,
+);
+
+/**
+ * POST /api/internships/matricules/renumber : matricules remis en ordre (0001, 0002…)
+ */
+router.post(
+  "/matricules/renumber",
+  authorizeRoles(
+    "ADMIN",
+    "RH",
+  ),
+  renumberInternshipMatricules,
+);
+
+/**
+ * POST /api/internships/tutors : ajout d'un tuteur depuis le formulaire d'un stage
+ */
+router.post(
+  "/tutors",
+  authorizeRoles(
+    "ADMIN",
+    "RH",
+    "COORDINATOR",
+  ),
+  createTutor,
 );
 
 /**
@@ -91,4 +135,4 @@ router.delete(
   deleteInternship,
 );
 
-export default router;
+export default router;

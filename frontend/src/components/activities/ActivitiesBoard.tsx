@@ -72,6 +72,29 @@ const CHIP: Record<string, string> = {
   CANCELLED: "bg-red-100 text-red-700 line-through",
 };
 
+
+/** Premier participant + « +(n) » : un clic affiche (ou masque) tous les autres. */
+function ParticipantsCell({ names }: { names: string[] }) {
+  const [open, setOpen] = useState(false);
+  const rest = names.length - 1;
+
+  return (
+    <div className="max-w-[220px] text-xs leading-snug">
+      <span className="block">{open ? names.join(", ") : names[0]}</span>
+      {rest > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title={open ? "Réduire" : names.slice(1).join(", ")}
+          className="mt-0.5 rounded-full border border-blue-600 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+        >
+          {open ? "−" : `+(${rest})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Calendar({ items }: { items: Item[] }) {
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
@@ -213,7 +236,12 @@ export function ActivitiesBoard() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return items.filter((item) => {
+    // Dernière activité modifiée en tête de liste
+    const byRecent = [...items].sort(
+      (a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime(),
+    );
+
+    return byRecent.filter((item) => {
       if (query && !config.searchOf(item).toLowerCase().includes(query)) return false;
       if (status && item.status !== status) return false;
 
@@ -444,7 +472,14 @@ export function ActivitiesBoard() {
                             </button>
                           )
                         ) : (
-                          `${accepted.get(item.id) ?? "—"}`
+                          (() => {
+                            // Noms des participants (acceptés) ; repli sur le compteur de l'espace participation
+                            const names: string[] = Array.isArray(item.participants)
+                              ? item.participants.map((p: { name: string }) => p.name)
+                              : [];
+                            if (names.length === 0) return `${accepted.get(item.id) ?? "—"}`;
+                            return <ParticipantsCell names={names} />;
+                          })()
                         )}
                       </td>
                       <td className="px-4 py-3">

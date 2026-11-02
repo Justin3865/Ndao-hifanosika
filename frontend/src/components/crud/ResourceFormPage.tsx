@@ -24,6 +24,11 @@ import api from "@/lib/axios";
 import { ageLabel, nextDay, statusFromDates } from "@/lib/madagascar";
 import { NEW_PERSON_KEYS, NewPersonFields, newPersonFilled, newPersonName } from "@/components/crud/NewPersonFields";
 import { PartnersField, parseIds } from "@/components/crud/PartnersField";
+import { ParticipantsField } from "@/components/crud/ParticipantsField";
+import { ProjectsField } from "@/components/crud/ProjectsField";
+import { MatriculeField } from "@/components/crud/MatriculeField";
+import { AddTutorInline } from "@/components/crud/AddTutorInline";
+import { setLastActivity } from "@/lib/lastActivity";
 import { ZoneHierarchyField } from "@/components/zones/ZoneHierarchyField";
 
 type Values = Record<string, string | boolean>;
@@ -36,6 +41,9 @@ const geoKeys = (field: FieldDef) => ({
   lng: field.geoNames?.lng ?? `${field.name}Longitude`,
   alt: field.geoNames?.alt ?? `${field.name}Altitude`,
 });
+
+/** Valeur de l'option « Autre… » d'un select (jamais envoyée au serveur) */
+const OTHER_VALUE = "__OTHER__";
 
 function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
   if (field.type === "newperson") {
@@ -51,6 +59,10 @@ function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
     return [[k.lat, ""], [k.lng, ""], [k.alt, ""]];
   }
 
+  if (field.otherText) {
+    return [[field.name, field.defaultValue ?? ""], [field.otherText.name, ""]];
+  }
+
   return [[field.name, field.defaultValue ?? (field.type === "checkbox" ? false : "")]];
 }
 
@@ -63,9 +75,36 @@ function loadedEntries(field: FieldDef, item: Record<string, unknown>): Array<[s
     return [[field.name, links.map((l) => String(l.partnerId ?? l.partner?.id ?? "")).filter(Boolean).join(",")]];
   }
 
+  // Participants de l'activité : identifiants « 1,4,7 » repris des participations acceptées
+  if (field.type === "participants") {
+    const ids = Array.isArray(item?.participantIds) ? (item.participantIds as Array<number | string>) : [];
+    return [[field.name, ids.join(",")]];
+  }
+
+  // Projets du stagiaire : identifiants « 1,4,7 » (projectIds, sinon projet unique historique)
+  if (field.type === "projects") {
+    const ids = Array.isArray(item?.[field.name])
+      ? (item[field.name] as Array<number | string>)
+      : item?.projectId
+        ? [item.projectId as number]
+        : [];
+    return [[field.name, ids.join(",")]];
+  }
+
   if (field.type === "geo") {
     const k = geoKeys(field);
     return [k.lat, k.lng, k.alt].map((key) => [key, item?.[key] === null || item?.[key] === undefined ? "" : String(item[key])]);
+  }
+
+  // Select avec « Autre… » : tuteur saisi librement (aucun compte) -> option « Autre » + texte repris
+  if (field.otherText) {
+    const text = String(item?.[field.otherText.name] ?? "");
+    const picked = item?.[field.name] === null || item?.[field.name] === undefined || item?.[field.name] === "";
+
+    return [
+      [field.name, picked && text ? OTHER_VALUE : toFormValue(field, item?.[field.name])],
+      [field.otherText.name, text],
+    ];
   }
 
   return [[field.name, toFormValue(field, item?.[field.name])]];
@@ -85,7 +124,7 @@ function toPayloadValue(field: FieldDef, value: string | boolean) {
   if (text === "") return undefined;
 
   if (field.type === "number") return Number(text);
-  if (field.type === "select" && field.lookup) return Number(text);
+  if (field.type === "select" && field.lookup) return text === OTHER_VALUE ? undefined : Number(text);
 
   return text;
 }
@@ -194,6 +233,13 @@ export function ResourceFormPage({
     setError("");
 
     for (const field of fields) {
+      if (field.otherText && String(values[field.name]) === OTHER_VALUE && String(values[field.otherText.name] ?? "").trim() === "") {
+        setError(`Précisez « ${field.otherText.label} » (option « Autre »).`);
+        return;
+      }
+    }
+
+    for (const field of fields) {
       if (field.required && field.type !== "checkbox") {
         const alternative = field.requiredUnless ? newPersonFilled(values) : false;
 
@@ -258,6 +304,12 @@ export function ResourceFormPage({
         continue;
       }
 
+      // Participants : toujours envoyés (liste vide = aucun participant)
+      if (field.type === "participants" || field.type === "projects") {
+        payload[field.name] = parseIds(String(values[field.name] ?? ""));
+        continue;
+      }
+
       if (field.type === "newperson") {
         if (String(values[field.identityOf ?? ""] ?? "") === "" && newPersonFilled(values)) {
           payload.newStudent = Object.fromEntries(
@@ -301,6 +353,14 @@ export function ResourceFormPage({
         continue;
       }
 
+      if (field.otherText) {
+        const other = String(values[field.name]) === OTHER_VALUE;
+
+        // « Autre » : plus de tuteur de la liste (null efface l'ancien), le texte libre est envoyé
+        if (other) payload[field.name] = null;
+        payload[field.otherText.name] = other ? String(values[field.otherText.name] ?? "").trim() : "";
+      }
+
       const value = toPayloadValue(field, values[field.name]);
       if (value !== undefined) payload[field.name] = value;
       else if (field.name === "firstName") payload.firstName = ""; // prénom facultatif : permet aussi de l'effacer
@@ -309,7 +369,15 @@ export function ResourceFormPage({
     setSubmitting(true);
 
     try {
-      await saveItem(config, isEdit ? (id as string) : null, payload);
+      const saved = await saveItem(config, isEdit ? (id as string) : null, payload);
+
+      // Activité créée / modifiée : retenue pour être présélectionnée dans « Ajouter avancement projet »
+      if (config.endpoint === "/activities") {
+        const activityId = Number(saved?.id ?? id);
+        const projectId = Number(saved?.projectId ?? payload.projectId);
+        if (activityId && projectId) setLastActivity(projectId, activityId);
+      }
+
       toast.success(isEdit ? "Modification enregistrée." : "Élément créé avec succès.");
       router.push(config.basePath);
     } catch (err) {
@@ -328,6 +396,25 @@ export function ResourceFormPage({
 
     if (field.type === "partners") {
       return <PartnersField label={field.label} value={String(value ?? "")} onChange={(next) => setValue(field.name, next)} />;
+    }
+
+    if (field.type === "participants") {
+      return <ParticipantsField label={field.label} value={String(value ?? "")} onChange={(next) => setValue(field.name, next)} />;
+    }
+
+    if (field.type === "projects") {
+      return <ProjectsField label={field.label} value={String(value ?? "")} onChange={(next) => setValue(field.name, next)} />;
+    }
+
+    if (field.type === "matricule") {
+      return (
+        <MatriculeField
+          label={field.label}
+          personId={String(values[field.identityOf ?? ""] ?? "")}
+          value={String(value ?? "")}
+          onChange={(next) => setValue(field.name, next)}
+        />
+      );
     }
 
     if (field.type === "newperson") {
@@ -461,6 +548,7 @@ export function ResourceFormPage({
                 {item.label}
               </option>
             ))}
+            {field.otherText && <option value={OTHER_VALUE}>Autre…</option>}
           </select>
         );
     } else if (field.type === "select") {
@@ -495,13 +583,56 @@ export function ResourceFormPage({
       );
     }
 
-    return (
+    const labelled = (
       <label className="block space-y-1 text-sm font-medium text-gray-700">
         {field.label}
         {field.required ? " *" : ""}
         {control}
       </label>
     );
+
+    // « Autre… » : saisie libre sous la liste
+    if (field.otherText && String(value) === OTHER_VALUE) {
+      return (
+        <div className="space-y-3">
+          {labelled}
+          <label className="block space-y-1 text-sm font-medium text-gray-700">
+            {field.otherText.label} *
+            <input
+              type="text"
+              className={inputClass}
+              placeholder={field.otherText.placeholder ?? ""}
+              value={String(values[field.otherText.name] ?? "")}
+              onChange={(e) => setValue(field.otherText!.name, e.target.value)}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // « + Ajouter un tuteur » : hors du <label> (sinon un clic sur le bouton ouvrirait la liste)
+    if (field.allowAddTutor && ["ADMIN", "RH", "COORDINATOR"].includes((getStoredRole() ?? "").toUpperCase())) {
+      return (
+        <div>
+          {labelled}
+          <AddTutorInline
+            onCreated={(tutor) => {
+              if (field.lookup) {
+                const kind = field.lookup;
+                setLookups((cur) => ({
+                  ...cur,
+                  [kind]: [...(cur[kind] ?? []).filter((item) => item.id !== tutor.id), { id: tutor.id, label: tutor.label }],
+                }));
+              }
+
+              setValue(field.name, String(tutor.id));
+            }}
+          />
+        </div>
+      );
+    }
+
+    return labelled;
   };
 
   return (
@@ -529,7 +660,7 @@ export function ResourceFormPage({
                 <div
                   key={field.name}
                   className={
-                    field.full || field.type === "textarea" || field.type === "geo" || field.type === "partners" || field.type === "zonehierarchy" ? "md:col-span-2" : ""
+                    field.full || field.type === "textarea" || field.type === "geo" || field.type === "partners" || field.type === "participants" || field.type === "projects" || field.type === "zonehierarchy" ? "md:col-span-2" : ""
                   }
                 >
                   {renderField(field)}

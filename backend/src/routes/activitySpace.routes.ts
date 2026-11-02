@@ -3,7 +3,7 @@ import { Router } from "express";
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import {
-  addComment, checkIn, closeMerit, decide, deleteComment, downloadProof, getMerit, getMeritHistory, getMine,
+  addComment, checkIn, closeMerit, reopenMerit, decide, deleteComment, downloadProof, getMerit, getMeritHistory, getMine,
   getMyMerit, getSpace, join, leave, rate, saveProof, saveReport,
 } from "../controllers/activitySpace.controller";
 
@@ -24,6 +24,7 @@ router.get("/merit", authorizeRoles(...MERIT_ROLES), getMerit);
 router.get("/merit/me", authorizeRoles(...INTERNS), getMyMerit);
 router.get("/merit/history", authorizeRoles(...MERIT_ROLES), getMeritHistory);
 router.post("/merit/close", authorizeRoles("ADMIN", "DIRECTION", "COORDINATOR", "RH"), closeMerit);
+router.post("/merit/reopen", authorizeRoles("ADMIN", "DIRECTION", "COORDINATOR", "RH"), reopenMerit);
 
 router.get("/mine", authorizeRoles(...INTERNS), getMine);
 

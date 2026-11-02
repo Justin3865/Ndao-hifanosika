@@ -57,6 +57,9 @@ export interface SpaceData {
 export type MeritKey = "progress" | "completion" | "evaluation" | "reports" | "presence";
 export type MeritComponents = Record<MeritKey, number | null>;
 
+/** Groupe de classement : L3, M2 ou Autre (durée de stage hors norme). Chaque groupe se clôture séparément. */
+export type Group = Level | "AUTRE";
+
 export interface MeritRow {
   userId: number;
   name: string;
@@ -76,12 +79,17 @@ export interface MeritData {
   scope: "all" | "supervised" | "self";
   weights: Record<MeritKey, number>;
   scale: number;
-  averages?: Partial<Record<Level, number | null>>;
+  averages?: Partial<Record<Group, number | null>>;
   unranked?: number;
   generatedAt: string;
-  cohorts: Record<Level, MeritRow[]>;
-  honor: Partial<Record<Level, Array<{ rank: number; name: string; score: number; badge: string }>>>;
-  cohortSizes: Partial<Record<Level, number>>;
+  /** période clôturée : classement archivé dans l'historique, plus de classement en cours */
+  closed?: boolean;
+  closedAt?: string | null;
+  /** état de clôture de chaque groupe (L3 / M2 / Autre se clôturent séparément) */
+  groups?: Record<Group, { closedAt: string | null; closed: boolean }>;
+  cohorts: Record<Group, MeritRow[]>;
+  honor: Partial<Record<Group, Array<{ rank: number; name: string; score: number; badge: string }>>>;
+  cohortSizes: Partial<Record<Group, number>>;
 }
 
 export interface MyMerit {
@@ -98,8 +106,7 @@ export interface HistoryData {
   periods: Array<{ period: string; count: number; closedAt: string }>;
   selected: string | null;
   mine: Array<{ period: string; rank: number; cohortSize: number; score: number; badge: string | null; level: Level }>;
-  cohorts: Record<Level, MeritRow[]> | null;
-  honor?: Partial<Record<Level, Array<{ rank: number; name: string; score: number; badge: string | null }>>> | null;
+  cohorts: Record<Group, MeritRow[]> | null;
 }
 
 export const fetchMine = async () =>
@@ -133,8 +140,8 @@ export const fetchMerit = async (period?: string) =>
 export const fetchMyMerit = async () => (await api.get(`${base}/merit/me`)).data?.data as MyMerit | null;
 export const fetchMeritHistory = async (period?: string) =>
   (await api.get(`${base}/merit/history`, { params: period ? { period } : {} })).data?.data as HistoryData;
-export const closeMeritPeriod = async (period: string) =>
-  (await api.post(`${base}/merit/close`, { period })).data?.data as { period: string; saved: number; honored: number };
+export const reopenMeritGroup = (period: string, group: Group) => api.post(`${base}/merit/reopen`, { period, group });
+export const closeMeritPeriod = (period: string, group: Group) => api.post(`${base}/merit/close`, { period, group });
 
 export const PARTICIPATION_LABELS: Record<ParticipationStatus, string> = {
   PENDING: "En attente",
