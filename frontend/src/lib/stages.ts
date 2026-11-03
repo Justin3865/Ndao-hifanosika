@@ -94,6 +94,7 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
   if (!response.ok) {
     const error: any = new Error(data.message || "Une erreur est survenue.");
     error.status = response.status;
+    error.data = data; // corps complet de la réponse (ex. numéro de dossier si déjà postulé)
     throw error;
   }
 

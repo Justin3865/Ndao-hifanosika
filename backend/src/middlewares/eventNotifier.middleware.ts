@@ -118,6 +118,32 @@ async function handleEvent(req: Request, status: number, body: Json) {
     return;
   }
 
+  // --- Candidature à une offre de stage : prévenir l'équipe de gestion des stages
+  m = path.match(/^\/api\/internship-offers\/(\d+)\/applications$/);
+  if (m && method === "POST" && status === 201) {
+    const offer = await prisma.internshipOffer.findUnique({
+      where: { id: Number(m[1]) },
+      select: { title: true },
+    });
+
+    // Candidature publique : le nom et l'e-mail sont dans la candidature (le compte est facultatif)
+    const name =
+      String(data?.applicantName || "").trim() ||
+      String(data?.applicantEmail || "").trim() ||
+      "Un candidat";
+    const emailPart = data?.applicantEmail ? ` (${data.applicantEmail})` : "";
+
+    // ⚠️ Mêmes rôles que OFFER_MANAGER_ROLES (internshipOffers.routes.ts)
+    await notifyRoles(["ADMIN", "RH", "COORDINATOR"], {
+      title: "Nouveau dossier de candidature",
+      message: `${name}${emailPart} a envoyé son dossier pour le stage « ${offer?.title ?? ""} »${
+        data?.dossierNumber ? ` (n° ${data.dossierNumber})` : ""
+      }.`,
+      type: "INFO",
+    }, actor);
+    return;
+  }
+
   // --- Évaluation créée / validée
   if (method === "POST" && path === "/api/evaluations" && status === 201) {
     const project = await projectInfo(data?.projectId);

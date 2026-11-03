@@ -27,6 +27,7 @@ import { AppLayout } from "@/components/layout";
 import { MessageAttachments } from "@/components/notifications/MessageAttachments";
 import { NotificationDetail } from "@/components/notifications/NotificationDetail";
 import { RegistrationRequestActions } from "@/components/notifications/RegistrationRequestActions";
+import { ApplicationRequestActions } from "@/components/notifications/ApplicationRequestActions";
 import {
   AudiencePicker,
   AudienceValue,
@@ -806,6 +807,7 @@ function NotificationsContent() {
             onMenu={(target) => setMenuId(target.id)}
           >
             <RegistrationRequestActions item={item} />
+            <ApplicationRequestActions item={item} />
             {replyingId === item.id && (
               <div className="mt-3 border-t border-gray-200 pt-3" data-no-press>
                 <p className="mb-2 text-xs font-medium text-gray-600">

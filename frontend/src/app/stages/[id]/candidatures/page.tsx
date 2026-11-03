@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
+  FileText,
   GraduationCap,
   Mail,
   Phone,
@@ -15,6 +16,7 @@ import {
   InternshipOffer,
   apiRequest,
   formatDate,
+  getApiUrl,
   getStoredUser,
   goToAuth,
   isAdmin,
@@ -30,6 +32,12 @@ type Application = {
   motivation: string;
   status: Status;
   createdAt: string;
+  dossierNumber?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  applicantName?: string | null;
+  applicantEmail?: string | null;
+  files?: { id: number; fileName: string; fileSize: number }[];
   user?: {
     firstName?: string;
     lastName?: string;
@@ -40,15 +48,15 @@ type Application = {
 const statusStyle: Record<Status, { label: string; className: string }> = {
   PENDING: {
     label: "En attente",
-    className: "bg-[#1B8FAE]/10 text-[#1B8FAE]",
+    className: "bg-[#1B8FAE]/10 text-[#1B8FAE] dark:bg-cyan-400/15 dark:text-cyan-300",
   },
   ACCEPTED: {
     label: "Acceptée",
-    className: "bg-emerald-50 text-emerald-700",
+    className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300",
   },
   REJECTED: {
     label: "Refusée",
-    className: "bg-[#D01C7F]/10 text-[#D01C7F]",
+    className: "bg-[#D01C7F]/10 text-[#D01C7F] dark:bg-pink-400/15 dark:text-pink-300",
   },
 };
 
@@ -108,6 +116,27 @@ export default function CandidaturesPage() {
       }
     })();
   }, [allowed, id, router, pathname]);
+
+  /** Ouvre le dossier joint (requête authentifiée -> blob) */
+  const openFile = async (applicationId: number, fileId?: number) => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${getApiUrl()}/internship-offers/applications/${applicationId}/file${fileId ? `?fileId=${fileId}` : ""}`,
+        {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      if (!response.ok) throw new Error("Impossible d'ouvrir le dossier.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      setError(e?.message || "Impossible d'ouvrir le dossier.");
+    }
+  };
 
   const changeStatus = async (applicationId: number, status: Status) => {
     setBusyId(applicationId);
@@ -175,7 +204,7 @@ export default function CandidaturesPage() {
               className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                 filter === f
                   ? "bg-[#1F5FA0] text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-100"
+                  : "bg-white text-gray-600 hover:bg-gray-100 dark:text-slate-100"
               }`}
             >
               {f === "ALL" ? "Toutes" : statusStyle[f].label}
@@ -204,9 +233,12 @@ export default function CandidaturesPage() {
         <div className="mt-6 space-y-4">
           {shown.map((app) => {
             const name =
+              app.applicantName?.trim() ||
               [app.user?.firstName, app.user?.lastName]
                 .filter(Boolean)
-                .join(" ") || "Candidat";
+                .join(" ") ||
+              "Candidat";
+            const contactEmail = app.applicantEmail || app.user?.email;
             const style = statusStyle[app.status];
 
             return (
@@ -217,7 +249,7 @@ export default function CandidaturesPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">{name}</h2>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-500 dark:text-slate-200">
                       Reçue le {formatDate(app.createdAt)}
                     </p>
                   </div>
@@ -228,17 +260,27 @@ export default function CandidaturesPage() {
                   </span>
                 </div>
 
-                <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-500">
-                  {app.user?.email && (
+                <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600 dark:text-slate-100">
+                  {contactEmail && (
                     <li className="flex items-center gap-2">
                       <Mail className="h-4 w-4 text-[#1B8FAE]" />
-                      {app.user.email}
+                      <a
+                        href={`mailto:${contactEmail}`}
+                        className="underline-offset-2 hover:text-[#1B8FAE] hover:underline"
+                      >
+                        {contactEmail}
+                      </a>
                     </li>
                   )}
                   {app.phone && (
                     <li className="flex items-center gap-2">
                       <Phone className="h-4 w-4 text-[#1B8FAE]" />
-                      {app.phone}
+                      <a
+                        href={`tel:${app.phone.replace(/[^\d+]/g, "")}`}
+                        className="underline-offset-2 hover:text-[#1B8FAE] hover:underline"
+                      >
+                        {app.phone}
+                      </a>
                     </li>
                   )}
                   {(app.school || app.level) && (
@@ -249,9 +291,45 @@ export default function CandidaturesPage() {
                   )}
                 </ul>
 
-                <p className="mt-4 whitespace-pre-line rounded-xl bg-gray-50 p-4 text-sm leading-6 text-gray-700">
+                <p className="mt-4 whitespace-pre-line rounded-xl bg-gray-50 p-4 text-sm leading-6 text-gray-700 dark:text-white">
                   {app.motivation}
                 </p>
+
+                {(app.dossierNumber || app.fileName || (app.files && app.files.length > 0)) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600 dark:text-slate-100">
+                    {app.dossierNumber && (
+                      <span>
+                        N° dossier :{" "}
+                        <span className="select-all font-mono font-semibold text-[#1F5FA0] dark:text-sky-300">
+                          {app.dossierNumber}
+                        </span>
+                      </span>
+                    )}
+                    {app.files && app.files.length > 0
+                      ? app.files.map((f) => (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => openFile(app.id, f.id)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 dark:text-white"
+                          >
+                            <FileText className="h-4 w-4 text-[#1B8FAE]" />
+                            {f.fileName}
+                          </button>
+                        ))
+                      : null}
+                    {(!app.files || app.files.length === 0) && app.fileName && (
+                      <button
+                        type="button"
+                        onClick={() => openFile(app.id)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 dark:text-white"
+                      >
+                        <FileText className="h-4 w-4 text-[#1B8FAE]" />
+                        {app.fileName}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button

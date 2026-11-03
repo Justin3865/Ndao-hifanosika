@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { CornerUpLeft, X } from "lucide-react";
 import { MessageAttachments } from "@/components/notifications/MessageAttachments";
 import { RegistrationRequestActions } from "@/components/notifications/RegistrationRequestActions";
+import { ApplicationRequestActions } from "@/components/notifications/ApplicationRequestActions";
 import { fmtDateTime } from "@/lib/crud";
 import { roleLabel } from "@/lib/roles";
 import type { FeedItem } from "@/hooks/useNotificationFeed";
@@ -85,6 +86,7 @@ export function NotificationDetail({ item, onClose }: { item: FeedItem; onClose:
         <MessageAttachments attachments={item.attachments} latitude={item.latitude} longitude={item.longitude} accuracy={item.accuracy} />
 
         <RegistrationRequestActions item={item} detailed />
+        <ApplicationRequestActions item={item} detailed />
 
         <div className="mt-5 flex justify-end">
           <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">

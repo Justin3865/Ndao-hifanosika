@@ -435,7 +435,10 @@ model InternshipOffer {
 model InternshipApplication {
   id         Int               @id @default(autoincrement())
   offerId    Int
-  userId     Int
+  // Candidature publique : le compte est facultatif
+  userId     Int?
+  applicantName  String?
+  applicantEmail String?
   phone      String?
   school     String?
   level      String?
@@ -443,13 +446,36 @@ model InternshipApplication {
   status     ApplicationStatus @default(PENDING)
   createdAt  DateTime          @default(now())
 
+  // Dossier joint par le candidat + numéro de dossier
+  dossierNumber String? @unique
+  fileName      String?
+  fileMime      String?
+  fileSize      Int?
+  fileData      Bytes?
+
   offer InternshipOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  files InternshipApplicationFile[]
 
   @@unique([offerId, userId])
+  @@unique([offerId, applicantEmail])
   @@index([offerId])
   @@index([userId])
   @@index([status])
+}
+
+model InternshipApplicationFile {
+  id            Int      @id @default(autoincrement())
+  applicationId Int
+  fileName      String
+  fileMime      String
+  fileSize      Int
+  fileData      Bytes
+  createdAt     DateTime @default(now())
+
+  application InternshipApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
 }
 
 model AuditLog {

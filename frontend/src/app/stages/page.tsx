@@ -355,7 +355,7 @@ export default function StagesPage() {
                 ) : (
                   <Link
                     href={`/stages/${offer.id}/postuler`}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#D01C7F] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#b3176c]"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1F5FA0] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#194d82]"
                   >
                     Postuler
                     <ChevronRight className="h-4 w-4" />

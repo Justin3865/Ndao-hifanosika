@@ -2,7 +2,7 @@
  * Pages accessibles sans connexion : pas de synchronisation des réglages ni de déconnexion
  * automatique ici. ADAPTER cette liste aux routes publiques de votre application.
  */
-const PUBLIC_PREFIXES = ["/login", "/register", "/forgot-password", "/reset-password", "/verification", "/apply"];
+const PUBLIC_PREFIXES = ["/login", "/register", "/forgot-password", "/reset-password", "/verification", "/apply", "/stages"];
 
 export function isPublicPath(pathname: string | null): boolean {
   if (!pathname || pathname === "/") return true;

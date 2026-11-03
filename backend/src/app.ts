@@ -56,8 +56,8 @@ app.use(
 
 app.use(helmet());
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "12mb" }));
+app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 
 // Tous les champs téléphone : 10 chiffres maximum (validation globale)
 app.use(phoneLimit);
