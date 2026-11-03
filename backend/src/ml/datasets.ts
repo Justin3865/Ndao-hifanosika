@@ -16,7 +16,7 @@
  */
 import { db } from "../utils/db";
 import { computeMonitoring, loadAllProjectContexts } from "../services/monitoring.service";
-import { loadInternshipsMonitoring } from "../services/internshipMonitoring.service";
+import { loadOnePerPerson } from "../services/personGroups";
 import { FEATURE_NAMES, imputeMatrix, loadHouseholds } from "./vulnerability";
 import { Matrix, Metrics, applyScaler, computeMetrics, fitScaler, makeRng, stratifiedFolds } from "./ml";
 import { methodTrainers } from "./compare";
@@ -100,7 +100,7 @@ const INTERNS: DatasetDef = {
     "Check-ins GPS",
   ],
   load: async () => {
-    const rows = await loadInternshipsMonitoring({});
+    const rows = await loadOnePerPerson({}); // 1 ligne par stagiaire (12), pas par stage (20)
 
     return rows
       .filter((r) => r.internship.status === "IN_PROGRESS" || r.internship.status === "COMPLETED")
@@ -152,7 +152,7 @@ const STAGE_PROGRESS: DatasetDef = {
     "Tuteur assigné",
   ],
   load: async () => {
-    const rows = await loadInternshipsMonitoring({});
+    const rows = await loadOnePerPerson({}); // 1 ligne par stagiaire (12), pas par stage (20)
 
     return rows
       .filter((r) => r.internship.status === "IN_PROGRESS" || r.internship.status === "COMPLETED")

@@ -168,6 +168,9 @@ export function computeInternship(
   (Object.keys(INTERNSHIP_WEIGHTS) as Array<keyof typeof INTERNSHIP_WEIGHTS>).forEach((k) => {
     const v = components[k];
     if (v === null) return;
+    // sans aucun pointage GPS la présence n'est pas mesurée (et non « 0 % ») : même règle que la note /20.
+    // Évite « Retard critique (−100 %) » sur un stage terminé sans donnée de présence.
+    if (k === "presence" && presentDays === 0) return;
     sum += v * INTERNSHIP_WEIGHTS[k];
     wSum += INTERNSHIP_WEIGHTS[k];
   });
@@ -275,6 +278,8 @@ export async function loadInternshipsMonitoring(
     orderBy: { createdAt: "desc" },
     include: {
       project: { select: { id: true, name: true, code: true } },
+      // tous les projets rattachés au stage (table InternshipProject), pas seulement le projet principal
+      projectLinks: { select: { projectId: true } },
       department: { select: { id: true, name: true } },
       student: { select: { id: true, firstName: true, lastName: true, email: true, role: true } },
       supervisor: { select: { id: true, firstName: true, lastName: true } },

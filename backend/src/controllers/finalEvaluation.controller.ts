@@ -9,7 +9,7 @@ import {
   PARTNER_CRITERIA,
   PROJECT_WEIGHTS,
   evaluateAllProjects,
-  evaluateInternships,
+  evaluateInternshipsDetailed,
   evaluateOneProject,
   validateRatings,
 } from "../services/finalEvaluation.service";
@@ -141,9 +141,13 @@ export const getCriteria = wrap("Erreur", async (_req, res) => {
   res.json({ success: true, data: { PARTNER: PARTNER_CRITERIA, BENEFICIARY: BENEFICIARY_CRITERIA } });
 });
 
-/** GET /internships — évaluation finale automatique des stages (tuteur : ses stagiaires ; stagiaire : le sien). */
+/**
+ * GET /internships — évaluation finale automatique des stages (tuteur : ses stagiaires ; stagiaire : le sien).
+ * UNE ligne par stagiaire (même règle que la liste « Stages ») : `summary.count` = nombre de stagiaires,
+ * `summary.stageRows` = nombre total de stages enregistrés (un stagiaire peut en avoir plusieurs).
+ */
 export const listInternshipEvaluations = wrap("Impossible de calculer l'évaluation des stages.", async (req, res) => {
-  const items = await evaluateInternships(internshipScope(getReqUser(req)));
+  const { items, rows } = await evaluateInternshipsDetailed(internshipScope(getReqUser(req)));
   const scored = items.filter((item) => item.score !== null);
 
   res.json({
@@ -153,6 +157,7 @@ export const listInternshipEvaluations = wrap("Impossible de calculer l'évaluat
       internships: items,
       summary: {
         count: items.length,
+        stageRows: rows,
         evaluated: scored.length,
         average: average(scored.map((item) => item.score as number)),
         final: items.filter((item) => item.phase === "FINAL").length,

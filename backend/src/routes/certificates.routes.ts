@@ -1,4 +1,5 @@
 import { getInternshipCertificateSuggestion } from "../services/certificateSuggestion.service";
+import { getPersonCertificateSuggestion, isPersonType, listPersonCandidates } from "../services/certificatePerson.service";
 import { isValidMention, MENTIONS } from "../utils/mention";
 import { Request, Response, Router } from "express";
 import { prisma } from "../config/database";
@@ -274,6 +275,239 @@ router.get("/lookup/internship/:id", authorizeRoles(...ISSUERS), async (req: Req
   }
 });
 
+/**
+ * Mission / bénévolat / formation : activités, participations et missions de la personne lues dans la base
+ * (même socle que le Suivi & Évaluation, l'Évaluation finale et les Analyses IA).
+ * GET /certificates/lookup/user/:id?type=STAFF|VOLUNTEER|TRAINING
+ */
+router.get("/lookup/user/:id", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    const type = String(req.query.type ?? "").toUpperCase();
+
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ success: false, message: "Identifiant invalide" });
+    if (!isPersonType(type)) return res.status(400).json({ success: false, message: "Type de certificat invalide" });
+
+    const suggestion = await getPersonCertificateSuggestion(id, type);
+    if (!suggestion) return res.status(404).json({ success: false, message: "Personne introuvable" });
+
+    res.json({ success: true, suggestion });
+  } catch (error) {
+    logger.error("Erreur suggestion certificat (personne)", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
+
+/** Champs lus pour une fiche bénéficiaire (liste déroulante + recherche). */
+const BENEFICIARY_LIST_SELECT = {
+  id: true,
+  projectId: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  phone: true,
+  gender: true,
+  age: true,
+  vulnerable: true,
+  locality: true,
+  householdSize: true,
+  monthlyIncome: true,
+  childrenUnder5: true,
+  hasDisability: true,
+  birthDate: true,
+  birthPlace: true,
+  cinNumber: true,
+  cinIssuedAt: true,
+  cinIssuedPlace: true,
+  cinDuplicata: true,
+  cinDuplicataAt: true,
+  project: { select: { name: true, department: { select: { name: true } } } },
+  zone: { select: { name: true } },
+} as const;
+
+/**
+ * Filtre de recherche : nom / prénom / e-mail (tous les mots), CIN, matricule, téléphone (avec ou sans espaces, +261, 0…).
+ * Renvoie null si le texte est trop court (= pas de filtre : on liste tout).
+ */
+async function matchWhere(q: string, kind: "USER" | "BENEFICIARY"): Promise<Json | null> {
+  if (q.length < 2) return null;
+
+  const tokens = q.split(/\s+/).filter(Boolean).slice(0, 4);
+  const compact = q.replace(/[\s.\-]/g, "");
+  const core = q.replace(/\D/g, "").replace(/^(261|0)/, "");
+
+  const or: Json[] = [
+    {
+      AND: tokens.map((token) => ({
+        OR: [
+          { firstName: { contains: token, mode: "insensitive" } },
+          { lastName: { contains: token, mode: "insensitive" } },
+          { email: { contains: token, mode: "insensitive" } },
+        ],
+      })),
+    },
+  ];
+
+  if (compact.length >= 4) or.push({ cinNumber: { contains: compact, mode: "insensitive" } });
+  if (kind === "USER" && compact.length >= 3) or.push({ matricule: { contains: compact, mode: "insensitive" } });
+
+  if (core.length >= 4) {
+    const like = `%${core}%`;
+    const rows =
+      kind === "USER"
+        ? await prisma.$queryRaw<Array<{ id: number }>>`SELECT id FROM "User" WHERE regexp_replace(COALESCE("phone", ''), '\\D', '', 'g') LIKE ${like} LIMIT 30`
+        : await prisma.$queryRaw<Array<{ id: number }>>`SELECT id FROM "Beneficiary" WHERE regexp_replace(COALESCE("phone", ''), '\\D', '', 'g') LIKE ${like} LIMIT 30`;
+
+    if (rows.length) or.push({ id: { in: rows.map((row) => row.id) } });
+  }
+
+  return { OR: or };
+}
+
+/**
+ * Liste déroulante + recherche, pour TOUS les types de certificat :
+ *   INTERNSHIP  stages terminés (recherche : nom, e-mail, téléphone, CIN, matricule, intitulé, thème)
+ *   BENEFICIARY fiches bénéficiaires
+ *   VOLUNTEER / TRAINING / STAFF  personnes concernées d'après les activités, participations et missions
+ *                (avec une recherche : tous les comptes + bénéficiaires correspondants)
+ * GET /certificates/lookup/candidates?type=…&q=…
+ */
+router.get("/lookup/candidates", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
+  try {
+    const type = String(req.query.type ?? "").toUpperCase();
+    const q = String(req.query.q ?? "").trim().slice(0, 80);
+    const searching = q.length >= 2;
+
+    // ---------- Stage terminé ----------
+    if (type === "INTERNSHIP") {
+      const userMatch = await matchWhere(q, "USER");
+      const where: Json = { status: "COMPLETED" };
+
+      if (searching) {
+        where.OR = [
+          ...(userMatch ? [{ student: { is: userMatch } }] : []),
+          { title: { contains: q, mode: "insensitive" } },
+          { theme: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      const rows: Json[] = await db.internship.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          theme: true,
+          endDate: true,
+          student: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, cinNumber: true, matricule: true } },
+        },
+        orderBy: { endDate: "desc" },
+        take: 100,
+      });
+
+      const issued: Json[] = rows.length
+        ? await db.certificate.findMany({ where: { revokedAt: null, internshipId: { in: rows.map((r) => r.id) } }, select: { internshipId: true } })
+        : [];
+      const already = new Set<number>(issued.map((c) => c.internshipId));
+
+      return res.json({
+        success: true,
+        data: rows.map((row) => ({
+          source: "INTERNSHIP" as const,
+          id: row.id,
+          studentId: row.student?.id ?? null,
+          name: `${row.student?.firstName ?? ""} ${row.student?.lastName ?? ""}`.trim(),
+          email: row.student?.email ?? null,
+          phone: row.student?.phone ?? null,
+          cinNumber: row.student?.cinNumber ?? null,
+          matricule: row.student?.matricule ?? null,
+          role: null,
+          subtitle: row.title ?? null,
+          stats: { count: 1, label: row.title ?? "Stage", last: row.endDate ? new Date(row.endDate).toISOString().slice(0, 10) : null },
+          alreadyIssued: already.has(row.id),
+        })),
+      });
+    }
+
+    // ---------- Bénéficiaire d'un projet ----------
+    if (type === "BENEFICIARY") {
+      const match = await matchWhere(q, "BENEFICIARY");
+
+      const rows: Json[] = await db.beneficiary.findMany({
+        where: match ?? undefined,
+        select: BENEFICIARY_LIST_SELECT,
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        take: searching ? 50 : 500,
+      });
+
+      const issued: Json[] = rows.length
+        ? await db.certificate.findMany({ where: { type: "BENEFICIARY", revokedAt: null, beneficiaryId: { in: rows.map((r) => r.id) } }, select: { beneficiaryId: true } })
+        : [];
+      const already = new Set<number>(issued.map((c) => c.beneficiaryId));
+
+      return res.json({
+        success: true,
+        data: rows.map((row) => ({
+          ...toBeneficiaryCandidate(row),
+          stats: { count: 1, label: [row.project?.name, row.locality].filter(Boolean).join(" · ") || "Bénéficiaire", last: null },
+          alreadyIssued: already.has(row.id),
+        })),
+      });
+    }
+
+    // ---------- Bénévolat / Mission / Formation ----------
+    if (!isPersonType(type)) return res.status(400).json({ success: false, message: "Type de certificat invalide" });
+
+    const stats = await listPersonCandidates(type);
+    const statOf = new Map(stats.map((row) => [row.userId, row]));
+
+    let users: Json[] = [];
+    let beneficiaries: Json[] = [];
+
+    if (searching) {
+      const [userMatch, beneficiaryMatch] = await Promise.all([matchWhere(q, "USER"), matchWhere(q, "BENEFICIARY")]);
+
+      [users, beneficiaries] = await Promise.all([
+        db.user.findMany({ where: { AND: [{ status: { not: "REJECTED" } }, userMatch] }, select: USER_LOOKUP_SELECT, orderBy: [{ firstName: "asc" }, { lastName: "asc" }], take: 30 }),
+        db.beneficiary.findMany({ where: beneficiaryMatch ?? undefined, select: BENEFICIARY_LIST_SELECT, orderBy: [{ firstName: "asc" }, { lastName: "asc" }], take: 10 }),
+      ]);
+    } else if (stats.length) {
+      users = await db.user.findMany({ where: { id: { in: stats.map((row) => row.userId) }, status: { not: "REJECTED" } }, select: USER_LOOKUP_SELECT });
+    }
+
+    const issued: Json[] = users.length
+      ? await db.certificate.findMany({ where: { type, revokedAt: null, userId: { in: users.map((u) => u.id) } }, select: { userId: true } })
+      : [];
+    const already = new Set<number>(issued.map((c) => c.userId));
+
+    const people = users
+      .map((u) => {
+        const stat = statOf.get(u.id);
+        return {
+          ...toUserCandidate(u),
+          stats: { count: stat?.count ?? 0, label: stat?.label ?? "Aucune activité enregistrée", last: stat?.last ?? null },
+          alreadyIssued: already.has(u.id),
+        };
+      })
+      // ceux qui ont des activités d'abord (les plus actifs en tête), puis les autres par nom
+      .sort((a, b) => b.stats.count - a.stats.count || a.name.localeCompare(b.name));
+
+    res.json({
+      success: true,
+      data: [
+        ...people,
+        ...beneficiaries.map((row) => ({
+          ...toBeneficiaryCandidate(row),
+          stats: { count: 0, label: ["Bénéficiaire", row.project?.name].filter(Boolean).join(" · "), last: null },
+          alreadyIssued: false,
+        })),
+      ],
+    });
+  } catch (error) {
+    logger.error("Erreur liste des personnes (certificat)", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
+
 /** Slogan + partenaires (logo) d'un projet : aperçu avant de délivrer le certificat. */
 router.get("/project-branding/:id", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
   try {
@@ -517,6 +751,48 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
         departmentName = departmentName ?? suggestion.departmentName ?? null;
         finalScore = suggestion.finalScoreOn20;
         mention = suggestion.mention;
+      }
+    }
+
+    // Mission / bénévolat / formation : tout ce que la base connaît est lu côté serveur et NE PEUT PAS être modifié
+    // (identité du compte, intitulé, période, lieu issu des activités, projets) ; seuls les champs absents de la base restent saisis.
+    if (isPersonType(type) && userId && !specialCase) {
+      try {
+        const account = await db.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true, email: true, phone: true, birthDate: true, birthPlace: true, cinNumber: true, cinIssuedAt: true, cinIssuedPlace: true, cinDuplicata: true, cinDuplicataAt: true },
+        });
+
+        if (account) {
+          holderName = `${account.firstName} ${account.lastName}`.trim() || holderName;
+          holderEmail = account.email?.trim() || holderEmail;
+          holderPhone = account.phone?.trim() || holderPhone;
+          holderBirthDate = account.birthDate ?? holderBirthDate;
+          holderBirthPlace = account.birthPlace?.trim() || holderBirthPlace;
+          holderCin = account.cinNumber?.trim() || holderCin;
+          holderCinIssuedAt = account.cinIssuedAt ?? holderCinIssuedAt;
+          holderCinIssuedPlace = account.cinIssuedPlace?.trim() || holderCinIssuedPlace;
+          holderCinDuplicata = Boolean(account.cinDuplicata) || holderCinDuplicata;
+          holderCinDuplicataAt = account.cinDuplicataAt ?? holderCinDuplicataAt;
+        }
+
+        const auto = await getPersonCertificateSuggestion(userId, type);
+
+        if (auto?.hasData) {
+          title = auto.title || title;
+          if (auto.startDate) startDate = new Date(auto.startDate);
+          if (auto.endDate) endDate = new Date(auto.endDate);
+          // Lieu : imposé s'il vient des activités ; la ville du siège n'est qu'une valeur par défaut modifiable
+          missionLocation = auto.locationSource === "ACTIVITES" ? auto.missionLocation : missionLocation ?? auto.missionLocation;
+          theme = theme ?? auto.theme;
+          departmentName = departmentName ?? auto.departmentName;
+          if (auto.projectIds.length) {
+            requestedProjectIds.length = 0;
+            requestedProjectIds.push(...auto.projectIds.slice(0, 10));
+          }
+        }
+      } catch (error) {
+        logger.error("Suggestion mission / bénévolat / formation non lue dans la base", error);
       }
     }
 

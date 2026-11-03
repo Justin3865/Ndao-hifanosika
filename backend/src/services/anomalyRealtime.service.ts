@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { logger } from "../config/logger";
 import { runAnomalyAlerts } from "../controllers/anomalyAlerts.controller";
+import { invalidateIntegration } from "./integration.service";
 
 /* ===================================================================
  * Anomalies en TEMPS RÉEL
@@ -39,6 +40,10 @@ const WATCHED = [
   "/api/beneficiaries",
   "/api/internships",
   "/api/internship-offers",
+  // Avancements saisis à la main + S&E + évaluation finale : ils changent les notes, donc les analyses IA
+  "/api/manual-progress",
+  "/api/monitoring",
+  "/api/final-evaluation",
   "/api/members",
   "/api/users",
   "/api/vulnerability",
@@ -88,13 +93,17 @@ export function scheduleAnomalyCheck(reason = "modification"): void {
 
 /** Middleware Express : après une écriture réussie sur une ressource surveillée. */
 export function anomalyWatcher(req: Request, res: Response, next: NextFunction): void {
-  if (!ENABLED || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
 
   res.on("finish", () => {
     if (res.statusCode >= 400) return;
 
     const path = req.originalUrl.split("?")[0];
     if (WATCHED.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+      // ajout / modification / SUPPRESSION d'un stagiaire, d'une tâche, d'une évaluation… :
+      // les notes (stagiaires, projets, évaluation finale, courbes) sont recalculées au prochain accès,
+      // même si l'analyse d'anomalies temps réel est désactivée.
+      invalidateIntegration();
       scheduleAnomalyCheck(`${req.method} ${path}`);
     }
   });

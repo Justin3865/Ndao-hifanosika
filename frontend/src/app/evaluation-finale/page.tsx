@@ -232,7 +232,7 @@ export default function FinalEvaluationPage() {
         {tab === "internships" && internships && (
           <>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Stat label="Stages évalués" value={`${internships.summary.evaluated}/${internships.summary.count}`} />
+              <Stat label="Stages évalués" value={`${internships.summary.evaluated}/${internships.summary.count}`} hint={internships.summary.stageRows && internships.summary.stageRows > internships.summary.count ? `${internships.summary.count} stagiaires · ${internships.summary.stageRows} stages` : `${internships.summary.count} stagiaire(s)`} />
               <Stat label="Stages terminés" value={String(internships.summary.final)} />
               <Stat label="Moyenne générale" value={fmt20(internships.summary.average)} />
             </div>

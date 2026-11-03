@@ -3,6 +3,7 @@ import { prisma } from "../config/database";
 import { logger } from "../config/logger";
 
 import { sendError } from "../middlewares/error.middleware";
+import { IntegrationSnapshot, getIntegrationSafe, overlayPerformance, overlaySummary } from "../services/integration.service";
 /**
  * Analyses « IA » calculées en direct à partir de la base de données.
  * Méthode : règles + statistiques (moyennes, écart-type). Ce n'est PAS un modèle
@@ -341,11 +342,18 @@ function computeSummary(data: Data) {
 
 /* ------------------------------ handlers ------------------------------ */
 
-function handler(compute: (data: Data) => unknown) {
+/**
+ * `overlay` : applique le pont stagiaires ↔ projets ↔ S&E ↔ évaluation finale au résultat.
+ * Si le pont est indisponible, la réponse reste celle d'avant.
+ */
+function handler<T>(compute: (data: Data) => T, overlay?: (result: T, snapshot: IntegrationSnapshot) => unknown) {
   return async (_req: Request, res: Response) => {
     try {
       const data = await loadData();
-      res.json({ success: true, data: compute(data) });
+      const result = compute(data);
+      const snapshot = overlay ? await getIntegrationSafe() : null;
+
+      res.json({ success: true, data: overlay && snapshot ? overlay(result, snapshot) : result });
     } catch (error) {
       logger.error("Erreur analyses IA", error);
       sendError(res, error, "Erreur lors du calcul des analyses");
@@ -353,10 +361,19 @@ function handler(compute: (data: Data) => unknown) {
   };
 }
 
-export const getPerformance = handler(computePerformance);
-export const getAnomalies = handler(computeAnomalies);
+const severityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+
+export const getPerformance = handler(computePerformance, (rows, snapshot) => overlayPerformance(rows, snapshot));
+
+export const getAnomalies = handler(computeAnomalies, (rows, snapshot) =>
+  [...rows, ...snapshot.anomalies.map(({ ownerIds: _ownerIds, ...row }) => row)].sort(
+    (a, b) => severityOrder[a.severity] - severityOrder[b.severity],
+  ),
+);
+
 export const getDropoutRiskList = handler(computeDropoutRisk);
-export const getSummary = handler(computeSummary);
+
+export const getSummary = handler(computeSummary, (summary, snapshot) => overlaySummary(summary, snapshot));
 
 // Ajout : exposé pour le catalogue d'anomalies et les graphiques (controllers/aiExtra.controller.ts)
 export const insightInternals = { loadData, computePerformance, computeAnomalies, computeDropoutRisk };

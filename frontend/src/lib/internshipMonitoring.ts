@@ -46,6 +46,11 @@ export interface InternshipEvaluationItem {
 
 export interface InternshipMonitoring {
   id: number;
+  /** clé de la personne (CIN ou compte) : présente avec ?unique=1 */
+  personKey?: string | null;
+  /** nombre de stages de cette personne (le stage affiché est le plus pertinent) */
+  stagesCount?: number;
+  stageIds?: number[];
   title: string;
   /** Thème du stagiaire (celui imprimé sur le certificat) */
   theme?: string | null;

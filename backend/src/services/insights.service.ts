@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { fetchLive } from "./pyLive.service";
 import { analyzeWithPython } from "./pyservices.service";
+import { getIntegrationSafe, mergeIntegrationAnomalies, overlayPerformance, overlaySummary } from "./integration.service";
 
 /**
  * Analyses de pilotage calculées à partir de la base de données.
@@ -413,8 +414,30 @@ function mergeAnomalies(base: AnomalyRow[], extra: AnomalyRow[]): AnomalyRow[] {
   );
 }
 
-/** Service Python (lecture directe de la base, puis données envoyées) ; calcul local si indisponible. */
+/**
+ * Analyse complète = moteur de base (Python / repli local) + pont stagiaires ↔ projets ↔ S&E ↔ évaluation finale.
+ * Le pont ajoute : score de performance combiné, anomalies « stagiaire / S&E / évaluation finale » et synthèse enrichie.
+ * S'il échoue, le résultat de base est renvoyé tel quel (aucune régression).
+ */
 export async function runAnalysis(data: Data): Promise<Analysis> {
+  const analysis = await runBaseAnalysis(data);
+  const snapshot = await getIntegrationSafe();
+  if (!snapshot) return analysis;
+
+  const before = new Set(analysis.anomalies.map((row) => row.key));
+  const merged = mergeIntegrationAnomalies(analysis.anomalies, snapshot);
+  const added = merged.filter((row) => !before.has(row.key));
+
+  return {
+    ...analysis,
+    anomalies: merged,
+    performance: overlayPerformance(analysis.performance, snapshot),
+    summary: overlaySummary(analysis.summary, snapshot, added),
+  };
+}
+
+/** Service Python (lecture directe de la base, puis données envoyées) ; calcul local si indisponible. */
+async function runBaseAnalysis(data: Data): Promise<Analysis> {
   const live = await fetchLive<Analysis>("/v1/live/insights");
 
   if (live && Array.isArray(live.anomalies) && Array.isArray(live.performance)) {

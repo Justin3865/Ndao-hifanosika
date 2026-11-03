@@ -1,14 +1,15 @@
 "use client";
 
 import { MENTIONS, MENTION_TONE, type Mention } from "@/lib/mention";
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Database, Loader2, Lock, Search, ShieldAlert, X } from "lucide-react";
+import { CheckCircle2, Database, Lock, ShieldAlert, X } from "lucide-react";
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { errorMessage, fetchLookup, type LookupItem } from "@/lib/crud";
 import { roleLabel } from "@/lib/roles";
 import { PartnersField, parseIds } from "@/components/crud/PartnersField";
+import { CandidateCombobox } from "@/components/certificates/CandidateCombobox";
 import { toast } from "@/lib/toast";
 import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
@@ -58,6 +59,10 @@ interface Candidate {
   /** Lus dans la base de données */
   departmentName?: string | null;
   theme?: string | null;
+  /** Liste « personnes concernées » : activités / formations / missions trouvées */
+  stats?: { count: number; label: string; last: string | null };
+  /** Un certificat de ce type a déjà été délivré à cette personne */
+  alreadyIssued?: boolean;
 }
 
 /** Slogan + partenaires du projet (imprimés sur le certificat) */
@@ -86,6 +91,35 @@ interface CertificateSuggestion {
     gpsCheckins: number;
   };
 }
+
+/** Mission / bénévolat / formation : lus dans les activités, participations et missions de la personne */
+interface PersonSuggestion {
+  type: "STAFF" | "VOLUNTEER" | "TRAINING";
+  hasData: boolean;
+  title: string;
+  theme: string | null;
+  departmentName: string | null;
+  missionLocation: string | null;
+  locationSource: "ACTIVITES" | "SIEGE" | null;
+  startDate: string | null;
+  endDate: string | null;
+  projectIds: number[];
+  projects: Array<{ id: number; name: string }>;
+  scoreOn20: number | null;
+  mention: Mention | null;
+  breakdown: {
+    activities: number;
+    accepted: number;
+    attended: number;
+    reports: number;
+    ratings: number;
+    missions: number;
+    distanceKm: number;
+    createdActivities: number;
+  };
+}
+
+const PERSON_TYPES = ["STAFF", "VOLUNTEER", "TRAINING"];
 
 const LOCATION_SOURCE_LABEL: Record<string, string> = {
   ACTIVITES: "les activités du projet",
@@ -278,10 +312,9 @@ export default function CreateCertificatePage() {
   const [busy, setBusy] = useState(false);
 
   // Recherche dans la base de données
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Candidate[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [pickedStage, setPickedStage] = useState<{ id: string; label: string } | null>(null);
+  /** Champs (hors identité) remplis depuis la base de données pour la personne choisie : intitulé, période, lieu, projets… → verrouillés */
+  const [autoKeys, setAutoKeys] = useState<string[]>([]);
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [dbValues, setDbValues] = useState<Partial<Record<DbField, string>>>({});
   const [saveToProfile, setSaveToProfile] = useState(true);
@@ -292,6 +325,11 @@ export default function CreateCertificatePage() {
 
   const isInternship = type === "INTERNSHIP";
   const isBeneficiary = type === "BENEFICIARY";
+  const isPersonType = PERSON_TYPES.includes(type);
+
+  // Mission / bénévolat / formation : proposition lue dans la base (activités, participations, missions)
+  const [personSuggestion, setPersonSuggestion] = useState<PersonSuggestion | null>(null);
+  const lastPersonAuto = useRef<PersonSuggestion | null>(null);
 
   useEffect(() => {
     api
@@ -408,6 +446,11 @@ export default function CreateCertificatePage() {
     setDbValues(values);
     setSaveToProfile(true);
 
+    if (!fromInternship) {
+      const beneficiaryPlace = [candidate.beneficiary?.locality, candidate.beneficiary?.zoneName].filter(Boolean).join(" / ");
+      setAutoKeys(candidate.source === "BENEFICIARY" ? [...(beneficiaryPlace ? ["missionLocation"] : []), ...(candidate.projectId ? ["projects"] : [])] : []);
+    }
+
     // Bénéficiaire : son projet (donc le slogan et les partenaires) est choisi automatiquement
     if (candidate.source === "BENEFICIARY" && candidate.projectId) setProjectIds([String(candidate.projectId)]);
 
@@ -443,9 +486,7 @@ export default function CreateCertificatePage() {
   const resetPerson = () => {
     setSelected(null);
     setDbValues({});
-    setQuery("");
-    setResults([]);
-    setSearched(false);
+    setAutoKeys([]);
 
     setForm((cur) => ({
       ...cur,
@@ -459,55 +500,32 @@ export default function CreateCertificatePage() {
       holderCinIssuedPlace: "",
       holderCinDuplicata: false,
       holderCinDuplicataAt: "",
+      title: "",
+      startDate: "",
+      endDate: "",
+      missionLocation: "",
+      theme: "",
+      departmentName: "",
     }));
+    if (!isInternship) setProjectIds([]);
   };
 
   const changeType = (value: string) => {
     setType(value);
     setSelected(null);
     setDbValues({});
-    setQuery("");
-    setResults([]);
-    setSearched(false);
+    setAutoKeys([]);
+    setPersonSuggestion(null);
+    lastPersonAuto.current = null;
+    // Les valeurs lues dans la base pour l'ancien type ne doivent pas rester (champs verrouillés)
+    setForm(EMPTY_FORM);
+    setProjectIds([]);
+    setInternshipId("");
+    setPickedStage(null);
+    setSuggestion(null);
+    setMention("");
   };
 
-  // Recherche par nom, téléphone ou e-mail (légèrement différée pendant la frappe)
-  useEffect(() => {
-    if (isInternship || specialCase || selected) return;
-
-    const term = query.trim();
-
-    if (term.length < 2) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
-
-    let cancelled = false;
-    setSearching(true);
-
-    const timer = window.setTimeout(() => {
-      api
-        .get("/certificates/lookup", { params: { q: term, only: isBeneficiary ? "BENEFICIARY" : undefined } })
-        .then((res) => {
-          if (!cancelled) setResults(res.data?.data ?? []);
-        })
-        .catch(() => {
-          if (!cancelled) setResults([]);
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setSearching(false);
-            setSearched(true);
-          }
-        });
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [query, isInternship, isBeneficiary, specialCase, selected]);
 
   // Stage choisi : on lit la fiche du stagiaire dans la base de données
   useEffect(() => {
@@ -552,6 +570,66 @@ export default function CreateCertificatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInternship, internshipId]);
 
+  // Mission / bénévolat / formation : la personne choisie remplit l'intitulé, la période, le lieu, le thème,
+  // le département et les projets d'après ses activités (uniquement les champs vides ou remplis automatiquement avant).
+  useEffect(() => {
+    if (!isPersonType || specialCase || selected?.source !== "USER") {
+      setPersonSuggestion(null);
+      lastPersonAuto.current = null;
+      return;
+    }
+
+    let cancelled = false;
+
+    api
+      .get(`/certificates/lookup/user/${selected.id}`, { params: { type } })
+      .then((res) => {
+        if (cancelled) return;
+
+        const auto = (res.data?.suggestion ?? null) as PersonSuggestion | null;
+        setPersonSuggestion(auto);
+        lastPersonAuto.current = auto;
+
+        if (!auto?.hasData) {
+          setAutoKeys([]);
+          return;
+        }
+
+        const fromActivities = auto.locationSource === "ACTIVITES";
+
+        setForm((cur) => ({
+          ...cur,
+          title: auto.title ?? "",
+          startDate: auto.startDate ?? "",
+          endDate: auto.endDate ?? "",
+          missionLocation: auto.missionLocation ?? "",
+          // thème / département : ceux du compte ou de son dernier stage d'abord (déjà lus), sinon ceux des activités
+          theme: cur.theme || auto.theme || "",
+          departmentName: cur.departmentName || auto.departmentName || "",
+        }));
+
+        setDbValues((cur) => ({ ...cur, theme: cur.theme || auto.theme || "", departmentName: cur.departmentName || auto.departmentName || "" }));
+        setProjectIds(auto.projectIds.slice(0, 10).map(String));
+
+        setAutoKeys([
+          ...(auto.title ? ["title"] : []),
+          ...(auto.startDate ? ["startDate"] : []),
+          ...(auto.endDate ? ["endDate"] : []),
+          ...(fromActivities && auto.missionLocation ? ["missionLocation"] : []),
+          ...(auto.projectIds.length ? ["projects"] : []),
+        ]);
+      })
+      .catch(() => {
+        if (!cancelled) setPersonSuggestion(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPersonType, specialCase, selected, type]);
+
+
   const toggleSpecialCase = (on: boolean) => {
     setSpecialCase(on);
 
@@ -559,9 +637,11 @@ export default function CreateCertificatePage() {
       // Saisie libre : aucune fiche n'est liée ni modifiée dans la base de données
       setSelected(null);
       setDbValues({});
-      setQuery("");
-      setResults([]);
-      setSearched(false);
+      setAutoKeys([]);
+    } else if (!isInternship) {
+      // Retour au mode « base de données » : on repart d'un formulaire vide (champs verrouillés tant qu'aucune personne n'est choisie)
+      setForm(EMPTY_FORM);
+      setProjectIds([]);
     }
   };
 
@@ -585,14 +665,21 @@ export default function CreateCertificatePage() {
   // Stage terminé : ce qui vient de la base de données est verrouillé, champ par champ.
   // Seuls restent modifiables : le type, le cas particulier, le stage, et les champs ABSENTS de la base.
   const lockInternship = isInternship && !specialCase;
+  // Autres types : tout est fermé tant qu'aucune personne n'est choisie (sauf « Cas particulier »)
+  const lockPerson = !isInternship && !specialCase;
 
-  /** Champ verrouillé : stage sans choix (tout fermé) ou valeur déjà présente dans la base de données. */
-  const isLocked = (key: DbField) => lockInternship && (!internshipId || (!!selected && !!dbValues[key]));
+  /** Champ d'identité verrouillé : valeur déjà présente dans la base de données (ou rien n'est encore choisi). */
+  const isLocked = (key: DbField) =>
+    isInternship ? lockInternship && (!internshipId || (!!selected && !!dbValues[key])) : lockPerson && (!selected || !!dbValues[key]);
 
-  const projectsLocked = lockInternship;
+  /** Champ (intitulé, période, lieu, projets…) rempli depuis la base : verrouillé. Absent de la base : saisie manuelle. */
+  const isAutoLocked = (key: string) => lockPerson && (!selected || autoKeys.includes(key));
+
+  const projectsLocked = lockInternship || isAutoLocked("projects");
   const mentionLocked = lockInternship && !!suggestion?.mention;
-  const duplicataLocked = lockInternship && (!internshipId || (!!selected && selected.cinDuplicata));
-  const locationLocked = lockInternship && (!internshipId || !!suggestion?.missionLocation);
+  const duplicataLocked = lockInternship ? !internshipId || (!!selected && selected.cinDuplicata) : lockPerson && (!selected || selected.cinDuplicata);
+  const locationLocked = lockInternship ? !internshipId || !!suggestion?.missionLocation : isAutoLocked("missionLocation");
+  const duplicataDateLocked = lockInternship ? !!selected?.cinDuplicataAt : lockPerson && (!selected || !!selected.cinDuplicataAt);
 
   /** Champ avec son étiquette « dans la base / absent de la base » */
   const field = (key: DbField, label: string, input: ReactNode, className = "") => (
@@ -613,6 +700,16 @@ export default function CreateCertificatePage() {
 
     if (specialCase && specialCaseNote.trim().length < 5) {
       setError("Précisez le motif du cas particulier.");
+      return;
+    }
+
+    if (isInternship && !internshipId) {
+      setError("Choisissez un stage terminé.");
+      return;
+    }
+
+    if (!isInternship && !specialCase && !selected) {
+      setError("Choisissez une personne dans la liste, ou cochez « Cas particulier ».");
       return;
     }
 
@@ -756,58 +853,15 @@ export default function CreateCertificatePage() {
                 </div>
               ) : (
                 <>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <input
-                      className={`${inputClass} pl-10`}
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Nom, téléphone (034 00 000 00) ou e-mail…"
-                      autoComplete="off"
-                    />
-                    {searching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />}
-                  </div>
-
-                  {results.length > 0 && (
-                    <ul className="max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 bg-white">
-                      {results.map((candidate) => (
-                        <li key={`${candidate.source}-${candidate.id}`}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              applyCandidate(candidate);
-                              setQuery("");
-                              setResults([]);
-                            }}
-                            className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-50"
-                          >
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
-                              {candidate.name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold text-gray-900">{candidate.name}</span>
-                              <span className="block truncate text-xs text-gray-500">
-                                {candidate.phone ?? "Téléphone non renseigné"}
-                                {candidate.email ? ` · ${candidate.email}` : ""}
-                              </span>
-                            </span>
-                            <span className="shrink-0 text-right text-[10px] text-gray-500">
-                              <span className="block font-semibold">{candidate.source === "USER" ? "Compte" : "Bénéficiaire"}</span>
-                              {candidate.role ? roleLabel(candidate.role) : candidate.subtitle ?? ""}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {searched && !searching && results.length === 0 && (
-                    <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      Aucune fiche trouvée dans la base de données. Vous pouvez saisir les informations à la main, ou cocher « Cas particulier ».
-                    </p>
-                  )}
-
-                  {!searched && <p className="text-xs text-gray-500">Choisissez une personne : tout ce que la base connaît remplit le formulaire automatiquement.</p>}
+                  <CandidateCombobox<Candidate & { source: "USER" | "BENEFICIARY" }>
+                    type={type}
+                    onPick={(candidate) => applyCandidate(candidate)}
+                  />
+                  <p className="text-xs text-gray-500">
+                    Cliquez pour afficher la liste des{" "}
+                    {type === "VOLUNTEER" ? "bénévoles" : type === "TRAINING" ? "personnes ayant suivi une formation" : type === "BENEFICIARY" ? "bénéficiaires" : "membres du personnel"}, ou tapez un nom, un téléphone, un CIN ou un
+                    e-mail : tout ce que la base connaît remplit le formulaire automatiquement.
+                  </p>
                 </>
               )}
             </div>
@@ -837,35 +891,89 @@ export default function CreateCertificatePage() {
             </div>
           )}
 
+          {isPersonType && selected?.source === "USER" && !specialCase && personSuggestion && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                personSuggestion.hasData ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {personSuggestion.hasData ? (
+                <>
+                  <p className="font-semibold">
+                    Lu dans la base de données :{" "}
+                    {type === "STAFF"
+                      ? `${personSuggestion.breakdown.activities} activité(s), ${personSuggestion.breakdown.missions} mission(s) terrain`
+                      : `${personSuggestion.breakdown.accepted} participation(s) acceptée(s)`}
+                    {personSuggestion.projects.length > 0 && ` · ${personSuggestion.projects.length} projet(s)`}.
+                  </p>
+                  <p className="mt-1 text-xs">
+                    Présences : {personSuggestion.breakdown.attended} · Rapports : {personSuggestion.breakdown.reports}
+                    {personSuggestion.scoreOn20 !== null && ` · Note moyenne : ${personSuggestion.scoreOn20}/20${personSuggestion.mention ? ` (${personSuggestion.mention})` : ""}`}
+                    {type === "STAFF" && personSuggestion.breakdown.distanceKm > 0 && ` · ${personSuggestion.breakdown.distanceKm} km parcourus`}
+                    . L&apos;intitulé, la période, le lieu, le thème, le département et les projets sont remplis automatiquement ; vous pouvez les modifier.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs">
+                  Aucune {type === "TRAINING" ? "formation" : type === "VOLUNTEER" ? "participation à une activité" : "activité ni mission"} trouvée pour {selected.name} dans la base de données :
+                  saisissez les informations ci-dessous.
+                </p>
+              )}
+            </div>
+          )}
+
           {isBeneficiary && selected?.source === "BENEFICIARY" && selected.beneficiary && !specialCase && (
             <BeneficiarySheet b={selected.beneficiary} phone={selected.phone} email={selected.email} />
           )}
 
           {/* ---------- Stage ou titulaire ---------- */}
           {isInternship ? (
-            <label className="block space-y-1 text-sm font-medium text-gray-700">
-              Stage terminé
-              <select className={inputClass} value={internshipId} onChange={(e) => setInternshipId(e.target.value)} required>
-                <option value="">Sélectionner un stage</option>
-                {internships.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.student ? `${i.student.firstName} ${i.student.lastName} — ` : ""}{i.title}
-                  </option>
-                ))}
-              </select>
-              {internships.length === 0 && <span className="text-xs text-amber-700">Aucun stage « Terminé » disponible.</span>}
-            </label>
+            <div className="block space-y-1 text-sm font-medium text-gray-700">
+              <span>Stage terminé</span>
+
+              {internshipId ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <b>
+                      {pickedStage?.id === internshipId
+                        ? pickedStage.label
+                        : (() => {
+                            const found = internships.find((i) => String(i.id) === internshipId);
+                            return found ? `${found.student ? `${found.student.firstName} ${found.student.lastName} — ` : ""}${found.title}` : `Stage n°${internshipId}`;
+                          })()}
+                    </b>
+                  </span>
+                  <button type="button" onClick={() => { setInternshipId(""); setPickedStage(null); }} className="inline-flex items-center gap-1 text-xs font-semibold underline hover:text-green-950">
+                    <X className="h-3.5 w-3.5" /> Changer de stage
+                  </button>
+                </div>
+              ) : (
+                <CandidateCombobox
+                  type="INTERNSHIP"
+                  placeholder="Cliquer pour voir la liste, ou taper un nom, téléphone, CIN, e-mail, matricule…"
+                  onPick={(c) => {
+                    setInternshipId(String(c.id));
+                    setPickedStage({ id: String(c.id), label: `${c.name} — ${c.subtitle ?? "Stage"}` });
+                  }}
+                />
+              )}
+
+              <span className="block text-xs font-normal text-gray-500">
+                Cliquez pour afficher tous les stagiaires ayant terminé leur stage, ou tapez pour rechercher : tout ce que la base connaît remplit le formulaire automatiquement.
+              </span>
+            </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {field(
                 "holderName",
                 "Nom complet du titulaire *",
-                <input className={inputClass} value={form.holderName} onChange={(e) => set("holderName", e.target.value)} required />,
+                <input className={inputClass} disabled={isLocked("holderName")} value={form.holderName} onChange={(e) => set("holderName", e.target.value)} required />,
               )}
               {field(
                 "holderEmail",
                 "Email du titulaire (pour l'envoi)",
-                <input type="email" className={inputClass} value={form.holderEmail} onChange={(e) => set("holderEmail", e.target.value)} />,
+                <input type="email" className={inputClass} disabled={isLocked("holderEmail")} value={form.holderEmail} onChange={(e) => set("holderEmail", e.target.value)} />,
               )}
 
               {isBeneficiary && !specialCase ? (
@@ -875,28 +983,34 @@ export default function CreateCertificatePage() {
               ) : (
                 <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
                   Intitulé *
-                  <input className={inputClass} placeholder="Ex. Bénévole animateur — Maison Digitale" value={form.title} onChange={(e) => set("title", e.target.value)} required />
+                  <input className={inputClass} placeholder="Ex. Bénévole animateur — Maison Digitale" disabled={isAutoLocked("title")} value={form.title} onChange={(e) => set("title", e.target.value)} required />
                 </label>
               )}
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Début
-                <input type="date" className={inputClass} value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
+                <input type="date" className={inputClass} disabled={isAutoLocked("startDate")} value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Fin
-                <input type="date" className={inputClass} value={form.endDate} onChange={(e) => set("endDate", e.target.value)} />
+                <input type="date" className={inputClass} disabled={isAutoLocked("endDate")} value={form.endDate} onChange={(e) => set("endDate", e.target.value)} />
               </label>
             </div>
           )}
 
-          {lockInternship && (
+          {(lockInternship || lockPerson) && (
             <p className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
               <Lock className="h-3.5 w-3.5 shrink-0" />
-              {!internshipId
-                ? "Choisissez d'abord un stage terminé : ses projets et les informations du stagiaire seront remplis automatiquement."
-                : missingInDb.length === 0
-                  ? "Toutes les informations viennent de la base de données : elles sont verrouillées. Changez de stage pour les modifier."
-                  : "Les informations déjà présentes dans la base de données sont verrouillées : seuls les champs absents de la base restent modifiables."}
+              {isInternship
+                ? !internshipId
+                  ? "Choisissez d'abord un stage terminé : ses projets et les informations du stagiaire seront remplis automatiquement."
+                  : missingInDb.length === 0
+                    ? "Toutes les informations viennent de la base de données : elles sont verrouillées. Changez de stage pour les modifier."
+                    : "Les informations déjà présentes dans la base de données sont verrouillées : seuls les champs absents de la base restent modifiables."
+                : !selected
+                  ? "Choisissez d'abord une personne dans la liste : les informations de la base de données seront remplies automatiquement et verrouillées. Personne absente de la base ? Cochez « Cas particulier »."
+                  : missingInDb.length === 0
+                    ? "Toutes les informations viennent de la base de données : elles sont verrouillées. Changez de personne pour les modifier."
+                    : "Les informations déjà présentes dans la base de données sont verrouillées : seuls les champs absents de la base restent modifiables."}
             </p>
           )}
 
@@ -1034,7 +1148,7 @@ export default function CreateCertificatePage() {
             {form.holderCinDuplicata ? (
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Date du duplicata
-                <input type="date" className={inputClass} disabled={lockInternship && !!selected?.cinDuplicataAt} value={form.holderCinDuplicataAt} onChange={(e) => set("holderCinDuplicataAt", e.target.value)} />
+                <input type="date" className={inputClass} disabled={duplicataDateLocked} value={form.holderCinDuplicataAt} onChange={(e) => set("holderCinDuplicataAt", e.target.value)} />
               </label>
             ) : (
               <span className="hidden md:block" />
@@ -1082,7 +1196,7 @@ export default function CreateCertificatePage() {
 
           {selected?.source === "USER" && !specialCase && (
             <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
-              <input type="checkbox" disabled={lockInternship && !!selected && missingInDb.length === 0} checked={saveToProfile} onChange={(e) => setSaveToProfile(e.target.checked)} className="mt-0.5 h-4 w-4" />
+              <input type="checkbox" disabled={(lockInternship || lockPerson) && !!selected && missingInDb.length === 0} checked={saveToProfile} onChange={(e) => setSaveToProfile(e.target.checked)} className="mt-0.5 h-4 w-4" />
               <span>
                 Compléter la fiche de <b>{selected.name}</b> dans la base de données avec les informations saisies
                 <span className="block text-xs text-gray-500">Seuls les champs encore vides sont remplis : rien d&apos;existant n&apos;est écrasé.</span>

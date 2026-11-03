@@ -256,6 +256,78 @@ export const ANOMALY_CATALOG: AnomalyType[] = [
     "description": "Demande d'inscription non traitée depuis 7 jours ou plus (moyenne au-delà de 30).",
     "rule": "Compte en attente de validation depuis 7 jours ou plus (moyenne dès 30 jours).",
     "notifiedTo": "Administrateurs et RH"
+  },
+  {
+    "code": "PROJECT_SE_DELAY",
+    "scope": "Projet",
+    "severity": "MEDIUM",
+    "label": "Avancement en retard (S&E)",
+    "description": "L'avancement réel du projet est nettement en dessous de l'avancement prévu au Suivi & Évaluation.",
+    "rule": "Projet actif ET (avancement réel − avancement prévu) ≤ −20 points (gravité élevée à −30).",
+    "notifiedTo": "Responsable du projet + membres de son département"
+  },
+  {
+    "code": "PROJECT_FINAL_LOW",
+    "scope": "Projet",
+    "severity": "MEDIUM",
+    "label": "Évaluation finale faible",
+    "description": "La note automatique /20 du projet est insuffisante (réalisation, satisfaction, stagiaires, budget…).",
+    "rule": "Projet terminé : note < 12/20 (< 10 = grave) ; projet en cours : note < 8/20 ; fiabilité ≥ 40 %.",
+    "notifiedTo": "Responsable du projet + membres de son département"
+  },
+  {
+    "code": "PROJECT_FEEDBACK_MISSING",
+    "scope": "Projet",
+    "severity": "LOW",
+    "label": "Avis de satisfaction manquants",
+    "description": "Projet terminé sans questionnaire de satisfaction des partenaires ou des bénéficiaires.",
+    "rule": "Projet terminé avec partenaires/bénéficiaires rattachés mais 0 questionnaire enregistré.",
+    "notifiedTo": "Responsable du projet + membres de son département"
+  },
+  {
+    "code": "PROJECT_INTERNS_WEAK",
+    "scope": "Projet",
+    "severity": "MEDIUM",
+    "label": "Stagiaires en difficulté sur le projet",
+    "description": "La moyenne des stagiaires rattachés au projet est sous 10/20.",
+    "rule": "Au moins un stagiaire noté ET moyenne /20 des stagiaires du projet < 10.",
+    "notifiedTo": "Responsable du projet + membres de son département"
+  },
+  {
+    "code": "INTERN_LOW_SCORE",
+    "scope": "Stage",
+    "severity": "MEDIUM",
+    "label": "Note de stage faible",
+    "description": "La note /20 du stagiaire (tâches, rapports, évaluation du tuteur, présence) est insuffisante.",
+    "rule": "Stage en cours/terminé avec des données ET note < 10/20 (< 8 = grave).",
+    "notifiedTo": "Stagiaire + tuteur + responsable du projet"
+  },
+  {
+    "code": "INTERN_TASKS_LATE",
+    "scope": "Stage",
+    "severity": "MEDIUM",
+    "label": "Tâches de stage en retard",
+    "description": "Le stagiaire a des tâches dont l'échéance est dépassée.",
+    "rule": "Stage en cours ET au moins 1 tâche non terminée en retard (≥ 3 = grave).",
+    "notifiedTo": "Stagiaire + tuteur + responsable du projet"
+  },
+  {
+    "code": "INTERN_PRESENCE_LOW",
+    "scope": "Stage",
+    "severity": "MEDIUM",
+    "label": "Présence terrain insuffisante",
+    "description": "Peu de jours de présence (check-in GPS) par rapport aux jours ouvrés écoulés.",
+    "rule": "Stage en cours, ≥ 5 jours ouvrés écoulés, présence < 70 % (< 50 % = grave).",
+    "notifiedTo": "Stagiaire + tuteur + responsable du projet"
+  },
+  {
+    "code": "INTERN_EVAL_MISSING",
+    "scope": "Stage",
+    "severity": "LOW",
+    "label": "Évaluation du tuteur manquante",
+    "description": "Aucune évaluation enregistrée alors que le stage est avancé ou terminé.",
+    "rule": "Stage terminé, ou en cours avec ≥ 50 % du temps écoulé, sans aucune évaluation.",
+    "notifiedTo": "Stagiaire + tuteur + responsable du projet"
   }
 ];
 

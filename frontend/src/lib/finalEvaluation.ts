@@ -106,6 +106,9 @@ export interface InternshipEvaluation {
   tasks: { total: number; completed: number };
   evaluations: number;
   durationMonths?: number | null;
+  /** nombre de stages de cette personne (la ligne affichée est son stage le plus pertinent) */
+  stagesCount?: number;
+  stageIds?: number[];
 }
 
 /** Durée standard (mois) d'un stage selon le niveau ; toute autre durée = « Autre ». */
@@ -115,7 +118,7 @@ export const isOtherDuration = (level: Level, durationMonths?: number | null): b
 export interface InternshipsOverview {
   weights: Record<string, number>;
   internships: InternshipEvaluation[];
-  summary: { count: number; evaluated: number; average: number | null; final: number };
+  summary: { count: number; stageRows?: number; evaluated: number; average: number | null; final: number };
 }
 
 export interface FeedbackPayload {

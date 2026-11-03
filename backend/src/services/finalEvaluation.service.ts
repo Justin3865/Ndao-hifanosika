@@ -302,22 +302,68 @@ export type ProjectEvaluation = ReturnType<typeof computeProjectEvaluation>;
 
 const toFeedbackRow = (row: Record<string, unknown>): FeedbackRow => row as unknown as FeedbackRow;
 
-/** Notes /20 des stages (en cours ou terminés) rattachés à chaque projet. */
-async function stageScoresByProject(): Promise<Map<number, number[]>> {
-  const stages = await loadInternshipsMonitoring({}, { projectId: { not: null }, status: { in: ["IN_PROGRESS", "COMPLETED"] } });
-  const map = new Map<number, number[]>();
+type StageRows = Awaited<ReturnType<typeof loadInternshipsMonitoring>>;
+
+/** Clé d'une personne : CIN (12 chiffres) s'il est connu, sinon son compte — identique à la liste « Stages ». */
+export const personKeyOf = (studentId: number, cinNumber?: string | null): string => {
+  const cin = String(cinNumber ?? "").replace(/\D/g, "");
+  return cin.length === 12 ? `cin:${cin}` : `id:${studentId}`;
+};
+
+/** Tous les projets rattachés à un stage (projet principal + table InternshipProject). */
+export const projectIdsOfInternship = (internship: { projectId: number | null; projectLinks?: Array<{ projectId: number }> }): number[] => {
+  const ids = new Set<number>();
+  if (internship.projectId !== null && internship.projectId !== undefined) ids.add(internship.projectId);
+  for (const link of internship.projectLinks ?? []) ids.add(link.projectId);
+  return [...ids];
+};
+
+/**
+ * Notes /20 des stages (en cours ou terminés) rattachés à chaque projet.
+ * Une personne compte UNE fois par projet (son stage le plus récent) : plusieurs lignes de stage
+ * pour la même personne ne gonflent plus la moyenne du projet.
+ */
+export function stageScoresFrom(stages: StageRows, cinOf: Map<number, string | null> = new Map()): Map<number, number[]> {
+  const best = new Map<number, Map<string, { score: number; start: number }>>();
 
   for (const { internship, metrics } of stages) {
-    if (internship.projectId === null) continue;
+    if (internship.status !== "IN_PROGRESS" && internship.status !== "COMPLETED") continue;
+
     const score = scoreOn20(stageComponents(metrics));
     if (score === null) continue;
-    map.set(internship.projectId, [...(map.get(internship.projectId) ?? []), score]);
+
+    const person = personKeyOf(internship.studentId, cinOf.get(internship.studentId));
+    const start = new Date(internship.startDate).getTime();
+
+    for (const projectId of projectIdsOfInternship(internship as never)) {
+      const persons = best.get(projectId) ?? new Map<string, { score: number; start: number }>();
+      const known = persons.get(person);
+      if (!known || start > known.start) persons.set(person, { score, start });
+      best.set(projectId, persons);
+    }
   }
 
+  const map = new Map<number, number[]>();
+  for (const [projectId, persons] of best) map.set(projectId, [...persons.values()].map((row) => row.score));
   return map;
 }
 
-function rankProjects(list: ProjectEvaluation[]): ProjectEvaluation[] {
+async function loadCinMap(studentIds: number[]): Promise<Map<number, string | null>> {
+  if (!studentIds.length) return new Map();
+  const rows: Array<{ id: number; cinNumber: string | null }> = await db.user.findMany({
+    where: { id: { in: studentIds } },
+    select: { id: true, cinNumber: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.cinNumber ?? null]));
+}
+
+async function stageScoresByProject(): Promise<Map<number, number[]>> {
+  const stages = await loadInternshipsMonitoring({}, { status: { in: ["IN_PROGRESS", "COMPLETED"] } });
+  const cin = await loadCinMap([...new Set(stages.map((row) => row.internship.studentId))]);
+  return stageScoresFrom(stages, cin);
+}
+
+export function rankProjects(list: ProjectEvaluation[]): ProjectEvaluation[] {
   const sorted = [...list].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.name.localeCompare(b.name, "fr"));
   let previous: ProjectEvaluation | null = null;
 
@@ -333,20 +379,21 @@ function rankProjects(list: ProjectEvaluation[]): ProjectEvaluation[] {
   return sorted;
 }
 
-export async function evaluateAllProjects(): Promise<ProjectEvaluation[]> {
-  const [projects, feedback, stages] = await Promise.all([
-    loadAllProjectContexts(),
-    db.projectFeedback.findMany({
-      select: { id: true, projectId: true, kind: true, partnerId: true, beneficiaryId: true, respondent: true, ratings: true, score: true, comment: true, collectedAt: true },
-    }),
-    stageScoresByProject(),
-  ]);
+export async function loadFeedbackByProject(): Promise<Map<number, FeedbackRow[]>> {
+  const feedback = await db.projectFeedback.findMany({
+    select: { id: true, projectId: true, kind: true, partnerId: true, beneficiaryId: true, respondent: true, ratings: true, score: true, comment: true, collectedAt: true },
+  });
 
   const byProject = new Map<number, FeedbackRow[]>();
   for (const row of feedback as Array<Record<string, unknown>>) {
     const fb = toFeedbackRow(row);
     byProject.set(fb.projectId, [...(byProject.get(fb.projectId) ?? []), fb]);
   }
+  return byProject;
+}
+
+export async function evaluateAllProjects(): Promise<ProjectEvaluation[]> {
+  const [projects, byProject, stages] = await Promise.all([loadAllProjectContexts(), loadFeedbackByProject(), stageScoresByProject()]);
 
   return rankProjects(projects.map((project) => computeProjectEvaluation(project, byProject.get(project.id) ?? [], stages.get(project.id) ?? [])));
 }
@@ -394,42 +441,70 @@ export async function evaluateOneProject(projectId: number) {
 // Évaluation d'un stage
 // ------------------------------------------------------------
 
-export async function evaluateInternships(scope: Record<string, unknown>) {
-  const stages = await loadInternshipsMonitoring(scope);
-  const studentIds = [...new Set(stages.map((row) => row.internship.studentId))];
-  const users: Array<{ id: number; role: string }> = studentIds.length
-    ? await db.user.findMany({ where: { id: { in: studentIds } }, select: { id: true, role: true } })
-    : [];
-  const roleOf = new Map(users.map((u) => [u.id, u.role]));
+export type InternshipEvaluationItem = ReturnType<typeof buildItem>;
 
-  const items = stages.map(({ internship, metrics }) => {
-    const operational = internship.status === "IN_PROGRESS" || internship.status === "COMPLETED";
-    const components = stageComponents(metrics);
-    const score = operational ? scoreOn20(components) : null;
+function buildItem(
+  { internship, metrics }: StageRows[number],
+  role: string,
+  personKey: string,
+) {
+  const operational = internship.status === "IN_PROGRESS" || internship.status === "COMPLETED";
+  const components = stageComponents(metrics);
+  const score = operational ? scoreOn20(components) : null;
 
-    return {
-      id: internship.id,
-      title: internship.title,
-      theme: internship.theme ?? null,
-      status: internship.status,
-      phase: internship.status === "COMPLETED" ? "FINAL" : operational ? "INTERIM" : "NOT_STARTED",
-      startDate: internship.startDate,
-      endDate: internship.endDate,
-      student: internship.student,
-      level: levelOf(roleOf.get(internship.studentId) ?? ""),
-      supervisor: internship.supervisor,
-      project: internship.project,
-      score,
-      verdict: score === null ? null : badgeFor(score),
-      rank: 0,
-      cohortSize: 0,
-      components,
-      tasks: { total: metrics.tasks.total, completed: metrics.tasks.completed },
-      evaluations: metrics.evaluations.count,
-      /** durée de référence (mois) : sert au filtre « Autre » (≠ 2 mois L3 / 6 mois M2) */
-      durationMonths: metrics.presence.referenceMonths ?? null,
-    };
-  });
+  return {
+    id: internship.id,
+    personKey,
+    title: internship.title,
+    theme: internship.theme ?? null,
+    status: internship.status,
+    phase: internship.status === "COMPLETED" ? "FINAL" : operational ? "INTERIM" : "NOT_STARTED",
+    startDate: internship.startDate,
+    endDate: internship.endDate,
+    student: internship.student,
+    level: levelOf(role),
+    supervisor: internship.supervisor,
+    project: internship.project,
+    /** tous les projets rattachés (projet principal + liens) */
+    projectIds: projectIdsOfInternship(internship as never),
+    score,
+    verdict: score === null ? null : badgeFor(score),
+    rank: 0,
+    cohortSize: 0,
+    components,
+    tasks: { total: metrics.tasks.total, completed: metrics.tasks.completed },
+    evaluations: metrics.evaluations.count,
+    /** durée de référence (mois) : sert au filtre « Autre » (≠ 2 mois L3 / 6 mois M2) */
+    durationMonths: metrics.presence.referenceMonths ?? null,
+    /** nombre de stages de la même personne (1 = un seul) ; la ligne affichée est son stage le plus pertinent */
+    stagesCount: 1,
+    stageIds: [internship.id],
+  };
+}
+
+/**
+ * UNE ligne par stagiaire (même règle que la liste « Stages » : même CIN, sinon même compte).
+ * Avant : une ligne par stage → 20 lignes pour 12 stagiaires (« 3/20 » au lieu de « 3/12 »).
+ * Le stage retenu est le plus pertinent : en cours / terminé d'abord, puis le plus récent.
+ */
+export function buildInternshipEvaluations(stages: StageRows, roleOf: Map<number, string>, cinOf: Map<number, string | null>) {
+  const all = stages.map((row) => buildItem(row, roleOf.get(row.internship.studentId) ?? "", personKeyOf(row.internship.studentId, cinOf.get(row.internship.studentId))));
+
+  const groups = new Map<string, typeof all>();
+  for (const item of all) groups.set(item.personKey, [...(groups.get(item.personKey) ?? []), item]);
+
+  const operational = (item: (typeof all)[number]) => (item.status === "IN_PROGRESS" || item.status === "COMPLETED" ? 1 : 0);
+  const items: typeof all = [];
+
+  for (const group of groups.values()) {
+    const sorted = [...group].sort(
+      (a, b) => operational(b) - operational(a) || new Date(b.startDate).getTime() - new Date(a.startDate).getTime() || b.id - a.id,
+    );
+    const keep = sorted[0];
+    keep.stagesCount = group.length;
+    keep.stageIds = sorted.map((item) => item.id);
+    items.push(keep);
+  }
 
   // rang dans la promotion (L3 / M2), égalité = même rang
   for (const level of ["L3", "M2"] as const) {
@@ -440,5 +515,28 @@ export async function evaluateInternships(scope: Record<string, unknown>) {
     });
   }
 
-  return items.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  return { items: items.sort((a, b) => (b.score ?? -1) - (a.score ?? -1)), rows: all.length };
+}
+
+export async function loadStudentMaps(stages: StageRows) {
+  const studentIds = [...new Set(stages.map((row) => row.internship.studentId))];
+  const users: Array<{ id: number; role: string; cinNumber: string | null }> = studentIds.length
+    ? await db.user.findMany({ where: { id: { in: studentIds } }, select: { id: true, role: true, cinNumber: true } })
+    : [];
+
+  return {
+    roleOf: new Map(users.map((u) => [u.id, u.role] as [number, string])),
+    cinOf: new Map(users.map((u) => [u.id, u.cinNumber ?? null] as [number, string | null])),
+  };
+}
+
+/** Évaluation par stagiaire + nombre total de lignes de stage (avant regroupement par personne). */
+export async function evaluateInternshipsDetailed(scope: Record<string, unknown>) {
+  const stages = await loadInternshipsMonitoring(scope);
+  const { roleOf, cinOf } = await loadStudentMaps(stages);
+  return buildInternshipEvaluations(stages, roleOf, cinOf);
+}
+
+export async function evaluateInternships(scope: Record<string, unknown>) {
+  return (await evaluateInternshipsDetailed(scope)).items;
 }

@@ -3,12 +3,16 @@ import { logger } from "../config/logger";
 import { sendError } from "../middlewares/error.middleware";
 import { canSeeInternship, getReqUser, internshipScope } from "../utils/dataScope";
 import { loadInternshipsMonitoring } from "../services/internshipMonitoring.service";
+import { loadOnePerPerson } from "../services/personGroups";
 
 type Row = Awaited<ReturnType<typeof loadInternshipsMonitoring>>[number];
 
-const shape = (row: Row) => {
+const shape = (row: Row & { personKey?: string; stagesCount?: number; stageIds?: number[] }) => {
   const { internship: i, metrics } = row;
   return {
+    personKey: row.personKey ?? null,
+    stagesCount: row.stagesCount ?? 1,
+    stageIds: row.stageIds ?? [i.id],
     id: i.id,
     title: i.title,
     theme: i.theme ?? null,
@@ -28,16 +32,18 @@ const shape = (row: Row) => {
 export async function getInternshipsMonitoring(req: Request, res: Response) {
   try {
     const projectId = Number(req.query.projectId);
-    const rows = await loadInternshipsMonitoring(
-      internshipScope(getReqUser(req)),
-      Number.isInteger(projectId) && projectId > 0 ? { projectId } : {}
-    );
+    // ?unique=1 : UNE ligne par stagiaire (12 personnes au lieu de 20 stages) — même règle que « Évaluation finale »
+    const unique = ["1", "true"].includes(String(req.query.unique ?? ""));
+    const scope = internshipScope(getReqUser(req));
+    const extra = Number.isInteger(projectId) && projectId > 0 ? { projectId } : {};
+    const rows = unique ? await loadOnePerPerson(scope, extra) : await loadInternshipsMonitoring(scope, extra);
     const items = rows.map(shape);
 
     return res.json({
       success: true,
       data: {
         count: items.length,
+        unique,
         internships: items,
         summary: {
           inProgress: items.filter((x) => x.status === "IN_PROGRESS").length,

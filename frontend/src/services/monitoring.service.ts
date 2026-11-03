@@ -103,8 +103,9 @@ export async function fetchAllObjectives(
 }
 
 /** S&E de tous les stagiaires (le backend filtre selon le rôle : un tuteur ne voit que les siens). */
-export async function fetchInternshipsMonitoring(): Promise<InternshipMonitoring[]> {
-  const res = await api.get("/monitoring/internships");
+export async function fetchInternshipsMonitoring(unique = false): Promise<InternshipMonitoring[]> {
+  // unique = UNE ligne par stagiaire (12 personnes) au lieu d'une ligne par stage (20) — comme « Évaluation finale »
+  const res = await api.get("/monitoring/internships", { params: unique ? { unique: 1 } : undefined });
   const list = res.data?.data?.internships;
   return Array.isArray(list) ? (list as InternshipMonitoring[]) : [];
 }

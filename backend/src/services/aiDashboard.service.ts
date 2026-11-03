@@ -4,6 +4,7 @@ import { db } from "../utils/db";
 import { ANOMALY_LABELS, ANOMALY_SCOPES } from "./anomalyCatalog";
 import { Analysis, Data, loadData, runAnalysis } from "./insights.service";
 import { fetchLive, postPython } from "./pyLive.service";
+import { IntegrationSnapshot, getIntegrationSafe } from "./integration.service";
 
 /**
  * Données des graphiques (courbes, diagrammes circulaires, histogrammes) de « Analyses IA ».
@@ -48,6 +49,31 @@ export interface Dashboard {
   };
   vulnerability?: { total: number; suspected: number; levels: Slice[]; histogram: Array<{ label: string; value: number }> };
   models?: Array<{ name: string; accuracy: number; f1: number; auc: number; sampleSize: number; trainedAt: string }>;
+  /** Pont stagiaires ↔ projets ↔ S&E ↔ évaluation finale (même base que « Évaluation finale » et « Suivi & Évaluation »). */
+  integration?: {
+    totals: {
+      avgFinalProject: number | null;
+      avgFinalInternship: number | null;
+      projectsEvaluated: number;
+      internPersons: number;
+      internRows: number;
+      internsEvaluated: number;
+      internsDone: number;
+      lateProjects: number;
+      weakInterns: number;
+      internsAtRisk: number;
+      avgPlanned: number | null;
+      avgActual: number | null;
+    };
+    /** note finale /20 de chaque projet noté */
+    finalByProject: Array<Slice & { level: string }>;
+    /** note /20 de chaque stagiaire noté */
+    internScores: Array<Slice & { level: string }>;
+    internScoreHistogram: Array<{ label: string; value: number }>;
+    internRisk: Slice[];
+    /** prévu / réel par projet actif (courbe d'avancement S&E) */
+    progressByProject: Array<{ key: string; label: string; planned: number | null; actual: number | null }>;
+  };
 }
 
 export interface SuspectedHousehold {
@@ -301,6 +327,121 @@ function withHouseholds(base: Dashboard, suspected: number): Dashboard {
   };
 }
 
+/* ------------------- pont stagiaires ↔ projets ↔ S&E ↔ évaluation finale ------------------- */
+
+const levelOf20 = (score: number) => (score >= 14 ? "GOOD" : score >= 10 ? "WATCH" : "CRITICAL");
+
+function integrationBlock(snapshot: IntegrationSnapshot): NonNullable<Dashboard["integration"]> {
+  const t = snapshot.totals;
+  const scoredProjects = snapshot.projects.filter((p) => p.finalScore !== null);
+  const scoredInterns = snapshot.internships.filter((i) => i.score !== null);
+  const risks = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  for (const intern of snapshot.internships) risks[intern.risk.level] += 1;
+
+  return {
+    totals: {
+      avgFinalProject: t.avgProjectScore,
+      avgFinalInternship: t.avgInternScore,
+      projectsEvaluated: t.projectsEvaluated,
+      internPersons: t.internPersons,
+      internRows: t.internRows,
+      internsEvaluated: t.internsEvaluated,
+      internsDone: t.internsDone,
+      lateProjects: t.lateProjects,
+      weakInterns: t.weakInterns,
+      internsAtRisk: t.internsAtRisk,
+      avgPlanned: t.avgPlanned,
+      avgActual: t.avgActual,
+    },
+    finalByProject: [...scoredProjects]
+      .sort((a, b) => (a.finalScore as number) - (b.finalScore as number))
+      .slice(0, 20)
+      .map((p) => ({ key: String(p.projectId), label: p.code || p.name, value: p.finalScore as number, level: levelOf20(p.finalScore as number) })),
+    internScores: [...scoredInterns]
+      .sort((a, b) => (a.score as number) - (b.score as number))
+      .slice(0, 20)
+      .map((i) => ({ key: String(i.id), label: i.name, value: i.score as number, level: levelOf20(i.score as number) })),
+    // 10 classes de 2 points sur 20
+    internScoreHistogram: histogram(scoredInterns.map((i) => (i.score as number) * 5), 10, 100).map((bin, index) => ({ label: `${index * 2}-${(index + 1) * 2}`, value: bin.value })),
+    internRisk: [
+      { key: "HIGH", label: "Élevé", value: risks.HIGH },
+      { key: "MEDIUM", label: "Moyen", value: risks.MEDIUM },
+      { key: "LOW", label: "Faible", value: risks.LOW },
+    ],
+    progressByProject: snapshot.projects
+      .filter((p) => p.status === "ACTIVE")
+      .map((p) => ({ key: String(p.projectId), label: p.code || p.name, planned: p.progress.planned, actual: p.progress.actual }))
+      .slice(0, 20),
+  };
+}
+
+/**
+ * Applique le pont au tableau de bord :
+ *  - les anomalies « stagiaire / S&E / évaluation finale » sont comptées dans les graphiques d'anomalies ;
+ *  - les graphiques de performance utilisent le score combiné (base IA + évaluation finale + S&E + stagiaires) ;
+ *  - un bloc `integration` alimente les nouveaux graphiques.
+ */
+async function withIntegration(base: Dashboard, snapshot: IntegrationSnapshot): Promise<Dashboard> {
+  const added = snapshot.anomalies;
+  const bySeverity: Record<string, number> = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  const byScope = new Map<string, number>();
+  const byType = new Map<string, number>();
+
+  for (const row of added) {
+    bySeverity[row.severity] += 1;
+    const scope = ANOMALY_SCOPES[row.type] ?? "Autre";
+    byScope.set(scope, (byScope.get(scope) ?? 0) + 1);
+    byType.set(row.type, (byType.get(row.type) ?? 0) + 1);
+  }
+
+  const bumpAll = (items: Slice[], extra: Map<string, number>, labelOf: (key: string) => string) => {
+    const result = items.map((item) => ({ ...item, value: item.value + (extra.get(item.key) ?? 0) }));
+    for (const [key, value] of extra) if (!items.some((item) => item.key === key)) result.push({ key, label: labelOf(key), value });
+    return result.sort((a, b) => b.value - a.value);
+  };
+
+  // performance combinée (même calcul que /api/ai/performance)
+  let performance: Analysis["performance"] | null = null;
+  try {
+    performance = (await runAnalysis(await loadData())).performance;
+  } catch (error) {
+    logger.warn("Tableau de bord IA : performance combinée indisponible", error instanceof Error ? error.message : error);
+  }
+
+  const scored = performance ? performance.filter((project) => project.score !== null) : [];
+  const average = scored.length ? scored.reduce((sum, project) => sum + (project.score as number), 0) / scored.length : null;
+
+  return {
+    ...base,
+    totals: {
+      ...base.totals,
+      anomalies: base.totals.anomalies + added.length,
+      criticalAnomalies: base.totals.criticalAnomalies + bySeverity.HIGH,
+      highRiskBeneficiaries: base.totals.highRiskBeneficiaries,
+      avgPerformance: scored.length ? round(average as number) : base.totals.avgPerformance,
+    },
+    anomaliesBySeverity: base.anomaliesBySeverity.map((item) => ({ ...item, value: item.value + (bySeverity[item.key] ?? 0) })),
+    anomaliesByScope: bumpAll(base.anomaliesByScope, byScope, (key) => key),
+    anomaliesByType: bumpAll(base.anomaliesByType, byType, (key) => ANOMALY_LABELS[key] ?? key).slice(0, 12),
+    anomalyTrend: {
+      ...base.anomalyTrend,
+      series: base.anomalyTrend.series.map((serie) =>
+        serie.key === "open" ? { ...serie, values: serie.values.map((v, i, all) => (i === all.length - 1 ? v + added.length : v)) } : serie,
+      ),
+    },
+    ...(scored.length
+      ? {
+          performanceHistogram: histogram(scored.map((project) => project.score as number)),
+          performanceByProject: [...scored]
+            .sort((a, b) => (a.score as number) - (b.score as number))
+            .slice(0, 20)
+            .map((project) => ({ key: String(project.projectId), label: project.code || project.name, value: project.score as number, level: project.level })),
+        }
+      : {}),
+    integration: integrationBlock(snapshot),
+  };
+}
+
 /* ---------------------------- point d'entrée ---------------------------- */
 
 export async function getDashboard(): Promise<Dashboard> {
@@ -336,9 +477,15 @@ export async function getDashboard(): Promise<Dashboard> {
 
   const extras = await extrasPromise;
 
-  return {
+  let result: Dashboard = {
     ...withHouseholds(base, extras.suspected.length),
     ...(extras.vulnerability ? { vulnerability: extras.vulnerability } : {}),
     ...(extras.models?.length ? { models: extras.models } : {}),
   };
+
+  // Pont stagiaires ↔ projets ↔ S&E ↔ évaluation finale (sans lui, le tableau de bord reste celui d'avant)
+  const snapshot = await getIntegrationSafe();
+  if (snapshot) result = await withIntegration(result, snapshot);
+
+  return result;
 }

@@ -108,7 +108,7 @@ export function useEvaluationResults(enabled: boolean) {
         const obj = await fetchAllObjectives(list);
         if (!cancelled) setObjectives(obj);
       })();
-      const internshipsTask = fetchInternshipsMonitoring().then((list) => {
+      const internshipsTask = fetchInternshipsMonitoring(true).then((list) => {
         if (!cancelled) setInternships(list);
       });
 

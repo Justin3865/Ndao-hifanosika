@@ -33,7 +33,10 @@ export function InternshipCard({ i }: { i: InternshipMonitoring }) {
             {i.project ? ` · ${i.project.code}` : ""}
           </p>
         </div>
-        <Pill className="bg-slate-100 text-slate-700">{INTERNSHIP_STATUS_LABEL[i.status]}</Pill>
+        <div className="flex flex-col items-end gap-1">
+          <Pill className="bg-slate-100 text-slate-700">{INTERNSHIP_STATUS_LABEL[i.status]}</Pill>
+          {(i.stagesCount ?? 1) > 1 && <span className="text-[10px] font-semibold text-blue-600">{i.stagesCount} stages</span>}
+        </div>
       </div>
 
       <div className="mt-4">

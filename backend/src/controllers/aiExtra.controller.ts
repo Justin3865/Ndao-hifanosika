@@ -1,3 +1,4 @@
+import { getIntegrationSafe } from "../services/integration.service";
 import { Request, Response } from "express";
 import { logger } from "../config/logger";
 import { sendError } from "../middlewares/error.middleware";
@@ -138,6 +139,100 @@ export const ANOMALY_CATALOG: CatalogEntry[] = [
     why: "Un projet actif sans activité ne peut pas être suivi (avancement, budget) : il est probablement incomplet.",
     action: "Planifier les activités ou repasser le projet en brouillon.",
   },
+  {
+    type: "PROJECT_SE_DELAY",
+    label: "Avancement en retard (S&E)",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "MEDIUM", condition: "écart réel − prévu entre −20 et −30 points" },
+      { severity: "HIGH", condition: "écart de −30 points ou plus" },
+    ],
+    rule: "Projet ACTIF dont l'avancement réel (activités, jalons, indicateurs) est inférieur de 20 points ou plus à l'avancement prévu au Suivi & Évaluation.",
+    why: "Le projet prend du retard sur son calendrier : les résultats attendus et l'évaluation finale seront dégradés.",
+    action: "Replanifier, renforcer l'équipe ou mettre à jour l'avancement réel des activités.",
+  },
+  {
+    type: "PROJECT_FINAL_LOW",
+    label: "Évaluation finale faible",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "MEDIUM", condition: "note < 12/20 (terminé) ou < 8/20 (en cours)" },
+      { severity: "HIGH", condition: "projet terminé avec une note < 10/20" },
+    ],
+    rule: "Note automatique /20 du projet (réalisation, satisfaction, évaluations, stagiaires, budget, couverture) sous le seuil, avec une fiabilité d'au moins 40 %.",
+    why: "La qualité globale du projet est jugée insuffisante par les données de la plateforme.",
+    action: "Ouvrir le détail de l'évaluation finale et traiter les composantes les plus faibles.",
+  },
+  {
+    type: "PROJECT_FEEDBACK_MISSING",
+    label: "Avis de satisfaction manquants",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "LOW", condition: "projet terminé sans questionnaire" },
+    ],
+    rule: "Projet terminé avec des partenaires ou bénéficiaires rattachés mais aucun questionnaire de satisfaction enregistré.",
+    why: "Sans avis, 35 % de la note finale (partenaires + bénéficiaires) est ignorée : la fiabilité baisse.",
+    action: "Recueillir les questionnaires depuis la fiche d'évaluation finale du projet.",
+  },
+  {
+    type: "PROJECT_INTERNS_WEAK",
+    label: "Stagiaires en difficulté sur le projet",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "MEDIUM", condition: "moyenne des stagiaires du projet < 10/20" },
+    ],
+    rule: "Au moins un stagiaire noté est rattaché au projet et leur moyenne /20 est inférieure à 10.",
+    why: "Les résultats des stages comptent pour 10 % de la note du projet.",
+    action: "Renforcer l'encadrement des stagiaires rattachés au projet.",
+  },
+  {
+    type: "INTERN_LOW_SCORE",
+    label: "Note de stage faible",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "MEDIUM", condition: "note de 8 à 10/20" },
+      { severity: "HIGH", condition: "note < 8/20" },
+    ],
+    rule: "Stage en cours ou terminé, avec des tâches ou des évaluations, dont la note /20 est sous 10.",
+    why: "Le stagiaire n'atteint pas le niveau attendu ; sa note abaisse aussi celle des projets rattachés.",
+    action: "Point individuel avec le tuteur et plan de rattrapage.",
+  },
+  {
+    type: "INTERN_TASKS_LATE",
+    label: "Tâches de stage en retard",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "MEDIUM", condition: "1 ou 2 tâches en retard" },
+      { severity: "HIGH", condition: "3 tâches en retard ou plus" },
+    ],
+    rule: "Stage en cours avec des tâches non terminées dont l'échéance est dépassée.",
+    why: "Le retard réduit l'avancement du stage et la note finale du stagiaire.",
+    action: "Réajuster les échéances ou débloquer les tâches avec le tuteur.",
+  },
+  {
+    type: "INTERN_PRESENCE_LOW",
+    label: "Présence terrain insuffisante",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "MEDIUM", condition: "présence de 50 à 70 %" },
+      { severity: "HIGH", condition: "présence < 50 %" },
+    ],
+    rule: "Stage en cours, au moins 5 jours ouvrés écoulés, peu de check-in GPS par rapport aux jours ouvrés.",
+    why: "La présence compte dans la note du stage.",
+    action: "Vérifier avec le stagiaire (missions GPS non lancées ?) et le tuteur.",
+  },
+  {
+    type: "INTERN_EVAL_MISSING",
+    label: "Évaluation du tuteur manquante",
+    origin: "ANALYSE",
+    levels: [
+      { severity: "LOW", condition: "stage en cours, ≥ 50 % du temps écoulé" },
+      { severity: "MEDIUM", condition: "stage terminé" },
+    ],
+    rule: "Aucune évaluation enregistrée pour un stage terminé ou déjà à moitié écoulé.",
+    why: "L'évaluation du tuteur pèse 30 % de la note de stage.",
+    action: "Le tuteur saisit son évaluation depuis « Ajouter avancement stage ».",
+  },
 ];
 
 const handler =
@@ -211,7 +306,13 @@ function extraAnomalies(data: Awaited<ReturnType<typeof insightInternals.loadDat
 
 async function anomalyCatalog() {
   const data = await insightInternals.loadData();
-  const detected = [...insightInternals.computeAnomalies(data), ...extraAnomalies(data)] as Array<Item & { type: string }>;
+  // + anomalies du pont stagiaires ↔ projets ↔ S&E ↔ évaluation finale
+  const bridge = (await getIntegrationSafe())?.anomalies ?? [];
+  const detected = [
+    ...insightInternals.computeAnomalies(data),
+    ...extraAnomalies(data),
+    ...bridge.map(({ ownerIds: _ownerIds, ...row }) => row),
+  ] as Array<Item & { type: string }>;
   const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
   const cases = ANOMALY_CATALOG.map((entry) => {
