@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { Fragment, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout";
 import {
@@ -22,6 +22,8 @@ import { getStoredRole } from "@/lib/access";
 import { IDENTITY_KEYS, IdentityFields, identityName, identityProblem } from "@/components/crud/IdentityFields";
 import api from "@/lib/axios";
 import { ageLabel, nextDay, statusFromDates } from "@/lib/madagascar";
+import { cinCodeForPlace, emailProblem, phoneProblem } from "@/lib/validation";
+import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 import { NEW_PERSON_KEYS, NewPersonFields, newPersonFilled, newPersonName } from "@/components/crud/NewPersonFields";
 import { PartnersField, parseIds } from "@/components/crud/PartnersField";
 import { ParticipantsField } from "@/components/crud/ParticipantsField";
@@ -30,6 +32,7 @@ import { MatriculeField } from "@/components/crud/MatriculeField";
 import { AddTutorInline } from "@/components/crud/AddTutorInline";
 import { setLastActivity } from "@/lib/lastActivity";
 import { ZoneHierarchyField } from "@/components/zones/ZoneHierarchyField";
+import { BENEFICIARY_ZONE_KEYS, BeneficiaryLocationField } from "@/components/beneficiaries/BeneficiaryLocationField";
 
 type Values = Record<string, string | boolean>;
 
@@ -57,6 +60,12 @@ function initialEntries(field: FieldDef): Array<[string, string | boolean]> {
   if (field.type === "geo") {
     const k = geoKeys(field);
     return [[k.lat, ""], [k.lng, ""], [k.alt, ""]];
+  }
+
+  // Localisation du bénéficiaire : domicile (GPS) + province > fokontany + adresse exacte
+  if (field.type === "beneficiaryzone") {
+    const k = geoKeys(field);
+    return [[k.lat, ""], [k.lng, ""], [k.alt, ""], ...BENEFICIARY_ZONE_KEYS.map((key): [string, string] => [key, ""])];
   }
 
   if (field.otherText) {
@@ -94,6 +103,11 @@ function loadedEntries(field: FieldDef, item: Record<string, unknown>): Array<[s
   if (field.type === "geo") {
     const k = geoKeys(field);
     return [k.lat, k.lng, k.alt].map((key) => [key, item?.[key] === null || item?.[key] === undefined ? "" : String(item[key])]);
+  }
+
+  if (field.type === "beneficiaryzone") {
+    const k = geoKeys(field);
+    return [k.lat, k.lng, k.alt, ...BENEFICIARY_ZONE_KEYS].map((key) => [key, item?.[key] === null || item?.[key] === undefined ? "" : String(item[key])]);
   }
 
   // Select avec « Autre… » : tuteur saisi librement (aucun compte) -> option « Autre » + texte repris
@@ -205,6 +219,15 @@ export function ResourceFormPage({
       const next: Values = { ...cur, [name]: value };
 
       for (const field of fields) {
+        // Case décochée (ex. duplicata) : le champ qui en dépend est vidé
+        if (field.showIf && name === field.showIf && !value) next[field.name] = "";
+
+        // Lieu de délivrance du CIN connu et CIN encore vide : on propose le code du district
+        if (field.cinCodeFor && name === field.name) {
+          const code = cinCodeForPlace(String(value));
+          if (code && String(next[field.cinCodeFor] ?? "") === "") next[field.cinCodeFor] = code;
+        }
+
         // Date de fin : jamais avant (ni le même jour que) la date de début
         if (field.after && name === field.after) {
           const start = String(value);
@@ -251,6 +274,35 @@ export function ResourceFormPage({
           );
           return;
         }
+      }
+    }
+
+    for (const field of fields) {
+      const raw = String(values[field.name] ?? "");
+
+      if (field.type === "email") {
+        const problem = emailProblem(raw, field.emailDomains);
+        if (problem) {
+          setError(problem);
+          return;
+        }
+      }
+
+      if (field.phone) {
+        const problem = phoneProblem(raw);
+        if (problem) {
+          setError(problem);
+          return;
+        }
+      }
+    }
+
+    {
+      const problem = config.validate?.(values) ?? null;
+
+      if (problem) {
+        setError(problem);
+        return;
       }
     }
 
@@ -342,13 +394,23 @@ export function ResourceFormPage({
         continue;
       }
 
-      if (field.type === "geo") {
+      if (field.type === "geo" || field.type === "beneficiaryzone") {
         const k = geoKeys(field);
 
         [k.lat, k.lng, k.alt].forEach((key) => {
           const text = String(values[key] ?? "").trim();
           if (text !== "" && Number.isFinite(Number(text))) payload[key] = Number(text);
         });
+
+        // Province > fokontany + adresse exacte : toujours envoyés (vide = effacer)
+        if (field.type === "beneficiaryzone") {
+          BENEFICIARY_ZONE_KEYS.forEach((key) => {
+            payload[key] = String(values[key] ?? "").trim();
+          });
+
+          // « Localité » (liste, certificats) suit le fokontany ; inchangée si aucun fokontany n'est renseigné
+          if (payload.adminFokontany) payload.locality = payload.adminFokontany;
+        }
 
         continue;
       }
@@ -359,6 +421,12 @@ export function ResourceFormPage({
         // « Autre » : plus de tuteur de la liste (null efface l'ancien), le texte libre est envoyé
         if (other) payload[field.name] = null;
         payload[field.otherText.name] = other ? String(values[field.otherText.name] ?? "").trim() : "";
+      }
+
+      // Cases multiples : liste de codes (vide = aucun, envoyée pour pouvoir effacer)
+      if (field.type === "multicheck") {
+        payload[field.name] = String(values[field.name] ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+        continue;
       }
 
       const value = toPayloadValue(field, values[field.name]);
@@ -438,6 +506,17 @@ export function ResourceFormPage({
       );
     }
 
+    if (field.type === "beneficiaryzone") {
+      return (
+        <BeneficiaryLocationField
+          label={field.label}
+          values={values}
+          setMany={(patch) => setValues((cur) => ({ ...cur, ...patch }))}
+          geo={geoKeys(field)}
+        />
+      );
+    }
+
     if (field.type === "geo") {
       const k = geoKeys(field);
 
@@ -456,6 +535,38 @@ export function ResourceFormPage({
             }
           />
         </div>
+      );
+    }
+
+    if (field.type === "multicheck") {
+      const picked = String(value ?? "").split(",").filter(Boolean);
+
+      const toggle = (code: string, on: boolean) =>
+        setValue(
+          field.name,
+          (field.options ?? []).map((o) => o.value).filter((c) => (c === code ? on : picked.includes(c))).join(","),
+        );
+
+      return (
+        <fieldset className="space-y-2 rounded-xl border border-gray-200 p-3">
+          <legend className="px-1 text-sm font-medium text-gray-700">
+            {field.label}
+            {field.required ? " *" : ""}
+          </legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(field.options ?? []).map((option) => (
+              <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={picked.includes(option.value)}
+                  onChange={(e) => toggle(option.value, e.target.checked)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       );
     }
 
@@ -494,7 +605,13 @@ export function ResourceFormPage({
     }
 
     if (field.ageFrom) {
-      const label = ageLabel(String(values[field.ageFrom] ?? ""));
+      // Date de naissance absente : on garde l'âge déjà enregistré (fiches anciennes), sans le modifier
+      const stored = Number(values[field.name]);
+      const label =
+        ageLabel(String(values[field.ageFrom] ?? "")) ||
+        (!String(values[field.ageFrom] ?? "") && String(values[field.name] ?? "") !== "" && Number.isFinite(stored)
+          ? `${stored} ${stored > 1 ? "ans" : "an"}`
+          : "");
 
       return (
         <label className="block space-y-1 text-sm font-medium text-gray-700">
@@ -565,6 +682,17 @@ export function ResourceFormPage({
             </option>
           ))}
         </select>
+      );
+    } else if (field.phone) {
+      control = (
+        <input
+          type="tel"
+          {...phoneInputProps}
+          placeholder="034 00 000 00"
+          className={inputClass}
+          value={String(value)}
+          onChange={(e) => setValue(field.name, sanitizePhone(e.target.value))}
+        />
       );
     } else {
       control = (
@@ -656,16 +784,26 @@ export function ResourceFormPage({
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
-              {fields.map((field) => (
-                <div
-                  key={field.name}
-                  className={
-                    field.full || field.type === "textarea" || field.type === "geo" || field.type === "partners" || field.type === "participants" || field.type === "projects" || field.type === "zonehierarchy" ? "md:col-span-2" : ""
-                  }
-                >
-                  {renderField(field)}
-                </div>
-              ))}
+              {fields.map((field) => {
+                if (field.showIf && !values[field.showIf]) return null;
+
+                return (
+                  <Fragment key={field.name}>
+                    {field.section && (
+                      <h2 className="border-b border-gray-200 pb-1 pt-2 text-sm font-semibold text-gray-800 md:col-span-2">
+                        {field.section}
+                      </h2>
+                    )}
+                    <div
+                      className={
+                        field.full || field.type === "textarea" || field.type === "geo" || field.type === "partners" || field.type === "participants" || field.type === "projects" || field.type === "zonehierarchy" || field.type === "beneficiaryzone" || field.type === "multicheck" ? "md:col-span-2" : ""
+                      }
+                    >
+                      {renderField(field)}
+                    </div>
+                  </Fragment>
+                );
+              })}
             </div>
 
             <div className="flex justify-end gap-3">

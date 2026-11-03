@@ -64,7 +64,7 @@ function bboxPolygon(bbox: number[]) {
  * secondes à répondre la première fois (OpenStreetMap) ; il garde alors le résultat prêt pour l'essai suivant.
  * Une réponse 4xx (zone introuvable...) n'est pas retentée.
  */
-async function fetchGeo<T>(url: string, params: Record<string, string>, alive: () => boolean): Promise<T> {
+export async function fetchGeo<T>(url: string, params: Record<string, string>, alive: () => boolean): Promise<T> {
   let last: unknown = null;
 
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -91,7 +91,39 @@ async function fetchGeo<T>(url: string, params: Record<string, string>, alive: (
  * - chaque niveau a sa couleur sur la carte
  * - nom, type, adresse, région, coordonnées, rayon d'intervention et contour se remplissent seuls
  */
-export function ZoneHierarchyField({ values, setMany }: { values: Values; setMany: (patch: Values) => void }) {
+/** Résultat de la sélection en mode « bénéficiaire » (aucun rayon, aucun calcul de zone d'intervention) */
+export interface BeneficiaryZoneInfo {
+  province: string;
+  region: string;
+  district: string;
+  commune: string;
+  fokontany: string;
+  /** Sélection allégée (sans géométrie), à enregistrer pour la restaurer à la modification */
+  units: string;
+}
+
+export function ZoneHierarchyField({
+  values,
+  setMany,
+  variant = "zone",
+  onSelection,
+  pin = null,
+  onMapClick,
+}: {
+  values: Values;
+  setMany: (patch: Values) => void;
+  /** "zone" (défaut) : formulaire des zones d'intervention, inchangé. "beneficiary" : un seul choix par niveau, sans rayon. */
+  variant?: "zone" | "beneficiary";
+  /** variant "beneficiary" : reçoit la sélection (à la place du remplissage des champs de la zone) */
+  onSelection?: (info: BeneficiaryZoneInfo) => void;
+  /** variant "beneficiary" : domicile exact à repérer sur la carte */
+  pin?: { lat: number; lng: number } | null;
+  /** variant "beneficiary" : clic sur la carte = nouvelle position du domicile */
+  onMapClick?: (latitude: number, longitude: number) => void;
+}) {
+  const isBen = variant === "beneficiary";
+  const onSelectionRef = useRef(onSelection);
+  onSelectionRef.current = onSelection;
   const [units, setUnits] = useState<Record<string, Unit>>({});
   const [selected, setSelected] = useState<string[]>([]);
   const [shapes, setShapes] = useState<Record<string, Shape>>({});
@@ -227,11 +259,12 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
 
   // Fiche existante : on reconstruit la sélection enregistrée (sans rien écraser)
   useEffect(() => {
-    if (restored.current || touched.current || !values.boundary) return;
+    const source = isBen ? values.zoneUnits : values.boundary;
+    if (restored.current || touched.current || !source) return;
     restored.current = true;
 
     try {
-      const geo = JSON.parse(String(values.boundary));
+      const geo = JSON.parse(String(source));
       if (geo?.type !== "FeatureCollection") return;
 
       const restoredUnits: Record<string, Unit> = {};
@@ -256,13 +289,17 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
       /* contour ancien (simple polygone) : rien à reconstruire */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.boundary]);
+  }, [isBen ? values.zoneUnits : values.boundary]);
 
   const toggle = (unit: Unit) => {
     touched.current = true;
 
-    if (selected.includes(unit.id)) {
-      const remove = new Set<string>([unit.id]);
+    // Mode bénéficiaire : un seul élément par niveau (choisir un autre remplace l'ancien et ses sous-niveaux)
+    const replaced = !isBen || selected.includes(unit.id) ? [] : selected.filter((id) => unitsRef.current[id]?.level === unit.level);
+
+    if (selected.includes(unit.id) || replaced.length) {
+      const roots = replaced.length ? replaced : [unit.id];
+      const remove = new Set<string>(roots);
       let grew = true;
 
       while (grew) {
@@ -286,7 +323,7 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
       setUnits((cur) => {
         const next = { ...cur };
         remove.forEach((id) => {
-          if (id !== unit.id) delete next[id];
+          if (!roots.includes(id)) delete next[id];
         });
         return next;
       });
@@ -303,10 +340,12 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
         });
         return next;
       });
-      return;
+
+      if (!replaced.length) return;
     }
 
-    const added = [...selected, unit.id];
+    const base = replaced.length ? selectedRef.current : selected;
+    const added = [...base, unit.id];
     selectedRef.current = added; // à jour immédiatement : les chargements ci-dessous vérifient que l'élément est toujours coché
     setSelected(added);
     void loadChildren(unit);
@@ -357,6 +396,36 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
     if (!touched.current) return;
 
     const timer = window.setTimeout(() => {
+      if (isBen) {
+        const names: Record<Level, string> = { PROVINCE: "", REGION: "", DISTRICT: "", COMMUNE: "", FOKONTANY: "" };
+
+        if (deepest) {
+          const first = deepest.units[0];
+          first.path.forEach((name, i) => {
+            if (ORDER[i]) names[ORDER[i]] = name;
+          });
+          names[first.level] = first.name;
+        }
+
+        const features = selectedUnits
+          .filter((u) => shapes[u.id])
+          .map((u) => ({
+            type: "Feature",
+            properties: { id: u.id, name: u.name, level: u.level, parentId: u.parentId, path: u.path, bbox: shapes[u.id].bbox, center: shapes[u.id].center },
+            geometry: null, // la géométrie n'est pas enregistrée dans la fiche : elle est redemandée à l'affichage
+          }));
+
+        onSelectionRef.current?.({
+          province: names.PROVINCE,
+          region: names.REGION,
+          district: names.DISTRICT,
+          commune: names.COMMUNE,
+          fokontany: names.FOKONTANY,
+          units: features.length ? JSON.stringify({ type: "FeatureCollection", features }) : "",
+        });
+        return;
+      }
+
       if (!deepest) {
         setManyRef.current({ name: "", address: "", region: "", latitude: "", longitude: "", radiusKm: "", boundary: "" });
         return;
@@ -426,12 +495,12 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
         name: u.name,
         latitude: s.center.lat,
         longitude: s.center.lng,
-        radiusKm: isDeepest ? Math.round(radiusOf(s.center.lat, s.center.lng, s.bbox) * 10) / 10 : null,
+        radiusKm: isDeepest && !isBen ? Math.round(radiusOf(s.center.lat, s.center.lng, s.bbox) * 10) / 10 : null,
         boundary: s.geometry ?? bboxPolygon(s.bbox),
         level: u.level,
         color: LEVEL_COLORS[u.level],
-        circle: isDeepest,
-        marker: isDeepest,
+        circle: isDeepest && !isBen,
+        marker: isDeepest && !isBen,
       };
     });
 
@@ -442,7 +511,9 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
   return (
     <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-gray-800">Zone : province, région, district, commune, fokontany</p>
+        <p className="text-sm font-semibold text-gray-800">
+          {isBen ? "Localisation : province, région, district, commune, fokontany" : "Zone : province, région, district, commune, fokontany"}
+        </p>
         {loading && (
           <span className="inline-flex items-center gap-1.5 text-xs text-blue-700">
             <Loader2 className="h-4 w-4 animate-spin" /> Chargement...
@@ -451,8 +522,9 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
       </div>
 
       <p className="text-xs text-gray-500">
-        Cochez une ou plusieurs zones : la colonne suivante affiche ce qu&apos;elles contiennent. Chaque niveau a sa couleur sur la carte. Le nom, l&apos;adresse, le
-        rayon d&apos;intervention et les coordonnées se remplissent à partir du niveau le plus précis choisi.
+        {isBen
+          ? "Cochez un élément par niveau : la colonne suivante affiche ce qu'il contient. Chaque niveau a sa couleur sur la carte. Cliquez ensuite sur la carte pour placer le domicile exact."
+          : "Cochez une ou plusieurs zones : la colonne suivante affiche ce qu'elles contiennent. Chaque niveau a sa couleur sur la carte. Le nom, l'adresse, le rayon d'intervention et les coordonnées se remplissent à partir du niveau le plus précis choisi."}
       </p>
 
       {problemList.length > 0 && (
@@ -554,14 +626,14 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
       {deepest && (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
           {selectedUnits.length} élément(s) affiché(s) · niveau le plus précis : {LABEL[deepest.level]} ({deepest.units.map((u) => u.name).join(", ")})
-          {values.radiusKm ? ` · rayon ≈ ${values.radiusKm} km` : ""}
+          {!isBen && values.radiusKm ? ` · rayon ≈ ${values.radiusKm} km` : ""}
           {hasPartial ? " · contour détaillé en cours de chargement (emprise affichée en attendant)" : ""}
         </p>
       )}
 
       {selectedUnits.some((u) => shapes[u.id]) && (
         <details className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700">
-          <summary className="cursor-pointer font-medium">Latitude, longitude et rayon de chaque niveau</summary>
+          <summary className="cursor-pointer font-medium">{isBen ? "Latitude et longitude de chaque niveau" : "Latitude, longitude et rayon de chaque niveau"}</summary>
           <ul className="mt-2 space-y-1">
             {selectedUnits
               .filter((u) => shapes[u.id])
@@ -575,7 +647,8 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
                     <span className="font-medium">{u.name}</span>
                     <span className="text-gray-500">({LABEL[u.level]})</span>
                     <span>
-                      {s.center.lat.toFixed(4)}, {s.center.lng.toFixed(4)} · rayon ≈ {km} km
+                      {s.center.lat.toFixed(4)}, {s.center.lng.toFixed(4)}
+                      {isBen ? "" : ` · rayon ≈ ${km} km`}
                     </span>
                   </li>
                 );
@@ -584,8 +657,8 @@ export function ZoneHierarchyField({ values, setMany }: { values: Values; setMan
         </details>
       )}
 
-      {mapZones.length > 0 ? (
-        <ZoneMap zones={mapZones} height={340} legend />
+      {mapZones.length > 0 || isBen ? (
+        <ZoneMap zones={mapZones} height={isBen ? 380 : 340} legend pin={isBen ? pin : null} onMapClick={isBen ? onMapClick : undefined} />
       ) : (
         <div className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-xs text-gray-500">
           {loading && selected.length > 0 ? "Chargement de la carte..." : "La carte s'affichera ici dès qu'une zone sera cochée."}

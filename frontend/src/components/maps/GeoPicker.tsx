@@ -20,10 +20,13 @@ export function GeoPicker({
   value,
   onChange,
   withAltitude = true,
+  showMap = true,
 }: {
   value: GeoValue;
   onChange: (value: GeoValue) => void;
   withAltitude?: boolean;
+  /** false : pas de carte intégrée (la carte est fournie ailleurs, ex. carte des zones du bénéficiaire) */
+  showMap?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -129,7 +132,7 @@ export function GeoPicker({
 
   return (
     <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-      {MAPS_ENABLED && (
+      {MAPS_ENABLED && showMap && (
         <GoogleMap markers={markers} height={260} onMapClick={(a, b) => void setPoint(a, b)} refit />
       )}
 
@@ -159,7 +162,7 @@ export function GeoPicker({
             <Mountain className="h-4 w-4" /> Calculer l&apos;altitude
           </button>
         )}
-        {MAPS_ENABLED && <span className="self-center text-xs text-gray-500">Cliquez sur la carte pour placer le point.</span>}
+        {MAPS_ENABLED && showMap && <span className="self-center text-xs text-gray-500">Cliquez sur la carte pour placer le point.</span>}
       </div>
     </div>
   );

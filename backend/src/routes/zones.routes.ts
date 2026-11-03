@@ -1025,7 +1025,9 @@ function provinceShape(name: string, fast = false): Promise<ShapeInfo> {
   });
 }
 
-const adminRoles = authorizeRoles("ADMIN", "DIRECTION");
+// Lecture seule des divisions administratives (province > fokontany) : aussi utile aux rôles
+// qui saisissent les bénéficiaires (formulaire bénéficiaire). La création de zones reste ADMIN / DIRECTION.
+const adminRoles = authorizeRoles("ADMIN", "DIRECTION", "COORDINATOR", "DAF");
 
 router.get("/admin/provinces", adminRoles, (_req: Request, res: Response) => {
   warmUp();

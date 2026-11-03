@@ -292,6 +292,18 @@ model Beneficiary {
   zoneId   Int?
 
   locality       String?
+
+  // Localisation administrative du ménage (province > région > district > commune > fokontany)
+  // + adresse exacte saisie à la main (lot, hameau / « zanabohitra »).
+  // zoneUnits = sélection allégée (sans géométrie) pour la restaurer sur la carte.
+  adminProvince  String?
+  adminRegion    String?
+  adminDistrict  String?
+  adminCommune   String?
+  adminFokontany String?
+  addressDetail  String?
+  zoneUnits      String? @db.Text
+
   homeLatitude   Float?
   homeLongitude  Float?
   homeAltitude   Float?
@@ -299,6 +311,8 @@ model Beneficiary {
   monthlyIncome  Float?
   childrenUnder5 Int?
   hasDisability  Boolean @default(false)
+  // Types de handicap du ménage (codes séparés par des virgules : MOTOR,VISUAL,…)
+  disabilityTypes String?
 
   // Identité complète (naissance + CIN) : colonnes créées par la migration 20261030010000_identite_beneficiaires
   birthDate      DateTime?

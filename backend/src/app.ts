@@ -43,6 +43,7 @@ import integrationRoutes from "./routes/integration.routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
 import { phoneLimit } from "./middlewares/phoneLimit.middleware";
+import { emailLimit } from "./middlewares/emailLimit.middleware";
 
 const app = express();
 
@@ -60,6 +61,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Tous les champs téléphone : 10 chiffres maximum (validation globale)
 app.use(phoneLimit);
+
+// Tous les champs e-mail : adresse valide (+ domaine imposé pour les bénéficiaires)
+app.use(emailLimit);
 
 app.use(morgan("dev"));
 

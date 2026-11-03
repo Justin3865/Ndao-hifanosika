@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/axios";
 import { ageLabel, checkCin, codeForPlace } from "@/lib/madagascar";
 import { sanitizePhone, phoneInputProps } from "@/lib/phone";
+import { phoneProblem } from "@/lib/validation";
 
 /**
  * Identité d'une personne liée à un formulaire (ex. le stagiaire d'un stage) :
@@ -44,6 +45,9 @@ const LABELS: Record<Exclude<IdentityKey, "cinDuplicata" | "cinDuplicataAt">, st
 export function identityProblem(values: Values): string | null {
   const v = (k: IdentityKey) => String(values[identityName(k)] ?? "").trim();
   const today = new Date().toISOString().slice(0, 10);
+
+  const phone = phoneProblem(v("phone"));
+  if (phone) return phone;
 
   if (v("birthDate") && v("birthDate") > today) return "La date de naissance ne peut pas être dans le futur.";
 
@@ -226,18 +230,12 @@ export function IdentityFields({
 
       <div className="grid gap-4 md:grid-cols-3">
         {text("phone", "tel", "Ex. 034 00 000 00", { ...phoneInputProps })}
-        {text("birthDate", "date", "", { max: today })}
-        {text("birthPlace", "text", "Ex. Fianarantsoa")}
-        {text("cinNumber", "text", "12 chiffres", {
-          inputMode: "numeric",
-          maxLength: 12,
-          "aria-invalid": !cinLocal.ok || Boolean(cinServer?.taken),
-        })}
-        {text("cinIssuedAt", "date", "", { max: today, min: birthValue || undefined })}
-        {text("cinIssuedPlace", "text", "Ex. Antananarivo")}
       </div>
 
+      {/* Naissance : date, âge (calculé) et lieu côte à côte */}
       <div className="grid gap-4 md:grid-cols-3">
+        {text("birthDate", "date", "", { max: today })}
+
         <label className="block space-y-1 text-sm font-medium text-gray-700">
           <span>Âge (calculé)</span>
           <input
@@ -250,24 +248,37 @@ export function IdentityFields({
           />
         </label>
 
-        <div className="space-y-1 text-xs md:col-span-2">
-          {cinValue.length > 0 && cinLocal.province && (
-            <p className="text-gray-600">
-              Province : {cinLocal.province}
-              {cinLocal.district ? ` · District : ${cinLocal.district}` : cinValue.length >= 3 ? " · code district non listé" : ""}
-            </p>
-          )}
-          {!cinLocal.ok && <p className="font-semibold text-red-600">{cinLocal.message}</p>}
-          {cinValue.length > 0 && cinValue.length < 12 && cinLocal.ok && (
-            <p className="text-gray-500">{12 - cinValue.length} chiffre(s) restant(s).</p>
-          )}
-          {cinServer?.taken && (
-            <p className="font-semibold text-red-600">
-              Ce CIN est déjà enregistré{cinServer.takenBy ? ` pour ${cinServer.takenBy}` : ""} : saisie impossible.
-            </p>
-          )}
-          {cinServer && !cinServer.taken && cinLocal.ok && <p className="text-green-700">CIN disponible.</p>}
-        </div>
+        {text("birthPlace", "text", "Ex. Fianarantsoa")}
+      </div>
+
+      {/* CIN : numéro, date et lieu de délivrance côte à côte */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {text("cinNumber", "text", "12 chiffres", {
+          inputMode: "numeric",
+          maxLength: 12,
+          "aria-invalid": !cinLocal.ok || Boolean(cinServer?.taken),
+        })}
+        {text("cinIssuedAt", "date", "", { max: today, min: birthValue || undefined })}
+        {text("cinIssuedPlace", "text", "Ex. Antananarivo")}
+      </div>
+
+      <div className="space-y-1 text-xs">
+        {cinValue.length > 0 && cinLocal.province && (
+          <p className="text-gray-600">
+            Province : {cinLocal.province}
+            {cinLocal.district ? ` · District : ${cinLocal.district}` : cinValue.length >= 3 ? " · code district non listé" : ""}
+          </p>
+        )}
+        {!cinLocal.ok && <p className="font-semibold text-red-600">{cinLocal.message}</p>}
+        {cinValue.length > 0 && cinValue.length < 12 && cinLocal.ok && (
+          <p className="text-gray-500">{12 - cinValue.length} chiffre(s) restant(s).</p>
+        )}
+        {cinServer?.taken && (
+          <p className="font-semibold text-red-600">
+            Ce CIN est déjà enregistré{cinServer.takenBy ? ` pour ${cinServer.takenBy}` : ""} : saisie impossible.
+          </p>
+        )}
+        {cinServer && !cinServer.taken && cinLocal.ok && <p className="text-green-700">CIN disponible.</p>}
       </div>
 
       <label className="flex items-center gap-2 text-sm font-medium text-gray-700">

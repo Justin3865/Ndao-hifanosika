@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { CinHint } from "@/components/crud/CinHint";
 import { cinPrefixError, computeAge } from "@/lib/cin";
+import { cinCodeForPlace, emailProblem, phoneProblem } from "@/lib/validation";
 import {
   ASSIGNABLE_ROLES,
   ROLE_LABELS,
@@ -75,6 +76,13 @@ export function UserEditorForm({
 
     if (!form.lastName || !form.email) {
       setLocalError("Le nom et l'e-mail sont obligatoires (le prénom est facultatif).");
+      return;
+    }
+
+    const contact = emailProblem(form.email) ?? phoneProblem(form.phone);
+
+    if (contact) {
+      setLocalError(contact);
       return;
     }
 
@@ -181,45 +189,6 @@ export function UserEditorForm({
           <input className={inputClass} type="tel" {...phoneInputProps} placeholder="034 00 000 00" value={form.phone} onChange={(e) => set("phone", sanitizePhone(e.target.value))} />
         </label>
 
-        <label className="space-y-1 text-sm font-medium text-gray-700">
-          Rôle {isEdit ? "" : "*"}
-          {isAdminAccount ? (
-            <input className={inputClass} value={ROLE_LABELS.ADMIN} disabled />
-          ) : (
-            <select className={inputClass} value={form.role} onChange={(e) => set("role", e.target.value)}>
-              <option value="">Sélectionner un rôle</option>
-              {ASSIGNABLE_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
-                </option>
-              ))}
-            </select>
-          )}
-        </label>
-
-        <label className="space-y-1 text-sm font-medium text-gray-700">
-          Département
-          <select className={inputClass} value={form.departmentId} onChange={(e) => set("departmentId", e.target.value)}>
-            <option value="">Aucun</option>
-            {departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="space-y-1 text-sm font-medium text-gray-700">
-          Statut
-          <select className={inputClass} value={form.status} onChange={(e) => set("status", e.target.value)}>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:col-span-2">
           <p className="text-sm font-semibold text-gray-900">Identité (reprise automatiquement sur les certificats)</p>
 
@@ -271,7 +240,11 @@ export function UserEditorForm({
 
             <label className="space-y-1 text-sm font-medium text-gray-700">
               Lieu de délivrance du CIN
-              <input className={inputClass} placeholder="Ex. Antananarivo" value={form.cinIssuedPlace} onChange={(e) => set("cinIssuedPlace", e.target.value)} />
+              <input className={inputClass} placeholder="Ex. Antananarivo" value={form.cinIssuedPlace} onChange={(e) => {
+                  set("cinIssuedPlace", e.target.value);
+                  const code = cinCodeForPlace(e.target.value);
+                  if (code && !form.cinNumber) set("cinNumber", code);
+                }} />
             </label>
 
             <div className="flex flex-wrap items-end gap-4">
@@ -303,6 +276,45 @@ export function UserEditorForm({
             </div>
           </div>
         </div>
+
+        <label className="space-y-1 text-sm font-medium text-gray-700">
+          Rôle {isEdit ? "" : "*"}
+          {isAdminAccount ? (
+            <input className={inputClass} value={ROLE_LABELS.ADMIN} disabled />
+          ) : (
+            <select className={inputClass} value={form.role} onChange={(e) => set("role", e.target.value)}>
+              <option value="">Sélectionner un rôle</option>
+              {ASSIGNABLE_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+          )}
+        </label>
+
+        <label className="space-y-1 text-sm font-medium text-gray-700">
+          Département
+          <select className={inputClass} value={form.departmentId} onChange={(e) => set("departmentId", e.target.value)}>
+            <option value="">Aucun</option>
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-1 text-sm font-medium text-gray-700">
+          Statut
+          <select className={inputClass} value={form.status} onChange={(e) => set("status", e.target.value)}>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label className="space-y-1 text-sm font-medium text-gray-700">
           {isEdit ? "Nouveau mot de passe (optionnel)" : "Mot de passe *"}

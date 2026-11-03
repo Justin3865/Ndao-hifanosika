@@ -14,8 +14,10 @@ export type FieldType =
   | "date"
   | "select"
   | "checkbox"
+  | "multicheck"
   | "geo"
   | "zonehierarchy"
+  | "beneficiaryzone"
   | "identity"
   | "newperson"
   | "matricule"
@@ -77,6 +79,16 @@ export interface FieldDef {
   readOnly?: boolean;
   /** Texte affiché dans un champ en lecture seule tant qu'il n'a pas de valeur */
   readOnlyPlaceholder?: string;
+  /** Titre de section affiché (sur toute la largeur) juste avant ce champ */
+  section?: string;
+  /** Champ affiché seulement quand la case à cocher nommée est cochée (valeur conservée sinon) */
+  showIf?: string;
+  /** Champ téléphone : 10 chiffres seulement (032 à 035, 037 à 039 ou 02x) */
+  phone?: boolean;
+  /** Champ e-mail : domaines imposés (ex. ["gmail.com"]) ; absent = n'importe quel domaine valide */
+  emailDomains?: string[];
+  /** Champ « lieu de délivrance du CIN » : propose le code du district dans le champ CIN nommé (s'il est vide) */
+  cinCodeFor?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,6 +117,8 @@ export interface ResourceConfig {
   itemKey: string;
   columns: ColumnDef[];
   fields: FieldDef[];
+  /** Contrôles de cohérence entre plusieurs champs (valeurs du formulaire) : message d'erreur ou null */
+  validate?: (values: Record<string, string | boolean>) => string | null;
   detail: (item: Item) => DetailRow[];
   titleOf: (item: Item) => string;
   searchOf: (item: Item) => string;

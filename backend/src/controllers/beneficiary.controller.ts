@@ -4,6 +4,7 @@ import { logger } from "../config/logger";
 import { computeAge } from "../utils/cin";
 import { checkIdentityRules } from "../utils/identityRules";
 import { parseIdentity } from "../utils/identity";
+import { cinSexProblem, householdProblem, parseDisabilityTypes } from "../utils/fieldRules";
 
 import { sendError } from "../middlewares/error.middleware";
 export async function getBeneficiaries(
@@ -90,6 +91,52 @@ export async function getBeneficiaryById(
   }
 }
 
+const ZONE_LEVELS = ["PROVINCE", "REGION", "DISTRICT", "COMMUNE", "FOKONTANY"];
+
+/**
+ * Sélection de zone envoyée par la carte : on ne garde que l'identité de chaque niveau
+ * (id, nom, niveau, parents, emprise, centre), JAMAIS la géométrie (trop lourde pour une fiche).
+ * Renvoie null (vide), false (invalide) ou le JSON allégé.
+ */
+function sanitizeZoneUnits(raw: unknown): string | null | false {
+  if (raw === null || raw === "") return null;
+
+  try {
+    const geo: any = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+    if (geo?.type !== "FeatureCollection" || !Array.isArray(geo.features)) return false;
+
+    const nums = (v: unknown, size: number) =>
+      Array.isArray(v) && v.length === size && v.every((n) => Number.isFinite(Number(n))) ? v.map(Number) : [];
+
+    const features = geo.features.slice(0, 10).flatMap((f: any) => {
+      const p = f?.properties ?? {};
+
+      if (!p.id || !ZONE_LEVELS.includes(p.level)) return [];
+
+      return [
+        {
+          type: "Feature",
+          properties: {
+            id: String(p.id).slice(0, 60),
+            name: String(p.name ?? "").slice(0, 120),
+            level: p.level,
+            parentId: p.parentId ? String(p.parentId).slice(0, 60) : null,
+            path: Array.isArray(p.path) ? p.path.slice(0, 5).map((n: unknown) => String(n).slice(0, 120)) : [],
+            bbox: nums(p.bbox, 4),
+            center: Number.isFinite(Number(p.center?.lat)) && Number.isFinite(Number(p.center?.lng)) ? { lat: Number(p.center.lat), lng: Number(p.center.lng) } : undefined,
+          },
+          geometry: null,
+        },
+      ];
+    });
+
+    return features.length ? JSON.stringify({ type: "FeatureCollection", features }) : null;
+  } catch {
+    return false;
+  }
+}
+
 type ParsedBody =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; message: string };
@@ -141,6 +188,53 @@ function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
   if (body.hasDisability !== undefined) {
     data.hasDisability = body.hasDisability === true || body.hasDisability === "true";
   }
+
+  // Types de handicap (sélection multiple) : conservés seulement si le ménage compte une personne en situation de handicap
+  if (body.disabilityTypes !== undefined || data.hasDisability === false) {
+    const types = data.hasDisability === false ? [] : parseDisabilityTypes(body.disabilityTypes);
+
+    if (types === null) return { ok: false, message: "Type de handicap invalide." };
+
+    if (data.hasDisability === true && types.length === 0) {
+      return { ok: false, message: "Choisissez au moins un type de handicap." };
+    }
+
+    data.disabilityTypes = types.length ? types.join(",") : null;
+  }
+
+  // Localisation administrative + adresse exacte (texte libre : lot, hameau / « zanabohitra »)
+  const placeSpecs: Array<[string, string, number]> = [
+    ["adminProvince", "La province", 120],
+    ["adminRegion", "La région", 120],
+    ["adminDistrict", "Le district", 120],
+    ["adminCommune", "La commune", 120],
+    ["adminFokontany", "Le fokontany", 120],
+    ["addressDetail", "L'adresse exacte", 300],
+  ];
+
+  for (const [key, label, max] of placeSpecs) {
+    if (body[key] === undefined) continue;
+
+    const text = body[key] === null ? "" : String(body[key]).trim();
+
+    if (text.length > max) {
+      return { ok: false, message: `${label} est trop long(ue) (${max} caractères maximum).` };
+    }
+
+    data[key] = text || null;
+  }
+
+  if (body.zoneUnits !== undefined) {
+    const units = sanitizeZoneUnits(body.zoneUnits);
+
+    if (units === false) return { ok: false, message: "La sélection de zone est invalide." };
+
+    data.zoneUnits = units;
+  }
+
+  // Cohérence du ménage : pas plus d'enfants de moins de 5 ans que de personnes dans le ménage
+  const household = householdProblem(data.householdSize, data.childrenUnder5);
+  if (household) return { ok: false, message: household };
 
   // Naissance + CIN (validés : 12 chiffres, dates passées)
   const identity = parseIdentity(body);
@@ -201,6 +295,15 @@ export async function createBeneficiary(
     if (!parsed.ok) {
       res.status(400).json({ success: false, message: parsed.message });
       return;
+    }
+
+    {
+      const sex = cinSexProblem(parsed.data.cinNumber, gender);
+
+      if (sex) {
+        res.status(400).json({ success: false, message: sex });
+        return;
+      }
     }
 
     {
@@ -330,6 +433,19 @@ export async function updateBeneficiary(
     if (!parsed.ok) {
       res.status(400).json({ success: false, message: parsed.message });
       return;
+    }
+
+    {
+      const sex = cinSexProblem(
+        parsed.data.cinNumber !== undefined ? parsed.data.cinNumber : existing.cinNumber,
+        gender !== undefined ? gender : existing.gender,
+      );
+
+      // Contrôlé seulement si le CIN ou le genre est modifié (une fiche ancienne reste modifiable sur les autres champs)
+      if (sex && (parsed.data.cinNumber !== undefined || gender !== undefined)) {
+        res.status(400).json({ success: false, message: sex });
+        return;
+      }
     }
 
     {

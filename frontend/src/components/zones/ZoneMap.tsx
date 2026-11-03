@@ -167,7 +167,26 @@ const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
 
 /** Carte d'une ou plusieurs zones : contour réel (si connu) + cercle du rayon d'intervention. */
-export function ZoneMap({ zones, height = 380, className = "", legend = false }: { zones: ZoneShape[]; height?: number; className?: string; legend?: boolean }) {
+export function ZoneMap({
+  zones,
+  height = 380,
+  className = "",
+  legend = false,
+  pin = null,
+  onMapClick,
+}: {
+  zones: ZoneShape[];
+  height?: number;
+  className?: string;
+  legend?: boolean;
+  /** Repère supplémentaire (ex. domicile d'un bénéficiaire), indépendant des zones */
+  pin?: { lat: number; lng: number } | null;
+  /** Si fourni : un clic sur la carte (ou le déplacement du repère) renvoie la position */
+  onMapClick?: (latitude: number, longitude: number) => void;
+}) {
+  const pinRef = useRef<any>(null);
+  const clickRef = useRef(onMapClick);
+  clickRef.current = onMapClick;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const infoRef = useRef<any>(null);
@@ -205,6 +224,9 @@ export function ZoneMap({ zones, height = 380, className = "", legend = false }:
           styles: [{ featureType: "poi", stylers: [{ visibility: "off" }] }],
         });
         infoRef.current = new window.google.maps.InfoWindow();
+        mapRef.current.addListener("click", (e: any) => {
+          if (e?.latLng && clickRef.current) clickRef.current(e.latLng.lat(), e.latLng.lng());
+        });
         setReady(true);
       })
       .catch((err: Error) => setError(err.message));
@@ -286,6 +308,42 @@ export function ZoneMap({ zones, height = 380, className = "", legend = false }:
       });
     }
   }, [ready, signature]);
+
+  // Repère libre (domicile) : posé / déplacé sans redessiner les zones
+  const pinLat = pin?.lat;
+  const pinLng = pin?.lng;
+
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+
+    const g = window.google.maps;
+    const map = mapRef.current;
+
+    if (pinLat === undefined || pinLng === undefined || !Number.isFinite(pinLat) || !Number.isFinite(pinLng)) {
+      pinRef.current?.setMap(null);
+      pinRef.current = null;
+      return;
+    }
+
+    const position = { lat: pinLat, lng: pinLng };
+
+    if (!pinRef.current) {
+      pinRef.current = new g.Marker({ map, position, title: "Domicile du ménage", draggable: Boolean(clickRef.current), zIndex: 1000 });
+      pinRef.current.addListener("dragend", (e: any) => {
+        if (e?.latLng && clickRef.current) clickRef.current(e.latLng.lat(), e.latLng.lng());
+      });
+    } else {
+      pinRef.current.setPosition(position);
+    }
+
+    // Aucune zone affichée : on se rapproche du point ; sinon on le ramène seulement dans la vue
+    if (!zonesRef.current.length) {
+      if ((map.getZoom() ?? 0) < 12) map.setZoom(15);
+      map.panTo(position);
+    } else if (!map.getBounds()?.contains(position)) {
+      map.panTo(position);
+    }
+  }, [ready, pinLat, pinLng]);
 
   if (!MAPS_ENABLED) {
     return (

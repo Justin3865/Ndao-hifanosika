@@ -11,6 +11,9 @@ import { StatusBadge } from "@/components/crud/StatusBadge";
 import { LEVEL_COLORS, ZONE_LEVELS, ZoneMap, zoneLevelDetails, zoneLevelLabel, zonePlaces } from "@/components/zones/ZoneMap";
 import { ZonesOverview } from "@/components/zones/ZonesOverview";
 import { TrackingPanel } from "@/components/tracking/TrackingPanel";
+import { DISABILITY_OPTIONS, PERSON_EMAIL_DOMAINS, cinSexProblem, disabilityLabels, householdProblem } from "@/lib/validation";
+import { cinPrefixError } from "@/lib/cin";
+import { BeneficiaryLocationMap } from "@/components/beneficiaries/BeneficiaryLocationMap";
 import {
   ResourceConfig,
   fmtDate,
@@ -291,29 +294,50 @@ export const beneficiariesConfig: ResourceConfig = {
     },
   ],
   fields: [
-    { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true },
-    { name: "firstName", label: "Prénom (facultatif)", type: "text" },
+    // 1) Mombamomba : identité de la personne d'abord (l'âge se déduit de la date de naissance)
+    { name: "firstName", label: "Prénom (facultatif)", type: "text", section: "Informations personnelles" },
     { name: "lastName", label: "Nom", type: "text", required: true },
     { name: "gender", label: "Genre", type: "select", options: GENDERS },
-    { name: "age", label: "Âge", type: "number", min: 0, max: 120 },
-    { name: "phone", label: "Téléphone", type: "text" },
-    { name: "email", label: "Email", type: "email" },
-    { name: "vulnerable", label: "Personne vulnérable", type: "checkbox" },
-    { name: "locality", label: "Localité / fokontany (ex. Ankalamavony)", type: "text" },
-    { name: "zoneId", label: "Zone d'intervention", type: "select", lookup: "zones" },
+    { name: "birthDate", label: "Date de naissance (certificat)", type: "date" },
+    { name: "age", label: "Âge", type: "number", min: 0, max: 120, ageFrom: "birthDate" },
+    { name: "birthPlace", label: "Lieu de naissance (certificat)", type: "text" },
+    { name: "phone", label: "Téléphone", type: "text", phone: true },
+    { name: "email", label: "Email", type: "email", emailDomains: PERSON_EMAIL_DOMAINS },
+    // 2) CIN : dates et lieux côte à côte
+    { name: "cinNumber", label: "N° CIN (12 chiffres)", type: "text", digitsOnly: 12, section: "Carte d'identité nationale (CIN)" },
+    { name: "cinIssuedAt", label: "Date de délivrance du CIN", type: "date" },
+    { name: "cinIssuedPlace", label: "Lieu de délivrance du CIN", type: "text", cinCodeFor: "cinNumber" },
+    { name: "cinDuplicata", label: "CIN délivré en duplicata", type: "checkbox" },
+    { name: "cinDuplicataAt", label: "Date du duplicata", type: "date", showIf: "cinDuplicata" },
+    // 3) Projet et ménage (la vulnérabilité n'est plus saisie : elle est analysée par l'IA)
+    { name: "projectId", label: "Projet", type: "select", lookup: "projects", required: true, section: "Projet et ménage" },
     { name: "householdSize", label: "Taille du ménage (personnes)", type: "number", min: 1, max: 40 },
     { name: "monthlyIncome", label: "Revenu mensuel du ménage (Ar)", type: "number", min: 0 },
     { name: "childrenUnder5", label: "Enfants de moins de 5 ans", type: "number", min: 0, max: 20 },
     { name: "hasDisability", label: "Personne en situation de handicap dans le ménage", type: "checkbox" },
-    { name: "birthDate", label: "Date de naissance (certificat)", type: "date" },
-    { name: "birthPlace", label: "Lieu de naissance (certificat)", type: "text" },
-    { name: "cinNumber", label: "N° CIN (12 chiffres)", type: "text", digitsOnly: 12 },
-    { name: "cinIssuedAt", label: "Date de délivrance du CIN", type: "date" },
-    { name: "cinIssuedPlace", label: "Lieu de délivrance du CIN", type: "text" },
-    { name: "cinDuplicata", label: "CIN délivré en duplicata", type: "checkbox" },
-    { name: "cinDuplicataAt", label: "Date du duplicata", type: "date" },
-    { name: "home", label: "Domicile du ménage (carte)", type: "geo", full: true },
+    { name: "disabilityTypes", label: "Type(s) de handicap (plusieurs choix possibles)", type: "multicheck", options: DISABILITY_OPTIONS, showIf: "hasDisability", full: true },
+    { name: "home", label: "Domicile du ménage (carte)", type: "beneficiaryzone", full: true },
   ],
+  // Cohérence entre champs : enfants ≤ ménage, sexe du CIN = genre, dates de naissance / CIN / duplicata
+  validate: (v) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const birth = String(v.birthDate ?? "");
+    const issued = String(v.cinIssuedAt ?? "");
+    const dup = String(v.cinDuplicataAt ?? "");
+
+    if (birth && birth > today) return "La date de naissance ne peut pas être dans le futur.";
+    if (issued && issued > today) return "La date de délivrance du CIN ne peut pas être dans le futur.";
+    if (birth && issued && issued <= birth) return "La date de délivrance du CIN doit être postérieure à la date de naissance.";
+    if (v.cinDuplicata && dup && dup > today) return "La date du duplicata ne peut pas être dans le futur.";
+    if (v.cinDuplicata && dup && issued && dup < issued) return "Le duplicata ne peut pas précéder la délivrance du CIN.";
+
+    if (v.hasDisability && !String(v.disabilityTypes ?? "").trim()) return "Choisissez au moins un type de handicap.";
+
+    const cin = String(v.cinNumber ?? "");
+    if (cin && cin.length !== 12) return "Le numéro de CIN doit contenir exactement 12 chiffres.";
+
+    return cinPrefixError(cin, [v.cinIssuedPlace, v.birthPlace]) ?? cinSexProblem(cin, v.gender) ?? householdProblem(v.householdSize, v.childrenUnder5);
+  },
   detail: (b) => [
     { label: "Projet", value: b.project?.name ?? `#${b.projectId}` },
     { label: "Genre", value: genderLabel(b.gender) },
@@ -322,10 +346,16 @@ export const beneficiariesConfig: ResourceConfig = {
     { label: "Email", value: b.email || "—" },
     { label: "Vulnérable", value: b.vulnerable ? "Oui" : "Non" },
     { label: "Localité", value: b.locality || "—" },
+    { label: "Province", value: b.adminProvince || "—" },
+    { label: "Région", value: b.adminRegion || "—" },
+    { label: "District", value: b.adminDistrict || "—" },
+    { label: "Commune", value: b.adminCommune || "—" },
+    { label: "Fokontany", value: b.adminFokontany || "—" },
+    { label: "Adresse exacte", value: b.addressDetail || "—" },
     { label: "Taille du ménage", value: b.householdSize ?? "—" },
     { label: "Revenu mensuel", value: fmtMoney(b.monthlyIncome) },
     { label: "Enfants < 5 ans", value: b.childrenUnder5 ?? "—" },
-    { label: "Handicap", value: b.hasDisability ? "Oui" : "Non" },
+    { label: "Handicap", value: b.hasDisability ? (disabilityLabels(b.disabilityTypes) ? `Oui — ${disabilityLabels(b.disabilityTypes)}` : "Oui") : "Non" },
     { label: "Date de naissance", value: b.birthDate ? fmtDate(b.birthDate) : "—" },
     { label: "Lieu de naissance", value: b.birthPlace || "—" },
     { label: "N° CIN", value: b.cinNumber || "—" },
@@ -341,7 +371,12 @@ export const beneficiariesConfig: ResourceConfig = {
     },
   ],
   titleOf: (b) => personName(b),
-  extra: (b) => <TrackingPanel beneficiaryId={b.id} />,
+  extra: (b) => (
+    <>
+      <BeneficiaryLocationMap beneficiary={b} />
+      <TrackingPanel beneficiaryId={b.id} />
+    </>
+  ),
   searchOf: (b) => `${personName(b)} ${b.project?.name ?? ""} ${b.email ?? ""}`,
   createRoles: BENEFICIARY_WRITERS,
   editRoles: BENEFICIARY_WRITERS,
@@ -542,7 +577,7 @@ export const membersConfig: ResourceConfig = {
     { name: "firstName", label: "Prénom (facultatif)", type: "text" },
     { name: "lastName", label: "Nom", type: "text", required: true },
     { name: "email", label: "Email", type: "email", required: true },
-    { name: "phone", label: "Téléphone", type: "text" },
+    { name: "phone", label: "Téléphone", type: "text", phone: true },
     { name: "gender", label: "Genre", type: "select", options: GENDERS },
     {
       name: "role",

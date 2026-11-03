@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { PHONE_FORMAT_MESSAGE, PHONE_RE } from "../utils/fieldRules";
 
 /** Nombre de chiffres d'un numéro de téléphone (ex. 034 00 000 00 -> 0340000000). */
 export const PHONE_DIGITS = 10;
@@ -39,6 +40,9 @@ function walk(node: unknown, depth = 0): string | null {
       if (raw.startsWith("+") || raw.startsWith("00")) {
         return `Le numéro de téléphone doit contenir exactement ${PHONE_DIGITS} chiffres (ex. 034 00 000 00).`;
       }
+
+      // 10 chiffres, mais aussi un vrai préfixe malgache (ex. 034…, 032…, 02x…)
+      if (!PHONE_RE.test(digits)) return PHONE_FORMAT_MESSAGE;
 
       record[key] = digits;
       continue;

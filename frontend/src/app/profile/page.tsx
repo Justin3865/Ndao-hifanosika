@@ -10,6 +10,7 @@ import { roleLabel, statusLabel } from "@/lib/roles";
 import { toast } from "@/lib/toast";
 import { CinHint } from "@/components/crud/CinHint";
 import { cinPrefixError, computeAge } from "@/lib/cin";
+import { cinCodeForPlace, phoneProblem } from "@/lib/validation";
 import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 
 interface Profile {
@@ -128,6 +129,13 @@ export default function ProfilePage() {
 
   const saveInfo = async (event: FormEvent) => {
     event.preventDefault();
+
+    const phoneError = phoneProblem(form.phone);
+
+    if (phoneError) {
+      flash("err", phoneError);
+      return;
+    }
 
     const cin = form.cinNumber.replace(/[\s.-]/g, "");
 
@@ -445,7 +453,10 @@ export default function ProfilePage() {
                         className={inputClass}
                         placeholder="Ex. Antananarivo"
                         value={form.cinIssuedPlace}
-                        onChange={(e) => setForm({ ...form, cinIssuedPlace: e.target.value })}
+                        onChange={(e) => {
+                          const code = cinCodeForPlace(e.target.value);
+                          setForm({ ...form, cinIssuedPlace: e.target.value, cinNumber: code && !form.cinNumber ? code : form.cinNumber });
+                        }}
                       />
                     </label>
                   </div>
