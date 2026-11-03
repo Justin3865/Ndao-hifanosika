@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/axios";
 import { errorMessage } from "@/lib/crud";
+import type { Socket } from "socket.io-client";
 import { getSocket } from "@/lib/socket";
 
 export type AttachmentKind = "IMAGE" | "VIDEO" | "AUDIO" | "ARCHIVE" | "FILE";
@@ -149,14 +150,33 @@ export function useNotificationFeed() {
   const [error, setError] = useState("");
   const [incoming, setIncoming] = useState<FeedItem | null>(null);
   const alive = useRef(true);
+  // Identifiants déjà connus : permet de détecter un nouveau message même si le socket est coupé
+  const known = useRef<Set<number> | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await api.get("/notifications");
       if (!alive.current) return;
       const rows: unknown[] = res.data?.data ?? [];
-      setItems(rows.map(normalizeItem).sort(byDateDesc));
+      const list = rows.map(normalizeItem).sort(byDateDesc);
+      setItems(list);
       setError("");
+
+      // Filet de sécurité : un message arrivé sans événement socket déclenche quand même la notification
+      if (known.current === null) {
+        known.current = new Set(list.map((n) => n.id));
+      } else {
+        const fresh = list.filter((n) => !known.current!.has(n.id));
+        fresh.forEach((n) => known.current!.add(n.id));
+
+        const newest = fresh.find((n) => !n.read && !n.archived);
+
+        if (newest) {
+          const item = { ...newest, receivedAt: newest.receivedAt ?? new Date().toISOString() };
+          setIncoming(item);
+          api.patch(`/notifications/${item.id}/received`).catch(() => undefined);
+        }
+      }
     } catch (err) {
       if (alive.current) setError(errorMessage(err, "Impossible de charger les notifications."));
     } finally {
@@ -168,11 +188,11 @@ export function useNotificationFeed() {
     alive.current = true;
     void load();
 
-    const socket = getSocket();
-
     const onNew = (row: unknown) => {
       const parsed = normalizeItem(row);
       const item = { ...parsed, receivedAt: parsed.receivedAt ?? new Date().toISOString() };
+
+      known.current?.add(item.id);
 
       setItems((cur) => [item, ...cur.filter((n) => n.id !== item.id)].sort(byDateDesc));
       setIncoming(item);
@@ -203,20 +223,42 @@ export function useNotificationFeed() {
       if (document.visibilityState === "visible") void load();
     };
 
-    socket?.on("notification:new", onNew);
-    socket?.on("notification:update", onUpdate);
-    socket?.on("notification:delete", onDelete);
-    socket?.on("notification:read-all", onReadAll);
-    socket?.io.on("reconnect", onReconnect);
+    // Abonnement robuste : si le socket est recréé / absent au montage, on se rattache automatiquement
+    let bound: Socket | null = null;
+
+    const unbind = () => {
+      bound?.off("notification:new", onNew);
+      bound?.off("notification:update", onUpdate);
+      bound?.off("notification:delete", onDelete);
+      bound?.off("notification:read-all", onReadAll);
+      bound?.io.off("reconnect", onReconnect);
+      bound = null;
+    };
+
+    const bind = () => {
+      const current = getSocket();
+      if (current === bound) return;
+
+      unbind();
+      bound = current;
+      bound?.on("notification:new", onNew);
+      bound?.on("notification:update", onUpdate);
+      bound?.on("notification:delete", onDelete);
+      bound?.on("notification:read-all", onReadAll);
+      bound?.io.on("reconnect", onReconnect);
+    };
+
+    bind();
+    const rebindTimer = window.setInterval(bind, 3000);
+    // Actualisation régulière (détecte aussi les nouveaux messages si le temps réel est indisponible)
+    const pollTimer = window.setInterval(() => void load(), 20_000);
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       alive.current = false;
-      socket?.off("notification:new", onNew);
-      socket?.off("notification:update", onUpdate);
-      socket?.off("notification:delete", onDelete);
-      socket?.off("notification:read-all", onReadAll);
-      socket?.io.off("reconnect", onReconnect);
+      window.clearInterval(rebindTimer);
+      window.clearInterval(pollTimer);
+      unbind();
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);

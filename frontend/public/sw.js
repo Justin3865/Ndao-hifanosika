@@ -1,53 +1,48 @@
-/* Service worker : notifications système (barre des tâches du PC / notifications du téléphone). */
+/* Service worker — notifications système (toast en bas à droite de Windows, centre de notifications macOS/Android).
+   À placer dans le dossier public/ du frontend (accessible sur /sw.js). */
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
-// Notification poussée par le serveur (Web Push), application ouverte ou non
+// Réception d'un Web Push envoyé par le serveur (fonctionne même application fermée)
 self.addEventListener("push", (event) => {
   let data = {};
 
   try {
     data = event.data ? event.data.json() : {};
-  } catch (error) {
-    data = { title: "Nouveau message", body: event.data ? event.data.text() : "" };
+  } catch (e) {
+    data = { title: "Ndao Hifanosika", body: event.data ? event.data.text() : "" };
   }
 
-  event.waitUntil(
-    (async () => {
-      // Application au premier plan : la bannière interne suffit
-      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      if (windows.some((client) => client.focused)) return;
+  const title = data.title || "Ndao Hifanosika";
 
-      await self.registration.showNotification(data.title || "Ndao Hifanosika", {
-        body: data.body || "",
-        tag: data.tag || undefined,
-        icon: "/apple-touch-icon.png",
-        data: { url: data.url || "/notifications" },
-      });
-    })(),
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      tag: data.tag || undefined, // même tag = pas de doublon avec l'affichage local
+      icon: "/apple-touch-icon.png",
+      badge: "/apple-touch-icon.png",
+      requireInteraction: false,
+      data: { url: data.url || "/notifications" },
+    }),
   );
 });
 
-// Clic sur la notification : ouvre / ramène l'application sur le bon message
+// Clic sur la notification : ouvre / met au premier plan l'application sur la bonne page
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const target = new URL((event.notification.data && event.notification.data.url) || "/notifications", self.location.origin).href;
 
   event.waitUntil(
-    (async () => {
-      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
       for (const client of windows) {
-        if (new URL(client.url).origin === self.location.origin) {
-          await client.focus();
-          if ("navigate" in client) await client.navigate(target).catch(() => undefined);
-          return;
+        if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+          return client.focus().then((focused) => ("navigate" in focused ? focused.navigate(target) : focused));
         }
       }
 
-      await self.clients.openWindow(target);
-    })(),
+      return self.clients.openWindow(target);
+    }),
   );
 });

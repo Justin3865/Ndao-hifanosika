@@ -79,6 +79,10 @@ export function NotificationBell() {
                     <BellRing className="h-3.5 w-3.5" />
                     {device.pushActive ? "Notifications de l'appareil activées" : "Actives tant que l'application est ouverte"}
                   </span>
+                  <span className="flex items-center gap-3">
+                    <button type="button" onClick={() => void device.test()} className="font-medium text-blue-600 hover:underline">
+                      Tester
+                    </button>
                   <button
                     type="button"
                     onClick={() => void device.disable()}
@@ -87,6 +91,7 @@ export function NotificationBell() {
                   >
                     Désactiver
                   </button>
+                  </span>
                 </div>
               ) : (
                 <button
@@ -98,6 +103,8 @@ export function NotificationBell() {
                   <BellRing className="h-3.5 w-3.5" /> Activer les notifications sur cet appareil
                 </button>
               )}
+
+              {device.error && <p className="mt-2 text-amber-600">{device.error}</p>}
             </div>
           )}
 

@@ -26,7 +26,68 @@ function toKey(base64: string): Uint8Array {
 
 export async function deviceRegistration(): Promise<ServiceWorkerRegistration> {
   await navigator.serviceWorker.register("/sw.js");
-  return navigator.serviceWorker.ready;
+
+  // `ready` ne se résout jamais si le service worker n'a pas pu s'activer : on limite l'attente à 10 s
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("ServiceWorker : délai dépassé")), 10_000)),
+  ]);
+}
+
+/** Notification système de test. */
+export async function testDeviceNotification(): Promise<string | null> {
+  return showSystemNotification("Ndao Hifanosika", {
+    body: "Test : les notifications système fonctionnent sur cet appareil.",
+    tag: "ndao-test",
+    url: "/notifications",
+  });
+}
+
+/**
+ * Affiche une notification système (toast Windows en bas à droite).
+ * 1) API Notification directe (aucun service worker requis) ; 2) repli : service worker (mobile).
+ */
+export async function showSystemNotification(
+  title: string,
+  options: { body?: string; tag?: string; url?: string } = {},
+): Promise<string | null> {
+  if (!deviceSupported()) return "Notifications système non prises en charge par ce navigateur.";
+  if (Notification.permission !== "granted") return "Autorisation du navigateur non accordée.";
+
+  const url = options.url || "/notifications";
+
+  try {
+    const n = new Notification(title, {
+      body: options.body,
+      tag: options.tag,
+      icon: "/apple-touch-icon.png",
+    });
+
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      if (window.location.pathname + window.location.search !== url) window.location.href = url;
+    };
+
+    return null;
+  } catch {
+    /* Android / certains navigateurs exigent le service worker */
+  }
+
+  try {
+    const reg = await deviceRegistration();
+
+    await reg.showNotification(title, {
+      body: options.body,
+      tag: options.tag,
+      icon: "/apple-touch-icon.png",
+      data: { url },
+    });
+
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Impossible d'afficher la notification.";
+  }
 }
 
 async function serverKey(): Promise<string | null> {
@@ -80,12 +141,13 @@ export async function enableDevicePush(): Promise<EnableResult> {
         message:
           permission === "denied"
             ? "Notifications bloquées par le navigateur : autorisez-les dans les réglages du site, puis réessayez."
-            : "Autorisation non accordée.",
+            : "Fenêtre d'autorisation fermée sans réponse : cliquez sur l'icône à gauche de l'adresse > Notifications > Autoriser.",
       };
     }
 
     localStorage.removeItem(DEVICE_FLAG);
 
+    // Web Push (application fermée) : facultatif, son échec ne bloque pas les notifications locales
     const pushActive = await subscribeDevice(await deviceRegistration()).catch(() => false);
     return { ok: true, permission, pushActive };
   } catch (error) {
@@ -93,9 +155,7 @@ export async function enableDevicePush(): Promise<EnableResult> {
       ok: false,
       permission: devicePermission(),
       pushActive: false,
-      message: error instanceof Error && /404|ServiceWorker/i.test(error.message)
-        ? "Fichier public/sw.js introuvable : placez-le dans le dossier public du frontend, puis redémarrez."
-        : "Impossible d'activer les notifications sur cet appareil.",
+      message: `Impossible d'activer les notifications sur cet appareil${error instanceof Error ? ` : ${error.message}` : "."}`,
     };
   }
 }

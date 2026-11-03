@@ -7,14 +7,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  DEVICE_FLAG,
   DevicePermission,
   deviceEnabled,
   devicePermission,
   deviceRegistration,
+  showSystemNotification,
   deviceSupported,
   disableDevicePush,
   enableDevicePush,
   subscribeDevice,
+  testDeviceNotification,
 } from "@/lib/devicePush";
 import { FeedItem, personName, previewText } from "@/hooks/useNotificationFeed";
 
@@ -47,6 +50,32 @@ export function useDeviceNotifications(incoming: FeedItem | null) {
       .catch(() => undefined);
   }, []);
 
+  // Toutes les rôles : la permission du navigateur est demandée automatiquement au premier clic / touche
+  // (le navigateur exige un geste de l'utilisateur). Si l'utilisateur l'a désactivé volontairement, on ne redemande pas.
+  useEffect(() => {
+    if (!deviceSupported() || devicePermission() !== "default") return;
+    if (localStorage.getItem(DEVICE_FLAG) === "off") return;
+
+    const ask = () => {
+      window.removeEventListener("pointerdown", ask);
+      window.removeEventListener("keydown", ask);
+
+      void enableDevicePush().then((result) => {
+        setPermission(result.permission);
+        setEnabled(result.ok);
+        setPushActive(result.pushActive);
+      });
+    };
+
+    window.addEventListener("pointerdown", ask, { once: true });
+    window.addEventListener("keydown", ask, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", ask);
+      window.removeEventListener("keydown", ask);
+    };
+  }, []);
+
   const enable = useCallback(async () => {
     setBusy(true);
     setError("");
@@ -76,22 +105,40 @@ export function useDeviceNotifications(incoming: FeedItem | null) {
     }
   }, []);
 
-  // Repli local : message reçu pendant que la fenêtre n'est pas au premier plan
+  // Affichage de la notification système (toast en bas à droite de Windows) dès qu'un message arrive,
+  // que la fenêtre soit au premier plan ou non. L'état réel (autorisation + choix de l'utilisateur) est lu
+  // au moment de l'arrivée, pas depuis un état React périmé.
   useEffect(() => {
-    if (!incoming || !enabled || pushActive || permission !== "granted") return;
-    if (document.visibilityState === "visible" && document.hasFocus()) return;
+    if (!incoming) return;
 
-    deviceRegistration()
-      .then((reg) =>
-        reg.showNotification(`${personName(incoming.sender)} — ${incoming.title}`, {
-          body: previewText(incoming).slice(0, 160),
-          tag: `ndao-msg-${incoming.id}`,
-          icon: "/apple-touch-icon.png",
-          data: { url: `/notifications?source=${encodeURIComponent(incoming.senderId ? `u:${incoming.senderId}` : "system")}` },
-        }),
-      )
-      .catch(() => undefined);
-  }, [incoming, enabled, pushActive, permission]);
+    if (!deviceEnabled()) {
+      console.info(
+        "[notifications système] ignorée — autorisation :",
+        devicePermission(),
+        "| désactivée volontairement :",
+        localStorage.getItem(DEVICE_FLAG) === "off",
+      );
+      return;
+    }
 
-  return { permission, enabled, pushActive, busy, error, enable, disable };
+    setPermission("granted");
+    setEnabled(true);
+
+    void showSystemNotification(
+      incoming.senderId ? `${personName(incoming.sender)} — ${incoming.title}` : incoming.title,
+      {
+        body: previewText(incoming).slice(0, 160),
+        tag: `ndao-msg-${incoming.id}`,
+        url: `/notifications?source=${encodeURIComponent(incoming.senderId ? `u:${incoming.senderId}` : "system")}`,
+      },
+    ).then((problem) => {
+      if (problem) console.warn("[notifications système] échec :", problem);
+    });
+  }, [incoming]);
+
+  const test = useCallback(async () => {
+    setError((await testDeviceNotification()) ?? "");
+  }, []);
+
+  return { permission, enabled, pushActive, busy, error, enable, disable, test };
 }

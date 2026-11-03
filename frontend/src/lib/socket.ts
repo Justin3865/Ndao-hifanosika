@@ -15,12 +15,24 @@ export function getSocket(): Socket | null {
   const token = localStorage.getItem("accessToken");
   if (!token) return null;
 
-  if (socket && currentToken === token) return socket;
+  if (socket) {
+    // Jeton renouvelé : on garde la MÊME instance (les écouteurs déjà posés restent valables)
+    // et on se reconnecte avec le nouveau jeton.
+    if (currentToken !== token) {
+      currentToken = token;
+      socket.disconnect().connect();
+    } else if (!socket.connected && !socket.active) {
+      // connexion refusée plus tôt (jeton expiré) : nouvelle tentative avec le jeton courant
+      socket.connect();
+    }
 
-  socket?.disconnect();
+    return socket;
+  }
+
   currentToken = token;
   socket = io(SOCKET_URL, {
-    auth: { token },
+    // fonction : à chaque (re)connexion le jeton le plus récent est utilisé
+    auth: (cb) => cb({ token: localStorage.getItem("accessToken") ?? "" }),
     transports: ["websocket", "polling"],
   });
 
