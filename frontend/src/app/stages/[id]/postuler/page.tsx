@@ -26,14 +26,43 @@ import { sanitizePhone, phoneInputProps } from "@/lib/phone";
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 Mo par fichier
 const MAX_FILES = 5;
 const MAX_TOTAL_BYTES = 7 * 1024 * 1024; // 7 Mo au total
-const ACCEPTED_EXT = ["pdf", "doc", "docx", "png", "jpg", "jpeg"];
 
-/** Lit un fichier et renvoie son contenu en base64 (sans le préfixe data:) */
-function readFileAsBase64(file: File): Promise<string> {
+type SlotKey = "cv" | "lettre" | "diplomes" | "releves" | "certificats";
+
+/** Les 5 pièces du dossier de candidature (PDF uniquement). CV et lettre de motivation obligatoires. */
+const DOC_SLOTS: { key: SlotKey; title: string; hint: string; required: boolean }[] = [
+  { key: "cv", title: "CV – Curriculum Vitae", hint: "Curriculum vitae à jour (PDF)", required: true },
+  { key: "lettre", title: "Lettre de motivation", hint: "Lettre personnalisée pour ce stage (PDF)", required: true },
+  {
+    key: "diplomes",
+    title: "Diplômes et attestations",
+    hint: "Diplômes, attestations de réussite ou de formation (PDF)",
+    required: false,
+  },
+  { key: "releves", title: "Relevés de notes", hint: "Relevés de notes académiques (PDF)", required: false },
+  {
+    key: "certificats",
+    title: "Certificats et recommandations",
+    hint: "Certificats de formation et lettres de recommandation (PDF)",
+    required: false,
+  },
+];
+
+type DocEntry = { file: File; data: string | null; progress: number };
+type DocState = Record<SlotKey, DocEntry | null>;
+
+const EMPTY_DOCS: DocState = { cv: null, lettre: null, diplomes: null, releves: null, certificats: null };
+
+/** Lit un fichier et renvoie son contenu en base64 (sans le préfixe data:), avec la progression (0-100) */
+function readFileAsBase64(file: File, onProgress?: (percent: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
+    };
     reader.onload = () => {
       const result = String(reader.result || "");
+      onProgress?.(100);
       resolve(result.includes(",") ? result.split(",")[1] : result);
     };
     reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
@@ -66,10 +95,10 @@ export default function PostulerPage() {
   const [motivation, setMotivation] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
+  const [docs, setDocs] = useState<DocState>(EMPTY_DOCS);
   const [dossierNumber, setDossierNumber] = useState("");
   const [copied, setCopied] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRefs = useRef<Partial<Record<SlotKey, HTMLInputElement | null>>>({});
 
   /* PAGE PUBLIQUE : aucun compte requis. Si le visiteur est déjà connecté, on pré-remplit. */
   useEffect(() => {
@@ -96,36 +125,56 @@ export default function PostulerPage() {
     })();
   }, [id]);
 
-  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  const picked = DOC_SLOTS.filter((slot) => docs[slot.key]);
+  const totalSize = picked.reduce((sum, slot) => sum + (docs[slot.key]?.file.size ?? 0), 0);
+  const remaining = Math.max(0, MAX_TOTAL_BYTES - totalSize);
+  const usedPercent = Math.min(100, Math.round((totalSize / MAX_TOTAL_BYTES) * 100));
+  const stillReading = picked.some((slot) => docs[slot.key]?.data === null);
 
-  const handleFilesPicked = (picked: FileList | null) => {
+  const handleSlotPicked = async (slot: SlotKey, list: FileList | null) => {
     setError("");
-    if (!picked || picked.length === 0) return;
+    const input = inputRefs.current[slot];
+    const f = list && list.length > 0 ? list[0] : null;
+    if (!f) return;
 
-    const next = [...files];
-    for (const f of Array.from(picked)) {
-      const ext = f.name.split(".").pop()?.toLowerCase() || "";
-      if (!ACCEPTED_EXT.includes(ext)) {
-        setError(`« ${f.name} » : format non accepté (PDF, Word, PNG ou JPG).`);
-        continue;
+    const ext = f.name.split(".").pop()?.toLowerCase() || "";
+    let isPdf = ext === "pdf";
+    if (isPdf) {
+      try {
+        isPdf = (await f.slice(0, 4).text()) === "%PDF"; // vérifie le contenu, pas seulement l'extension
+      } catch {
+        isPdf = false;
       }
-      if (f.size > MAX_FILE_BYTES) {
-        setError(`« ${f.name} » dépasse 5 Mo.`);
-        continue;
-      }
-      if (next.some((x) => x.name === f.name && x.size === f.size)) continue;
-      if (next.length >= MAX_FILES) {
-        setError(`Maximum ${MAX_FILES} fichiers.`);
-        break;
-      }
-      if (next.reduce((sum, x) => sum + x.size, 0) + f.size > MAX_TOTAL_BYTES) {
-        setError("Les fichiers dépassent 7 Mo au total.");
-        continue;
-      }
-      next.push(f);
     }
-    setFiles(next);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    if (!isPdf) {
+      setError(`« ${f.name} » : seul le format PDF est accepté.`);
+    } else if (f.size === 0) {
+      setError(`« ${f.name} » est vide.`);
+    } else if (f.size > MAX_FILE_BYTES) {
+      setError(`« ${f.name} » dépasse 5 Mo.`);
+    } else {
+      const others = DOC_SLOTS.filter((s) => s.key !== slot).reduce(
+        (sum, s) => sum + (docs[s.key]?.file.size ?? 0),
+        0
+      );
+      if (others + f.size > MAX_TOTAL_BYTES) {
+        setError(`Les fichiers dépassent 7 Mo au total (il reste ${formatSize(Math.max(0, MAX_TOTAL_BYTES - others))}).`);
+      } else {
+        setDocs((cur) => ({ ...cur, [slot]: { file: f, data: null, progress: 0 } }));
+        try {
+          const data = await readFileAsBase64(f, (percent) =>
+            setDocs((cur) => (cur[slot]?.file === f ? { ...cur, [slot]: { file: f, data: null, progress: percent } } : cur))
+          );
+          setDocs((cur) => (cur[slot]?.file === f ? { ...cur, [slot]: { file: f, data, progress: 100 } } : cur));
+        } catch {
+          setDocs((cur) => (cur[slot]?.file === f ? { ...cur, [slot]: null } : cur));
+          setError(`Lecture de « ${f.name} » impossible. Réessayez.`);
+        }
+      }
+    }
+
+    if (input) input.value = "";
   };
 
   const copyDossierNumber = async () => {
@@ -146,8 +195,8 @@ export default function PostulerPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const removeFile = (index: number) => {
-    setFiles((list) => list.filter((_, i) => i !== index));
+  const removeSlot = (slot: SlotKey) => {
+    setDocs((cur) => ({ ...cur, [slot]: null }));
     setError("");
   };
 
@@ -167,24 +216,25 @@ export default function PostulerPage() {
       setError("Veuillez indiquer votre numéro de téléphone.");
       return;
     }
-    if (!motivation.trim()) {
-      setError("Veuillez rédiger votre lettre de motivation.");
-      return;
+    for (const slot of DOC_SLOTS) {
+      if (slot.required && !docs[slot.key]) {
+        setError(`Veuillez joindre le document obligatoire : ${slot.title}.`);
+        return;
+      }
     }
-    if (files.length === 0) {
-      setError("Veuillez sélectionner votre dossier (au moins un fichier) avant d'envoyer.");
+    if (stillReading) {
+      setError("Patientez : vos fichiers sont en cours de préparation.");
       return;
     }
 
     setSending(true);
     try {
-      const encoded = await Promise.all(
-        files.map(async (f) => ({
-          name: f.name,
-          type: f.type,
-          data: await readFileAsBase64(f),
-        }))
-      );
+      const encoded = DOC_SLOTS.filter((slot) => docs[slot.key]?.data).map((slot) => ({
+        category: slot.key,
+        name: docs[slot.key]!.file.name,
+        type: "application/pdf",
+        data: docs[slot.key]!.data as string,
+      }));
 
       const res = await apiRequest(`/internship-offers/${id}/applications`, {
         method: "POST",
@@ -194,7 +244,7 @@ export default function PostulerPage() {
           phone: phone.trim(),
           school: school.trim() || null,
           level: level.trim() || null,
-          motivation: motivation.trim(),
+          motivation: motivation.trim() || "Lettre de motivation jointe en PDF.",
           files: encoded,
         }),
       });
@@ -393,66 +443,138 @@ export default function PostulerPage() {
 
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Lettre de motivation *
+                    Message complémentaire (facultatif)
                   </label>
                   <textarea
-                    rows={6}
+                    rows={4}
                     value={motivation}
                     onChange={(e) => setMotivation(e.target.value)}
-                    placeholder="Expliquez pourquoi ce stage vous intéresse..."
+                    placeholder="Ajoutez un message pour le responsable si vous le souhaitez..."
                     className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Votre dossier (CV, diplômes...) *
-                  </label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                    onChange={(e) => handleFilesPicked(e.target.files)}
-                    className="hidden"
-                  />
-                  <div className="space-y-2">
-                    {files.map((f, i) => (
-                      <div
-                        key={`${f.name}-${i}`}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Paperclip className="h-4 w-4 shrink-0 text-[#1B8FAE]" />
-                          <span className="truncate">{f.name}</span>
-                          <span className="shrink-0 text-xs text-gray-400">
-                            {formatSize(f.size)}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(i)}
-                          aria-label="Retirer le fichier"
-                          className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-[#D01C7F]"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {files.length < MAX_FILES && (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-sm font-medium text-gray-600 hover:border-[#1B8FAE] hover:text-[#1B8FAE]"
-                      >
-                        <Paperclip className="h-4 w-4" />
-                        {files.length === 0 ? "Sélectionner un fichier" : "Ajouter un autre fichier"}
-                      </button>
-                    )}
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Votre dossier de candidature *
+                    </label>
+                    <span className="text-xs font-medium text-gray-500">
+                      {picked.length}/{MAX_FILES} fichiers
+                    </span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-300">
-                    PDF, Word, PNG ou JPG — 5 Mo maximum par fichier, {MAX_FILES} fichiers et 7 Mo au total
-                    {files.length > 0 ? ` (${formatSize(totalSize)} utilisés)` : ""}.
+
+                  <div className="space-y-3">
+                    {DOC_SLOTS.map((slot) => {
+                      const entry = docs[slot.key];
+                      const ready = !!entry && entry.data !== null;
+
+                      return (
+                        <div key={slot.key} className="rounded-xl border border-gray-300 bg-white p-3">
+                          <input
+                            ref={(el) => {
+                              inputRefs.current[slot.key] = el;
+                            }}
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            onChange={(e) => void handleSlotPicked(slot.key, e.target.files)}
+                            className="hidden"
+                          />
+
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold">{slot.title}</p>
+                              <p className="text-xs text-gray-500">{slot.hint}</p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                slot.required ? "bg-[#D01C7F]/10 text-[#D01C7F]" : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {slot.required ? "Obligatoire" : "Facultatif"}
+                            </span>
+                          </div>
+
+                          {!entry ? (
+                            <button
+                              type="button"
+                              onClick={() => inputRefs.current[slot.key]?.click()}
+                              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 hover:border-[#1B8FAE] hover:text-[#1B8FAE]"
+                            >
+                              <Paperclip className="h-4 w-4" />
+                              Choisir un fichier
+                            </button>
+                          ) : (
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="flex min-w-0 items-center gap-2">
+                                  {ready ? (
+                                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                                  ) : (
+                                    <Paperclip className="h-4 w-4 shrink-0 text-[#1B8FAE]" />
+                                  )}
+                                  <span className="truncate">{entry.file.name}</span>
+                                  <span className="shrink-0 text-xs text-gray-400">{formatSize(entry.file.size)}</span>
+                                </span>
+                                <span className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => inputRefs.current[slot.key]?.click()}
+                                    className="rounded-lg px-2 py-1 text-xs font-medium text-[#1B8FAE] hover:bg-gray-100"
+                                  >
+                                    Remplacer
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSlot(slot.key)}
+                                    aria-label={`Retirer ${slot.title}`}
+                                    className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-[#D01C7F]"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </span>
+                              </div>
+
+                              <div
+                                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-200"
+                                role="progressbar"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={entry.progress}
+                              >
+                                <div
+                                  className={`h-full rounded-full transition-all ${ready ? "bg-emerald-500" : "bg-[#1B8FAE]"}`}
+                                  style={{ width: `${entry.progress}%` }}
+                                />
+                              </div>
+                              <p className="mt-1 text-[11px] text-gray-500">
+                                {ready ? "Prêt à être envoyé" : `Préparation… ${entry.progress}%`}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        {formatSize(totalSize)} utilisés sur {formatSize(MAX_TOTAL_BYTES)}
+                      </span>
+                      <span className="font-medium">Il reste {formatSize(remaining)}</span>
+                    </div>
+                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className={`h-full rounded-full transition-all ${usedPercent >= 90 ? "bg-[#D01C7F]" : "bg-[#1B8FAE]"}`}
+                        style={{ width: `${usedPercent}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-xs text-gray-500 dark:text-slate-300">
+                    PDF uniquement — 5 Mo maximum par fichier, {MAX_FILES} fichiers et 7 Mo au total. CV et lettre de
+                    motivation obligatoires.
                   </p>
                 </div>
 
@@ -464,10 +586,10 @@ export default function PostulerPage() {
 
                 <button
                   type="submit"
-                  disabled={sending}
+                  disabled={sending || stillReading}
                   className="w-full rounded-xl bg-[#1F5FA0] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#194d82] disabled:opacity-60"
                 >
-                  {sending ? "Envoi..." : "Envoyer ma candidature"}
+                  {sending ? "Envoi en cours..." : "Envoyer ma candidature"}
                 </button>
               </form>
             )}

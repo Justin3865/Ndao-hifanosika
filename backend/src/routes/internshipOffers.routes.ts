@@ -127,21 +127,67 @@ function parseOneFile(raw: any): { ok: true; file: ParsedFile } | { ok: false; m
   return { ok: true, file: { name, mime: ALLOWED_FILES[ext][0], size: data.length, data } };
 }
 
-/** Accepte `files: [...]` (nouveau) ou `file: {...}` (ancien format) */
+/* ---------- Pièces du dossier (5 catégories, PDF uniquement) ---------- */
+const DOC_CATEGORIES: Record<string, string> = {
+  cv: "CV",
+  lettre: "Lettre de motivation",
+  diplomes: "Diplômes et attestations",
+  releves: "Relevés de notes",
+  certificats: "Certificats et recommandations",
+};
+const REQUIRED_CATEGORIES = ["cv", "lettre"];
+
+/**
+ * Accepte `files: [...]` (nouveau) ou `file: {...}` (ancien format).
+ * Si les fichiers portent une `category` (formulaire à 5 pièces) : PDF uniquement, une pièce par
+ * catégorie, CV et lettre de motivation obligatoires. Le nom enregistré commence par la catégorie.
+ */
 function parseUploadedFiles(body: any): { ok: true; files: ParsedFile[] } | { ok: false; message: string } {
   const rawList: any[] = Array.isArray(body?.files) ? body.files : body?.file ? [body.file] : [];
   if (rawList.length > MAX_FILES) {
     return { ok: false, message: `Maximum ${MAX_FILES} fichiers par candidature.` };
   }
 
+  const categorized = rawList.some((raw) => raw && raw.category);
+  const seen = new Set<string>();
+
   const files: ParsedFile[] = [];
   let total = 0;
   for (const raw of rawList) {
+    let label = "";
+
+    if (categorized) {
+      const category = String(raw?.category || "");
+      if (!DOC_CATEGORIES[category]) {
+        return { ok: false, message: "Catégorie de document invalide." };
+      }
+      if (seen.has(category)) {
+        return { ok: false, message: `Un seul fichier est accepté pour « ${DOC_CATEGORIES[category]} ».` };
+      }
+      seen.add(category);
+      label = DOC_CATEGORIES[category];
+
+      const name = String(raw?.name || "").trim();
+      if (!name.toLowerCase().endsWith(".pdf")) {
+        return { ok: false, message: `« ${label} » : seul le format PDF est accepté.` };
+      }
+    }
+
     const parsed = parseOneFile(raw);
     if (!parsed.ok) return parsed;
+    if (label) parsed.file.name = `${label} - ${parsed.file.name}`.slice(0, 200);
     total += parsed.file.size;
     files.push(parsed.file);
   }
+
+  if (categorized) {
+    for (const required of REQUIRED_CATEGORIES) {
+      if (!seen.has(required)) {
+        return { ok: false, message: `Le document « ${DOC_CATEGORIES[required]} » est obligatoire.` };
+      }
+    }
+  }
+
   if (total > MAX_TOTAL_BYTES) {
     return { ok: false, message: "Les fichiers dépassent 7 Mo au total." };
   }
