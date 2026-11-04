@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader, State, useInsight } from "@/components/insights/parts";
+import { NarrativePanel } from "@/components/ai/NarrativePanel";
 import { Logo } from "@/components/brand/Logo";
 import { ORG, orgContactLine } from "@/lib/org";
 
@@ -174,6 +175,8 @@ export default function AiSummaryPage() {
 
       <div className="mx-auto w-full min-w-0 max-w-4xl space-y-5 overflow-x-hidden">
         <InsightHeader title="Synthèse intelligente" subtitle="Résumé automatique de la situation globale." />
+
+        <NarrativePanel />
 
         <State loading={loading} error={error}>
           {data && (

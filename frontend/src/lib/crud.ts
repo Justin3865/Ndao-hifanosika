@@ -4,6 +4,7 @@
 import type { ReactNode } from "react";
 import api from "@/lib/axios";
 
+import { buildXlsx, XLSX_MIME, type XlsxCell } from "./xlsx";
 /* ---------- Types de configuration ---------- */
 
 export type FieldType =
@@ -305,3 +306,34 @@ export const canSeeBudget = (role?: string | null): boolean =>
 /** Libellés / noms de champs financiers à masquer. */
 export const isBudgetLabel = (label?: string): boolean => /budget/i.test(label ?? "");
 export const isBudgetField = (name?: string): boolean => /budget/i.test(name ?? "");
+
+/** Export Excel (.xlsx) — même contenu que exportCsv, en vrai classeur Excel (sans dépendance). */
+export function exportXlsx(
+  filename: string,
+  fields: FieldDef[],
+  rows: Item[],
+  sheetName = "Export"
+): void {
+  const data = buildXlsx([
+    {
+      name: sheetName,
+      headers: ["ID", ...fields.map((field) => field.label)],
+      rows: rows.map((row) => [
+        row.id as XlsxCell,
+        ...fields.map((field) => {
+          const v = row[field.name] as unknown;
+          return v !== null && typeof v === "object" && !(v instanceof Date)
+            ? JSON.stringify(v)
+            : (v as XlsxCell);
+        }),
+      ]),
+    },
+  ]);
+  const blob = new Blob([data as BlobPart], { type: XLSX_MIME });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
+}

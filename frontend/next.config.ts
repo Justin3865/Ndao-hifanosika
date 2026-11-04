@@ -2,7 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  allowedDevOrigins: ["10.195.248.51"],
+  // Docker : bundle autonome (NEXT_OUTPUT=standalone défini dans srcf/Dockerfile) ; sans effet en développement
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
+  allowedDevOrigins: ["10.162.114.59"],
 };
 
 export default nextConfig;

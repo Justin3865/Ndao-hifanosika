@@ -7,3 +7,5 @@ node_modules
 SMTP_PASS
 
 .cache/
+# Sortie de compilation des tests unitaires
+.test-build/

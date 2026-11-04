@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import {
   ResourceConfig,
   errorMessage,
   exportCsv,
+  exportXlsx,
   listItems,
 } from "@/lib/crud";
 import {
@@ -32,16 +34,19 @@ const SOURCES: ResourceConfig[] = [
 ];
 
 export default function ReportsExportPage() {
+  const { t } = useI18n();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
-  const download = async (config: ResourceConfig) => {
+  const download = async (config: ResourceConfig, format: "csv" | "xlsx" = "csv") => {
     setBusy(config.basePath);
     setError("");
 
     try {
       const rows = await listItems(config);
-      exportCsv(`${config.basePath.replace("/", "")}-${new Date().toISOString().slice(0, 10)}.csv`, config.fields, rows);
+      const base = `${config.basePath.replace("/", "")}-${new Date().toISOString().slice(0, 10)}`;
+      if (format === "xlsx") exportXlsx(`${base}.xlsx`, config.fields, rows, config.title);
+      else exportCsv(`${base}.csv`, config.fields, rows);
     } catch (err) {
       setError(errorMessage(err, `Export de « ${config.title} » impossible (accès refusé ?).`));
     } finally {
@@ -79,8 +84,8 @@ export default function ReportsExportPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Exports de données</h1>
-            <p className="text-sm text-gray-500">Fichiers CSV (ouvrables dans Excel) construits à partir de la base de données.</p>
+            <h1 className="text-2xl font-bold text-gray-900">{t("export.title")}</h1>
+            <p className="text-sm text-gray-500">{t("export.subtitle")}</p>
           </div>
 
           <button
@@ -98,19 +103,31 @@ export default function ReportsExportPage() {
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {SOURCES.map((config) => (
-            <button
+            <div
               key={config.basePath}
-              type="button"
-              onClick={() => download(config)}
-              disabled={busy !== ""}
-              className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md disabled:opacity-60"
+              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
             >
-              <span>
-                <span className="block font-semibold text-gray-900">{config.title}</span>
-                <span className="text-xs text-gray-500">Télécharger en CSV</span>
-              </span>
-              <Download className="h-5 w-5 text-blue-700" />
-            </button>
+              <span className="block font-semibold text-gray-900">{config.title}</span>
+              <span className="text-xs text-gray-500">{t("export.hint")}</span>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => download(config, "xlsx")}
+                  disabled={busy !== ""}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-800 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" /> Excel (.xlsx)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => download(config, "csv")}
+                  disabled={busy !== ""}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" /> CSV
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </div>

@@ -16,6 +16,7 @@ from . import db
 from .config import service_key
 from .dashboard import build_dashboard
 from .insights import CATALOG, LISTS, analyze, to_ts
+from .narrative import generate_narrative
 
 router = APIRouter()
 
@@ -116,3 +117,30 @@ def live_dashboard(x_service_key: str | None = Header(default=None)):
     analysis = analyze(data, now)
 
     return {**build_dashboard(analysis, data, history, now), "engine": "python-db"}
+
+
+class NarrativeRequest(BaseModel):
+    """Analyse déjà calculée (sortie de /v1/insights) à mettre en texte."""
+
+    analysis: dict[str, Any]
+    period: str | None = Field(default=None, max_length=80)
+
+
+@router.post("/v1/narrative", tags=["analysis"])
+def narrative(payload: NarrativeRequest, x_service_key: str | None = Header(default=None)):
+    """Synthèse narrative en français (règles ; reformulation LLM optionnelle)."""
+    check_key(x_service_key)
+    return generate_narrative(payload.analysis, payload.period)
+
+
+@router.get("/v1/live/narrative", tags=["live"])
+def live_narrative(period: str | None = None, x_service_key: str | None = Header(default=None)):
+    """Synthèse narrative calculée sur les données lues dans PostgreSQL."""
+    check_key(x_service_key)
+
+    try:
+        data = db.fetch_dataset()
+    except db.DatabaseUnavailable as error:
+        raise _database_error(error) from error
+
+    return generate_narrative(analyze(data), period)

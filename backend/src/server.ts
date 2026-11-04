@@ -14,10 +14,13 @@ import { startActivityReminders } from "./services/activityReminders.service";
 import { startAnomalyMonitor } from "./controllers/anomalyAlerts.controller";
 import { startAnomalyRealtime } from "./services/anomalyRealtime.service";
 import { startReminderScheduler } from "./services/reminders.service";
+import { startFollowUpScheduler } from "./services/followUp.service";
+import { startQueue } from "./utils/jobQueue";
 
 async function startServer() {
   try {
     await connectDatabase();
+    await startQueue();
 
     const server = http.createServer(app);
     initSocket(server);
@@ -28,6 +31,7 @@ async function startServer() {
     startScheduledMessageWorker();
     startAnomalyRealtime();
     startAnomalyMonitor();
+    startFollowUpScheduler();
 
     server.listen(env.PORT, () => {
       logger.success(

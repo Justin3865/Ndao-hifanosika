@@ -331,6 +331,7 @@ model Beneficiary {
   surveys      Survey[]
   partnerLinks BeneficiaryPartner[]
   certificates Certificate[]
+  followUps    PostProgramFollowUp[]
 
   @@index([projectId])
   @@index([gender])
@@ -1135,4 +1136,45 @@ model ProjectFeedback {
   @@index([projectId, kind])
   @@index([partnerId])
   @@index([beneficiaryId])
+}
+
+/// Suivi post-programme : relances à 3, 6 et 12 mois après la fin du parcours (cahier des charges §5.4)
+enum FollowUpStatus {
+  PENDING
+  DONE
+  MISSED
+}
+
+enum FollowUpOccupation {
+  EMPLOYED
+  SELF_EMPLOYED
+  IN_TRAINING
+  SEEKING
+  INACTIVE
+}
+
+model PostProgramFollowUp {
+  id            Int            @id @default(autoincrement())
+  beneficiaryId Int
+  /// 3, 6 ou 12 (mois après la fin du programme)
+  horizonMonths Int
+  dueDate       DateTime
+  status        FollowUpStatus @default(PENDING)
+  completedAt   DateTime?
+
+  occupation     FollowUpOccupation?
+  activityCreated Boolean?
+  monthlyIncome  Float?
+  /// Satisfaction 1 à 5
+  satisfaction   Int?
+  notes          String?  @db.Text
+  completedById  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  beneficiary Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+
+  @@unique([beneficiaryId, horizonMonths])
+  @@index([status, dueDate])
 }

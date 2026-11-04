@@ -1,0 +1,9 @@
+# Environnement de RECETTE (staging) : validation par la Direction, la DSI et les RH avant production.
+# Les ports (4100 / 3100) viennent de .env.staging (BACK_PORT / FRONT_PORT).
+services:
+  back:
+    environment:
+      NODE_ENV: staging
+  backup:
+    environment:
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}

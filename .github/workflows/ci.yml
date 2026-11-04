@@ -1,0 +1,122 @@
+name: CI/CD — Ndao Hifanosika S&E
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  back:
+    name: Back-end (Express / Prisma)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: srcb } }
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      JWT_SECRET: ci-secret-ci-secret-ci-secret-00
+      JWT_REFRESH_SECRET: ci-refresh-ci-refresh-ci-refresh-0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: srcb/package-lock.json }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run test:unit
+      - run: npm test
+
+  front:
+    name: Front-end (Next.js)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: srcf } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: srcf/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run lint --if-present
+      - run: npx next build
+        env: { NEXT_PUBLIC_API_URL: http://localhost:4000/api }
+
+  ia:
+    name: Service IA (FastAPI)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: IA } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: IA/requirements.txt }
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  ml:
+    name: Service ML (scikit-learn)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: ML } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: ML/requirements.txt }
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+
+  docker:
+    name: Images Docker
+    needs: [back, front, ia, ml]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Valider la configuration compose
+        working-directory: deploy
+        run: |
+          cp .env.prod.example .env.ci
+          docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.prod.yml config -q
+      - name: Construire les 4 images
+        run: |
+          docker build -t ndao-back  srcb
+          docker build -t ndao-front srcf
+          docker build -t ndao-ia    IA
+          docker build -t ndao-ml    ML
+
+  deploy-staging:
+    name: Déploiement recette (develop)
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    needs: [docker]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Déployer par SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd ${{ secrets.STAGING_PATH }} && git pull --ff-only
+            cd deploy && docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+
+  deploy-prod:
+    name: Déploiement production (main — validation manuelle)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [docker]
+    runs-on: ubuntu-latest
+    environment: production   # configurer « Required reviewers » dans GitHub pour la validation manuelle
+    steps:
+      - uses: actions/checkout@v4
+      - name: Déployer par SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd ${{ secrets.PROD_PATH }} && git pull --ff-only
+            cd deploy && docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml exec -T backup sh /usr/local/bin/backup.sh || true
+            docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d --build

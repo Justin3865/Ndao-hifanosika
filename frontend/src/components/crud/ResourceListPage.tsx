@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Download, Eye, FileText, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { AppLayout } from "@/components/layout";
 import { getStoredRole } from "@/lib/access";
@@ -16,11 +16,26 @@ import {
   listItems,
   removeItem,
 } from "@/lib/crud";
+import { exportSheetsExcel, type ExportSheet } from "@/lib/exportTable";
 import { confirmDialog, toast } from "@/lib/toast";
 
 const PAGE_SIZE = 10;
 
-export function ResourceListPage({ config }: { config: ResourceConfig }) {
+function downloadSheet(label: string, sheet: ExportSheet) {
+  exportSheetsExcel(label, [sheet]);
+}
+
+export type ExportExtra = { label: string; sheet: () => ExportSheet };
+
+export function ResourceListPage({
+  config,
+  top,
+  exportExtras,
+}: {
+  config: ResourceConfig;
+  top?: ReactNode;
+  exportExtras?: ExportExtra[];
+}) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -193,6 +208,18 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
             Exporter CSV
           </button>
 
+          {exportExtras?.map((extra) => (
+            <button
+              key={extra.label}
+              type="button"
+              onClick={() => downloadSheet(extra.label, extra.sheet())}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              <Download className="h-4 w-4" />
+              {extra.label}
+            </button>
+          ))}
+
           {canCreate && (
             <Link
               href={createHref}
@@ -237,6 +264,8 @@ export function ResourceListPage({ config }: { config: ResourceConfig }) {
             </select>
           )}
         </div>
+
+        {top}
 
         {!loading && !error && config.listExtra?.(filtered)}
 

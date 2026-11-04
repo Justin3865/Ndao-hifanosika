@@ -40,6 +40,11 @@ import monitoringRoutes from "./routes/monitoring.routes";
 import finalEvaluationRoutes from "./routes/finalEvaluation.routes";
 import manualProgressRoutes from "./routes/manualProgress.routes";
 import integrationRoutes from "./routes/integration.routes";
+import followUpsRoutes from "./routes/followUps.routes";
+import metricsRoutes from "./routes/metrics.routes";
+import narrativeRoutes from "./routes/narrative.routes";
+import { perfMiddleware } from "./middlewares/perf.middleware";
+import { queueStats } from "./utils/jobQueue";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
 import { phoneLimit } from "./middlewares/phoneLimit.middleware";
@@ -55,6 +60,9 @@ app.use(
 );
 
 app.use(helmet());
+
+// Mesure des temps de réponse (cible < 500 ms hors IA)
+app.use(perfMiddleware);
 
 app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true, limit: "12mb" }));
@@ -76,6 +84,8 @@ app.get("/health", (_req, res) => {
     success: true,
     message: "API Ndao Hifanosika opérationnelle",
     environment: env.NODE_ENV,
+    uptimeSeconds: Math.round(process.uptime()),
+    queue: queueStats().driver,
   });
 });
 
@@ -84,6 +94,8 @@ app.get("/api/health", (_req, res) => {
     success: true,
     message: "API Ndao Hifanosika opérationnelle",
     environment: env.NODE_ENV,
+    uptimeSeconds: Math.round(process.uptime()),
+    queue: queueStats().driver,
   });
 });
 
@@ -98,6 +110,8 @@ app.use("/api/monitoring", monitoringRoutes);
 app.use("/api/final-evaluation", finalEvaluationRoutes);
 app.use("/api/manual-progress", manualProgressRoutes);
 app.use("/api/integration", integrationRoutes);
+app.use("/api/follow-ups", followUpsRoutes);
+app.use("/api/metrics", metricsRoutes);
 app.use("/api/milestones", milestonesRoutes);
 app.use("/api/members", membersRoutes);
 app.use("/api/beneficiaries", beneficiariesRoutes);
@@ -109,6 +123,7 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/ai", aiExtraRoutes);
+app.use("/api/ai", narrativeRoutes);
 app.use("/api/lookups", lookupsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/settings", settingsRoutes);

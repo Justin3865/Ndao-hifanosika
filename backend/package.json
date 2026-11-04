@@ -2,18 +2,21 @@
   "name": "ndao-hifanosika-backend",
   "version": "1.0.0",
   "description": "API REST du système de Suivi et Évaluation de l'ONG Ndao Hifanosika",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "node --test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
     "typecheck": "prisma generate && tsc --noEmit -p tsconfig.json",
-    "check": "npm run test && npm run typecheck"
+    "check": "npm run test && npm run test:unit && npm run typecheck",
+    "migrate:deploy": "prisma migrate deploy",
+    "test:unit": "tsc -p tsconfig.test.json && node --test .test-build/test/*.test.js",
+    "perf": "node tests-http/perf.mjs"
   },
   "keywords": [
     "ndao-hifanosika",
@@ -61,5 +64,8 @@
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
+  },
+  "optionalDependencies": {
+    "bullmq": "^5.34.0"
   }
 }

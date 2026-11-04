@@ -1,0 +1,15 @@
+# TLS (Let's Encrypt) automatique : HTTPS obligatoire (cahier des charges §10)
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy front:3000
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+	}
+	# Socket.IO (messagerie temps réel) : WebSocket pris en charge par défaut
+	reverse_proxy back:4000
+}

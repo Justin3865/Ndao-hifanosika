@@ -98,6 +98,7 @@ const ACCESS_RULES: AccessRule[] = [
   { pattern: /^\/members(\/|$)/, roles: ["ADMIN", "DIRECTION", "RH", "COORDINATOR"] },
 
   // Bénéficiaires
+  { pattern: /^\/follow-ups(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
   { pattern: /^\/beneficiaries(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"] },
 
   // Évaluations : grilles et campagnes = pilotage uniquement

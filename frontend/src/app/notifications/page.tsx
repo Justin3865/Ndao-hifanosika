@@ -1,12 +1,13 @@
 "use client";
 
-import { ReactNode, Suspense, useEffect, useState } from "react";
+import { ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
   Bell,
   CalendarClock,
+  Check,
   CheckCheck,
   ChevronDown,
   Copy,
@@ -201,6 +202,11 @@ interface CardProps {
   sameSourceItems: FeedItem[];
   onRead: (item: FeedItem) => void;
   onMenu: (item: FeedItem) => void;
+  /** Mode sélection multiple : un clic coche / décoche au lieu d'ouvrir le détail */
+  selecting: boolean;
+  selected: boolean;
+  /** `range` = Maj + clic : sélectionne tout l'intervalle depuis le dernier message coché */
+  onToggle: (item: FeedItem, range: boolean) => void;
   children?: ReactNode;
 }
 
@@ -227,24 +233,59 @@ function jumpToMessage(id: number) {
   window.setTimeout(() => element.classList.remove("ring-2", "ring-blue-400"), 1800);
 }
 
-function MessageCard({ item, sameSourceCount, sameSourceItems, onRead, onMenu, children }: CardProps) {
+function MessageCard({
+  item,
+  sameSourceCount,
+  sameSourceItems,
+  onRead,
+  onMenu,
+  selecting,
+  selected,
+  onToggle,
+  children,
+}: CardProps) {
   const [showThread, setShowThread] = useState(false);
+  const shiftKey = useRef(false);
 
   const { pressing, handlers } = useLongPress({
-    onLongPress: () => onMenu(item),
-    onClick: () => onRead(item),
+    // En mode sélection, l'appui long coche aussi le message (pas de menu)
+    onLongPress: () => (selecting ? onToggle(item, false) : onMenu(item)),
+    onClick: () => (selecting ? onToggle(item, shiftKey.current) : onRead(item)),
   });
 
   return (
     <div
       id={`msg-${item.id}`}
       {...handlers}
+      onPointerDown={(event) => {
+        shiftKey.current = event.shiftKey;
+        handlers.onPointerDown(event);
+      }}
       style={{ WebkitTouchCallout: "none" }}
       className={`relative cursor-pointer overflow-hidden rounded-2xl border p-4 shadow-sm transition [@media(pointer:coarse)]:select-none ${
-        item.read ? "border-gray-200 bg-white" : "border-blue-200 bg-blue-50"
+        selected
+          ? "border-blue-500 bg-blue-100 ring-2 ring-blue-400"
+          : item.read
+            ? "border-gray-200 bg-white"
+            : "border-blue-200 bg-blue-50"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
+        {selecting && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={selected ? "Désélectionner" : "Sélectionner"}
+            onClick={(event) => onToggle(item, event.shiftKey)}
+            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition ${
+              selected ? "border-blue-600 bg-blue-600 text-white" : "border-gray-400 bg-white text-transparent"
+            }`}
+          >
+            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+          </button>
+        )}
+
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_COLORS[item.type] ?? "bg-gray-100 text-gray-700"}`}>
@@ -329,15 +370,17 @@ function MessageCard({ item, sameSourceCount, sameSourceItems, onRead, onMenu, c
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onMenu(item)}
-          className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-black/5"
-          title="Actions"
-          aria-label="Actions"
-        >
-          <MoreHorizontal className="h-5 w-5" />
-        </button>
+        {!selecting && (
+          <button
+            type="button"
+            onClick={() => onMenu(item)}
+            className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-black/5"
+            title="Actions"
+            aria-label="Actions"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {children}
@@ -365,6 +408,7 @@ interface SheetProps {
   onClose: () => void;
   onReply: () => void;
   onReplyGroup: () => void;
+  onSelect: () => void;
   onMarkUnread: () => void;
   onArchive: () => void;
   onCopy: () => void;
@@ -372,7 +416,7 @@ interface SheetProps {
   onDelete: () => void;
 }
 
-function ActionSheet({ item, onClose, onReply, onReplyGroup, onMarkUnread, onArchive, onCopy, onOpenMap, onDelete }: SheetProps) {
+function ActionSheet({ item, onClose, onReply, onReplyGroup, onSelect, onMarkUnread, onArchive, onCopy, onOpenMap, onDelete }: SheetProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -411,6 +455,10 @@ function ActionSheet({ item, onClose, onReply, onReplyGroup, onMarkUnread, onArc
             {item.groupSize ? ` (${item.groupSize - 1} personnes)` : ""}
           </button>
         )}
+
+        <button type="button" className={row} onClick={onSelect}>
+          <Check className="h-4 w-4 text-blue-600" /> Sélectionner
+        </button>
 
         {/* « Lu » se fait en touchant le message ; on ne propose ici que de le remettre en non lu */}
         {item.read && !item.archived && (
@@ -451,7 +499,20 @@ function NotificationsContent() {
   const params = useSearchParams();
   const source = params.get("source") ?? "";
 
-  const { items, unread, loading, error, setError, setRead, setArchived, markAllRead, remove } = useNotificationFeed();
+  const {
+    items,
+    unread,
+    loading,
+    error,
+    setError,
+    setRead,
+    setArchived,
+    markAllRead,
+    remove,
+    setManyRead,
+    setManyArchived,
+    removeMany,
+  } = useNotificationFeed();
 
   const [role, setRole] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -465,6 +526,12 @@ function NotificationsContent() {
   const [view, setView] = useState<"inbox" | "archived">("inbox");
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<number | null>(null);
+
+  // Sélection multiple
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const lastPicked = useRef<number | null>(null);
 
   // Brouillon : l'utilisateur (null = pas encore lu) et le compteur qui recharge les messages programmés
   const [draftUid, setDraftUid] = useState<string | null>(null);
@@ -566,6 +633,125 @@ function NotificationsContent() {
     .filter((item) => !source || sourceKey(item) === source)
     .filter((item) => !search || matches(item, search));
 
+  // Seuls les messages actuellement affichés comptent (filtre / recherche / onglet changés = pas d'action cachée)
+  const selectedItems = visible.filter((item) => selected.has(item.id));
+  const selectedCount = selectedItems.length;
+  const allSelected = visible.length > 0 && selectedCount === visible.length;
+
+  const exitSelection = () => {
+    setSelecting(false);
+    setSelected(new Set());
+    lastPicked.current = null;
+  };
+
+  const toggleSelect = (item: FeedItem, range: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const anchor = lastPicked.current;
+
+      if (range && anchor !== null) {
+        const from = visible.findIndex((entry) => entry.id === anchor);
+        const to = visible.findIndex((entry) => entry.id === item.id);
+
+        if (from !== -1 && to !== -1) {
+          const [start, end] = from < to ? [from, to] : [to, from];
+          for (let index = start; index <= end; index += 1) next.add(visible[index].id);
+          return next;
+        }
+      }
+
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+
+      return next;
+    });
+
+    lastPicked.current = item.id;
+  };
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? new Set() : new Set(visible.map((item) => item.id)));
+    lastPicked.current = null;
+  };
+
+  const startSelection = (item: FeedItem) => {
+    setSelecting(true);
+    setSelected(new Set([item.id]));
+    lastPicked.current = item.id;
+  };
+
+  const plural = (n: number) => (n > 1 ? "s" : "");
+
+  const reportBulk = (result: { done: number; failed: number }, success: string) => {
+    if (result.failed === 0) toast.success(success);
+    else if (result.done > 0) toast.warning(`${result.done} réussie${plural(result.done)}, ${result.failed} en échec.`);
+    else toast.error("Action impossible.");
+  };
+
+  const bulkRead = async (read: boolean) => {
+    if (selectedCount === 0 || bulkBusy) return;
+    setBulkBusy(true);
+
+    try {
+      const result = await setManyRead(
+        selectedItems.filter((item) => item.read !== read).map((item) => item.id),
+        read,
+      );
+      reportBulk(result, read ? "Marquées comme lues." : "Marquées comme non lues.");
+      exitSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkArchive = async () => {
+    if (selectedCount === 0 || bulkBusy) return;
+    setBulkBusy(true);
+
+    const archive = view !== "archived";
+
+    try {
+      const result = await setManyArchived(
+        selectedItems.map((item) => item.id),
+        archive,
+      );
+      reportBulk(result, archive ? "Notifications archivées." : "Notifications désarchivées.");
+      exitSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (selectedCount === 0 || bulkBusy) return;
+
+    const ok = await confirmDialog(
+      `Supprimer ${selectedCount} notification${plural(selectedCount)} ? Cette action est définitive.`,
+      { title: "Supprimer", confirmLabel: "Supprimer" },
+    );
+
+    if (!ok) return;
+
+    setBulkBusy(true);
+
+    try {
+      const result = await removeMany(selectedItems.map((item) => item.id));
+      reportBulk(result, "Notifications supprimées.");
+      exitSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // Échap quitte le mode sélection (quand aucune feuille d'actions n'est ouverte)
+  useEffect(() => {
+    if (!selecting || menuId !== null) return;
+
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && exitSelection();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selecting, menuId]);
+
   const pickSource = (key: string) =>
     router.replace(key ? `/notifications?source=${encodeURIComponent(key)}` : "/notifications", { scroll: false });
 
@@ -649,6 +835,16 @@ function NotificationsContent() {
         </div>
 
         <div className="flex gap-2">
+          {!selecting && visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelecting(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <Check className="h-4 w-4" /> Sélectionner
+            </button>
+          )}
+
           {unread > 0 && (
             <button
               type="button"
@@ -711,6 +907,7 @@ function NotificationsContent() {
               onClick={() => {
                 setView(tab);
                 setReplyingId(null);
+                exitSelection();
                 if (source) pickSource("");
               }}
               className={`rounded-lg px-3 py-1.5 ${view === tab ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
@@ -796,6 +993,73 @@ function NotificationsContent() {
         </div>
       )}
 
+      {selecting && (
+        <div className="sticky top-2 z-30 flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+          <button
+            type="button"
+            onClick={exitSelection}
+            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+            title="Annuler la sélection"
+            aria-label="Annuler la sélection"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <span className="text-sm font-semibold text-gray-900">
+            {selectedCount} sélectionné{plural(selectedCount)}
+          </span>
+
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50"
+          >
+            {allSelected ? "Tout désélectionner" : `Tout sélectionner (${visible.length})`}
+          </button>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {bulkBusy && <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
+
+            <button
+              type="button"
+              disabled={selectedCount === 0 || bulkBusy}
+              onClick={() => void bulkRead(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <CheckCheck className="h-4 w-4" /> Lu
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedCount === 0 || bulkBusy}
+              onClick={() => void bulkRead(false)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Mail className="h-4 w-4" /> Non lu
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedCount === 0 || bulkBusy}
+              onClick={() => void bulkArchive()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {view === "archived" ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+              {view === "archived" ? "Désarchiver" : "Archiver"}
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedCount === 0 || bulkBusy}
+              onClick={() => void bulkDelete()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" /> Supprimer
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
         {visible.map((item) => (
           <MessageCard
@@ -805,6 +1069,9 @@ function NotificationsContent() {
             sameSourceItems={itemsBySource.get(sourceKey(item)) ?? [item]}
             onRead={markRead}
             onMenu={(target) => setMenuId(target.id)}
+            selecting={selecting}
+            selected={selected.has(item.id)}
+            onToggle={toggleSelect}
           >
             <RegistrationRequestActions item={item} />
             <ApplicationRequestActions item={item} />
@@ -843,6 +1110,10 @@ function NotificationsContent() {
           onReplyGroup={() => {
             setReplyScope("group");
             setReplyingId(menuItem.id);
+            setMenuId(null);
+          }}
+          onSelect={() => {
+            startSelection(menuItem);
             setMenuId(null);
           }}
           onMarkUnread={() => {

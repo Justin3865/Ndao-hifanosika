@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { SettingsProvider } from "@/components/providers/settings-provider";
 import { MissionProvider } from "@/components/mission/MissionProvider";
+import { I18nProvider } from "@/components/i18n/I18nProvider";
 
 export const metadata: Metadata = {
   title: {
@@ -73,8 +74,10 @@ export default function RootLayout({
 
       <body className="min-h-screen bg-background text-foreground antialiased">
         <SettingsProvider>
+          <I18nProvider>
           {/* Monté à la racine : la mission GPS continue quand on change de page */}
           <MissionProvider>{children}</MissionProvider>
+          </I18nProvider>
         </SettingsProvider>
       </body>
     </html>

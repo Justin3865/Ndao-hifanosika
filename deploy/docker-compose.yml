@@ -1,0 +1,135 @@
+# Plateforme S&E Ndao Hifanosika — orchestration des services (cahier des charges §7.2 / §7.4)
+#
+#   Développement : docker compose --env-file .env.dev     up --build
+#   Recette       : docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+#   Production    : docker compose --env-file .env.prod    -f docker-compose.yml -f docker-compose.prod.yml    up -d --build
+#   File Redis    : ajouter  --profile queue   (optionnel)
+#
+# Les chemins ci-dessous correspondent à l'arborescence du dépôt : srcb/, srcf/ (front), IA, ML.
+# Adaptez BACK_DIR / FRONT_DIR / IA_DIR / ML_DIR dans le fichier .env si vos dossiers portent d'autres noms.
+
+name: ndao-${ENV_NAME:-dev}
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ndao}
+      POSTGRES_USER: ${POSTGRES_USER:-ndao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build: ${BACK_DIR:-../srcb}
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ndao}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ndao}
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  back:
+    build: ${BACK_DIR:-../srcb}
+    <<: *restart
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ndao}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ndao}
+      JWT_SECRET: ${JWT_SECRET:?définir JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?définir JWT_REFRESH_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      AI_SERVICE_URL: http://ia:8000
+      ML_SERVICE_URL: http://ml:8001
+      AI_SERVICE_KEY: ${AI_SERVICE_KEY:?définir AI_SERVICE_KEY}
+      REDIS_URL: ${REDIS_URL:-}
+      PERF_SLOW_MS: ${PERF_SLOW_MS:-500}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESET_EMAIL_FROM: ${RESET_EMAIL_FROM:-}
+    env_file:
+      - path: ${BACK_ENV_FILE:-/dev/null}
+        required: false
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    ports:
+      - "${BACK_PORT:-4000}:4000"
+    volumes:
+      - uploads:/app/uploads
+
+  front:
+    build:
+      context: ${FRONT_DIR:-../srcf}
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+    <<: *restart
+    depends_on: [back]
+    ports:
+      - "${FRONT_PORT:-3000}:3000"
+
+  # Service IA : jamais exposé à Internet (réseau interne uniquement), cahier §9.3
+  ia:
+    build: ${IA_DIR:-../IA}
+    <<: *restart
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ndao}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ndao}
+      AI_SERVICE_KEY: ${AI_SERVICE_KEY}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    depends_on:
+      db: { condition: service_healthy }
+    expose: ["8000"]
+
+  ml:
+    build: ${ML_DIR:-../ML}
+    <<: *restart
+    environment:
+      BACKEND_URL: http://back:4000
+      AI_SERVICE_KEY: ${AI_SERVICE_KEY}
+    depends_on: [back]
+    expose: ["8001"]
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["queue"]
+    <<: *restart
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Sauvegardes automatiques de PostgreSQL (quotidiennes, rotation) — voir scripts/backup.sh
+  backup:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-ndao}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-ndao}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_EVERY_HOURS: ${BACKUP_EVERY_HOURS:-24}
+    volumes:
+      - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+      - backups:/backups
+    entrypoint: ["/bin/sh", "-c", "while true; do /bin/sh /usr/local/bin/backup.sh; sleep $$((BACKUP_EVERY_HOURS*3600)); done"]
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  uploads:
+  backups:
+  redisdata:

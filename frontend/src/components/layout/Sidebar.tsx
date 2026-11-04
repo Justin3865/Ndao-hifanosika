@@ -26,7 +26,9 @@ import {
   UserCog,
   Users,
   X,
+  CalendarCheck,
 } from "lucide-react";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { Logo } from "@/components/brand/Logo";
 import { canAccessPath, getStoredRole } from "@/lib/access";
 import { roleLabel } from "@/lib/roles";
@@ -56,6 +58,7 @@ const groups = [
       { href: "/activities", label: "Activités", icon: Activity },
       // Jalons : déplacés dans la fiche du projet (/projects/[id])
       { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
+      { href: "/follow-ups", label: "Suivi post-programme", icon: CalendarCheck },
       // « Évaluations » regroupe aussi « Évaluation finale » et « Ordre de mérite » (onglets de la rubrique)
       { href: "/evaluations", label: "Évaluations", icon: ClipboardList, also: ["/evaluation-finale", "/merit"] },
       // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"
@@ -90,6 +93,7 @@ let cachedRole = "";
 export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
   const pathname = usePathname();
   const { active: missionActive } = useMission();
+  const { t } = useI18n();
   const [role, setRole] = useState(cachedRole);
 
   useEffect(() => {
@@ -130,7 +134,7 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
         {visibleGroups.map((group) => (
           <div key={group.title}>
             <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-blue-300/70">
-              {group.title}
+              {t(`navgroup.${group.title}`, undefined, group.title)}
             </p>
 
             <div className="space-y-1">
@@ -152,7 +156,7 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
                     }`}
                   >
                     <Icon className={`h-[18px] w-[18px] ${active ? "text-amber-500" : ""}`} />
-                    {item.label}
+                    {t(`nav.${item.href}`, undefined, item.label)}
                     {item.href === "/mission" && missionActive && (
                       <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> EN COURS

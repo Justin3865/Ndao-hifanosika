@@ -2,9 +2,9 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Crosshair, Mountain } from "lucide-react";
-import { GoogleMap, MAPS_ENABLED, MapMarker } from "@/components/maps/GoogleMap"; // <-- Esory ny fetchElevation
+import { GoogleMap, MAPS_ENABLED, MapMarker } from "@/components/maps/GoogleMap";
 import { toast } from "@/lib/toast";
-import api from "@/services/api"; // <-- Ampidiro ny api axios anao
+import api from "@/services/api";
 
 export interface GeoValue {
   latitude: string;
@@ -52,19 +52,30 @@ export function GeoPicker({
 
     try {
       const response: any = await api.get("/elevation", { params: { lat: latitude, lng: longitude } });
-      const body = response && "success" in response ? response : response?.data;
-      const value = body?.data?.elevation;
+      const body = response && typeof response === "object" && "success" in response ? response : response?.data;
+      const elevation = body?.data?.elevation;
 
-      if (body?.success && typeof value === "number" && Number.isFinite(value)) {
-        return value;
+      if (body?.success && typeof elevation === "number" && Number.isFinite(elevation)) {
+        return elevation;
       }
 
+      console.warn("[GeoPicker] Réponse altitude inattendue :", response);
       elevationError.current = body?.message || "Réponse inattendue du serveur.";
       return null;
     } catch (error: any) {
-      console.error("Erreur récupération altitude", error);
-
       const status = error?.response?.status ?? error?.status;
+
+      // console.warn (et non console.error) : l'erreur est déjà gérée via toast,
+      // on évite ainsi l'overlay d'erreur Next.js tout en gardant les détails dans la console.
+      console.warn("[GeoPicker] Échec récupération altitude", {
+        status,
+        code: error?.code,
+        message: error?.message,
+        url: error?.config?.baseURL ? `${error.config.baseURL}${error.config.url ?? ""}` : error?.config?.url,
+        response: error?.response?.data,
+        error,
+      });
+
       elevationError.current =
         status === 401
           ? "Session expirée : reconnectez-vous puis réessayez."
@@ -89,7 +100,7 @@ export function GeoPicker({
     onChange(next);
 
     if (withAltitude && (altitude === undefined || altitude === null)) {
-      // ▼▼▼ NOVOAKO : Miantso ny backend fa tsy an'i Google ▼▼▼
+      // Miantso ny backend fa tsy an'i Google
       const elevation = await fetchElevationFromBackend(latitude, longitude);
       if (elevation !== null) onChange({ ...next, altitude: String(elevation) });
     }
@@ -118,8 +129,8 @@ export function GeoPicker({
   const computeAltitude = async () => {
     if (!hasPoint) return;
     setBusy(true);
-    
-    // ▼▼▼ NOVOAKO : Miantso ny backend fa tsy an'i Google ▼▼▼
+
+    // Miantso ny backend fa tsy an'i Google
     const elevation = await fetchElevationFromBackend(lat, lng);
     setBusy(false);
 

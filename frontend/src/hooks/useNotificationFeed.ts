@@ -330,6 +330,77 @@ export function useNotificationFeed() {
     }
   }, []);
 
+  /* ----- actions groupées (sélection multiple) ----- */
+  // Pas d'endpoint « bulk » requis : on réutilise les routes existantes en parallèle.
+  // Si certaines échouent, seules celles-là sont annulées localement (échec partiel géré).
+
+  const runMany = useCallback(
+    async (ids: number[], call: (id: number) => Promise<unknown>): Promise<{ done: number[]; failed: number[] }> => {
+      const results = await Promise.allSettled(ids.map((id) => call(id)));
+      const done: number[] = [];
+      const failed: number[] = [];
+
+      results.forEach((result, index) => (result.status === "fulfilled" ? done : failed).push(ids[index]));
+
+      return { done, failed };
+    },
+    [],
+  );
+
+  const setManyRead = useCallback(
+    async (ids: number[], read: boolean): Promise<{ done: number; failed: number }> => {
+      const target = new Set(ids);
+      setItems((cur) => cur.map((n) => (target.has(n.id) ? { ...n, read } : n)));
+
+      const { done, failed } = await runMany(ids, (id) => api.patch(`/notifications/${id}/${read ? "read" : "unread"}`));
+
+      if (failed.length > 0) {
+        const back = new Set(failed);
+        setItems((cur) => cur.map((n) => (back.has(n.id) ? { ...n, read: !read } : n)));
+        setError("Certaines notifications n'ont pas pu être modifiées.");
+      }
+
+      return { done: done.length, failed: failed.length };
+    },
+    [runMany],
+  );
+
+  const setManyArchived = useCallback(
+    async (ids: number[], archived: boolean): Promise<{ done: number; failed: number }> => {
+      const target = new Set(ids);
+      setItems((cur) => cur.map((n) => (target.has(n.id) ? { ...n, archived } : n)));
+
+      const { done, failed } = await runMany(ids, (id) =>
+        api.patch(`/notifications/${id}/${archived ? "archive" : "unarchive"}`),
+      );
+
+      if (failed.length > 0) {
+        const back = new Set(failed);
+        setItems((cur) => cur.map((n) => (back.has(n.id) ? { ...n, archived: !archived } : n)));
+        setError("Certaines notifications n'ont pas pu être modifiées.");
+      }
+
+      return { done: done.length, failed: failed.length };
+    },
+    [runMany],
+  );
+
+  const removeMany = useCallback(
+    async (ids: number[]): Promise<{ done: number; failed: number }> => {
+      const { done, failed } = await runMany(ids, (id) => api.delete(`/notifications/${id}`));
+
+      if (done.length > 0) {
+        const gone = new Set(done);
+        setItems((cur) => cur.filter((n) => !gone.has(n.id)));
+      }
+
+      if (failed.length > 0) setError("Certaines notifications n'ont pas pu être supprimées.");
+
+      return { done: done.length, failed: failed.length };
+    },
+    [runMany],
+  );
+
   const dismissIncoming = useCallback(() => setIncoming(null), []);
 
   return {
@@ -346,5 +417,8 @@ export function useNotificationFeed() {
     setArchived,
     markAllRead,
     remove,
+    setManyRead,
+    setManyArchived,
+    removeMany,
   };
 }

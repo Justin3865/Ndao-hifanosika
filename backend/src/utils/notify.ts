@@ -5,6 +5,7 @@ import { db } from "./db";
 import { isEmailConfigured, sendEmail } from "./mailer";
 import { isSmsConfigured, sendSms } from "./sms";
 import { pushToUser } from "./webpush";
+import { enqueue, registerJob } from "./jobQueue";
 
 export type NotificationKind = "INFO" | "SUCCESS" | "WARNING" | "ERROR";
 
@@ -76,6 +77,9 @@ async function deliverExternal(userId: number, payload: Payload): Promise<void> 
   }
 }
 
+// Envoi e-mail / SMS exécuté par la file d'attente (nouvelles tentatives automatiques)
+registerJob<{ userId: number; payload: Payload }>("notify:external", ({ userId, payload }) => deliverExternal(userId, payload));
+
 /** Crée la notification en base, la pousse en temps réel puis l'envoie par e-mail/SMS. */
 export async function notifyUsers(
   userIds: Array<number | null | undefined>,
@@ -116,7 +120,7 @@ export async function notifyUsers(
 
       // L'envoi externe ne bloque jamais la requête
       if (payload.channels !== "app") {
-        deliverExternal(userId, payload).catch((error) =>
+        enqueue("notify:external", { userId, payload }).catch((error) =>
           logger.error("Erreur envoi externe notification", error),
         );
       }

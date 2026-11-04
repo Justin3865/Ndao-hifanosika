@@ -39,7 +39,7 @@ def health():
         "status": "ok",
         "service": "ndao-hifanosika-ai",
         "ml_ready": False,
-        "features": ["insights", "anomalies", "dashboard", "live-database", "monitoring"],
+        "features": ["insights", "anomalies", "dashboard", "live-database", "monitoring", "narrative"],
         "database": database,
     }
 
