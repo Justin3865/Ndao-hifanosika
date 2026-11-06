@@ -5,7 +5,7 @@ import { notifyUsers } from "../utils/notify";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
 
-const INTERN_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+const INTERN_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 
 /**
  * Participants d'une activité = lignes ACTIVITY_PARTICIPATION acceptées (même table que l'espace

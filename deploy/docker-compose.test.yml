@@ -1,0 +1,22 @@
+# Base PostgreSQL jetable pour les tests d'intégration (tests-http/t6-scope.mjs).
+#   docker compose -f deploy/docker-compose.test.yml up -d
+#   cd srcb && export DATABASE_URL=postgresql://ndao:test@localhost:55432/ndao_test
+#   npx prisma migrate deploy && npx tsx prisma/create-admin.ts
+#   (démarrer le backend avec les mêmes variables + JWT_SECRET, JWT_REFRESH_SECRET, TWO_FACTOR_KEY, AI_SERVICE_KEY)
+#   node tests-http/t6-scope.mjs
+#   docker compose -f deploy/docker-compose.test.yml down -v   # supprime la base de test
+name: ndao-test
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ndao
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: ndao_test
+    ports: ["55432:5432"]
+    tmpfs: ["/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ndao -d ndao_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20

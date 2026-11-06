@@ -12,7 +12,7 @@ import { notifyUsers, ReminderKind } from "../utils/notify";
  */
 
 const DAY = 24 * 3600 * 1000;
-const STUDENT_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+const STUDENT_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 const CLOSED_STATUSES = ["CLOSED", "COMPLETED", "DONE", "CANCELLED", "ARCHIVED", "FINISHED"];
 
 const day = (value: Date | string) => new Date(value).toLocaleDateString("fr-FR");

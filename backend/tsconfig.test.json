@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "outDir": "./.test-build", "declaration": false, "declarationMap": false, "sourceMap": false, "noEmit": false, "rootDir": "." },
-  "include": ["test/**/*.ts", "src/utils/followUpRules.ts", "src/utils/xlsx.ts", "src/utils/jobQueue.ts", "src/utils/perfStats.ts"],
+  "include": ["test/**/*.ts", "src/utils/followUpRules.ts", "src/utils/xlsx.ts", "src/utils/jobQueue.ts", "src/utils/perfStats.ts", "src/utils/projectScopeRules.ts", "src/utils/gapRules.ts"],
   "exclude": ["node_modules", "dist", ".test-build"]
 }

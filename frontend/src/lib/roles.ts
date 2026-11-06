@@ -13,6 +13,9 @@ export const ROLE_LABELS: Record<string, string> = {
   TUTEUR_M2: "Tuteur M2",
   STAGIAIRE_L3: "Stagiaire L3",
   STAGIAIRE_M2: "Stagiaire M2",
+  STAGIAIRE_L1: "Stagiaire L1",
+  STAGIAIRE_L2: "Stagiaire L2",
+  STAGIAIRE_M1: "Stagiaire M1",
 };
 
 /** Rôles attribuables : ADMIN est exclu (un seul administrateur). */

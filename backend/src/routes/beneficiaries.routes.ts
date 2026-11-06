@@ -6,14 +6,25 @@ import {
   createBeneficiary,
   updateBeneficiary,
   deleteBeneficiary,
+  nextBeneficiaryCode,
+  renumberBeneficiaryMatricules,
 } from "../controllers/beneficiary.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
+import {
+  beneficiaryIdParam,
+  coordinatorScope,
+  guardBodyProject,
+} from "../middlewares/coordinatorScope.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 
 const router = Router();
 
 router.use(authenticate);
+router.use(coordinatorScope); // périmètre des coordinateurs (lot 20261108)
+router.use(guardBodyProject);
+router.param("id", beneficiaryIdParam);
+
 
 /**
  * GET /api/beneficiaries
@@ -27,6 +38,29 @@ router.get(
     "COORDINATOR",
   ),
   getBeneficiaries,
+);
+
+/**
+ * GET /api/beneficiaries/next-code  (avant /:id)
+ */
+router.get(
+  "/next-code",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "DAF",
+    "COORDINATOR",
+  ),
+  nextBeneficiaryCode,
+);
+
+/**
+ * POST /api/beneficiaries/renumber  (avant /:id)
+ */
+router.post(
+  "/renumber",
+  authorizeRoles("ADMIN"),
+  renumberBeneficiaryMatricules,
 );
 
 /**

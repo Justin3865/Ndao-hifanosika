@@ -1,25 +1,30 @@
-# Environnement de PRODUCTION : HTTPS automatique (Caddy), aucun port applicatif exposé directement.
+# Production : seul Caddy est exposé (HTTPS automatique). Nécessite Docker Compose >= 2.24 pour !reset.
 services:
-  back:
+  backend:
+    ports: !reset []
     environment:
       NODE_ENV: production
+  frontend:
     ports: !reset []
-    expose: ["4000"]
-  front:
-    ports: !reset []
-    expose: ["3000"]
-  proxy:
+    environment:
+      NODE_ENV: production
+  caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    ports: ["80:80", "443:443"]
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:?définir APP_DOMAIN (ex. suivi.ndao-hifanosika.org)}
-      API_DOMAIN: ${API_DOMAIN:?définir API_DOMAIN (ex. api.ndao-hifanosika.org)}
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on: [front, back]
+    depends_on: [frontend, backend]
+    networks: [internal]
+
 volumes:
   caddy_data:
   caddy_config:

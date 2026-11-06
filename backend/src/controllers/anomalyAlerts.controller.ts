@@ -42,7 +42,7 @@ const DEFAULT_MIN: Severity = (["HIGH", "MEDIUM", "LOW"] as const).includes(proc
   ? (process.env.ANOMALY_MIN_SEVERITY as Severity)
   : "MEDIUM";
 
-const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 
 const isSeverity = (value: unknown): value is Severity => value === "HIGH" || value === "MEDIUM" || value === "LOW";
 

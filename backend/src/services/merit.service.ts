@@ -228,8 +228,8 @@ export async function computeMeritLive(period: string): Promise<MeritResult> {
   const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
 
   const interns = await db.user.findMany({
-    where: { role: { in: ["STAGIAIRE_L3", "STAGIAIRE_M2"] }, status: "ACTIVE" },
-    select: { id: true, firstName: true, lastName: true, role: true },
+    where: { role: { in: ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"] }, status: "ACTIVE" },
+    select: { id: true, firstName: true, lastName: true, role: true, studentLevel: true },
   });
 
   // Stages en cours / terminés qui chevauchent l'année (début ≤ fin d'année ET fin ≥ début d'année)
@@ -268,7 +268,14 @@ export async function computeMeritLive(period: string): Promise<MeritResult> {
   }
 
   const cohorts: Record<Group, MeritRow[]> = { L3: [], M2: [], AUTRE: [] };
-  const pushRow = (row: MeritRow) => cohorts[groupOf(row)].push(row);
+  // Niveaux « Autres » (L1, L2, M1) : classés comme tous les stagiaires, dans le groupe « Autre »
+  const OTHER_LEVELS = ["L1", "L2", "M1"];
+  const otherIds = new Set<number>(
+    (interns as Array<{ id: number; role: string; studentLevel?: string | null }>)
+      .filter((u) => OTHER_LEVELS.includes(String(u.studentLevel ?? "").trim().toUpperCase()) || /^STAGIAIRE_(L1|L2|M1)$/.test(u.role))
+      .map((u) => u.id),
+  );
+  const pushRow = (row: MeritRow) => cohorts[otherIds.has(row.userId) ? "AUTRE" : groupOf(row)].push(row);
   let unranked = 0;
 
   for (const user of interns as Array<{ id: number; firstName: string; lastName: string; role: string }>) {

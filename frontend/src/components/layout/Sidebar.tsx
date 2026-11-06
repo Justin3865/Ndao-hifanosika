@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -27,6 +27,12 @@ import {
   Users,
   X,
   CalendarCheck,
+  CalendarClock,
+  FileJson,
+  Flag,
+  FolderOpen,
+  Target,
+  UserCheck,
 } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import { Logo } from "@/components/brand/Logo";
@@ -47,6 +53,7 @@ const groups = [
       { href: "/tracking", label: "Suivi terrain", icon: MapPin },
       { href: "/mission", label: "Ma mission (GPS)", icon: Navigation },
       { href: "/reports", label: "Rapports", icon: FileText },
+      { href: "/exports", label: "Export JSON", icon: FileJson },
       { href: "/suivi-evaluation", label: "Suivi & Évaluation", icon: BarChart3 },
       { href: "/ai", label: "Analyses IA", icon: Sparkles },
     ],
@@ -58,11 +65,15 @@ const groups = [
       { href: "/activities", label: "Activités", icon: Activity },
       // Jalons : déplacés dans la fiche du projet (/projects/[id])
       { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
-      { href: "/follow-ups", label: "Suivi post-programme", icon: CalendarCheck },
+      { href: "/parcours", label: "Parcours", icon: Flag },
+      { href: "/presences", label: "Présences", icon: CalendarCheck },
+      { href: "/consentements", label: "Consentements", icon: ShieldCheck },
+      { href: "/follow-ups", label: "Suivi post-programme", icon: CalendarClock },
       // « Évaluations » regroupe aussi « Évaluation finale » et « Ordre de mérite » (onglets de la rubrique)
       { href: "/evaluations", label: "Évaluations", icon: ClipboardList, also: ["/evaluation-finale", "/merit"] },
       // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"
       { href: "/internships", label: "Stages", icon: GraduationCap },
+      { href: "/internships/documents", label: "Documents de stage", icon: FolderOpen },
       // ⚠️ NOFAFANA: Ny "Offres de stage" sy "Nouvelle offre" tsy aseho eto intsony
     ],
   },
@@ -70,7 +81,9 @@ const groups = [
     title: "Organisation",
     items: [
       { href: "/members", label: "Membres", icon: UserCog },
+      { href: "/objectifs", label: "Objectifs", icon: Target },
       { href: "/users", label: "Utilisateurs", icon: Users },
+      { href: "/coordinateurs", label: "Coordinateurs", icon: UserCheck },
       { href: "/departements", label: "Départements", icon: Building2 },
       { href: "/zones", label: "Zones d'intervention", icon: Globe },
       { href: "/certificates", label: "Certificats", icon: Award },
@@ -82,6 +95,7 @@ const groups = [
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/administration/permissions", label: "Rôles & accès", icon: KeyRound },
       { href: "/security", label: "Journal d'audit", icon: ShieldCheck },
+      { href: "/administration/retention", label: "Conservation des données", icon: ShieldCheck },
       { href: "/settings", label: "Paramètres", icon: Settings },
     ],
   },
@@ -89,12 +103,16 @@ const groups = [
 
 // Mémoire du rôle : le menu est recréé à chaque navigation, sinon il s'affichait vide puis se remplissait.
 let cachedRole = "";
+// Position de défilement du menu : le menu est recréé à chaque page, sans cela il revenait toujours en haut
+// et la rubrique ouverte (ex. « Documents de stage ») n'était plus visible.
+let cachedScroll = 0;
 
 export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
   const pathname = usePathname();
   const { active: missionActive } = useMission();
   const { t } = useI18n();
   const [role, setRole] = useState(cachedRole);
+  const navRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const current = getStoredRole();
@@ -116,6 +134,36 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
     }))
     .filter((group) => group.items.length > 0);
 
+  // Une seule rubrique est active : celle dont le chemin correspond le plus précisément à l'URL
+  // (/internships/documents ne doit pas allumer aussi « Stages »).
+  let activeHref = "";
+  let bestLen = -1;
+  for (const group of visibleGroups) {
+    for (const item of group.items) {
+      for (const path of item.paths) {
+        if ((pathname === path || pathname.startsWith(`${path}/`)) && path.length > bestLen) {
+          bestLen = path.length;
+          activeHref = item.href;
+        }
+      }
+    }
+  }
+
+  // Restaure le défilement AVANT l'affichage (useLayoutEffect) : le menu ne « saute » plus à chaque clic
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    nav.scrollTop = cachedScroll;
+    const el = nav.querySelector<HTMLElement>('[data-active="true"]');
+    if (el) {
+      const top = el.offsetTop - nav.offsetTop;
+      if (top < nav.scrollTop + 8 || top + el.offsetHeight > nav.scrollTop + nav.clientHeight - 8) {
+        nav.scrollTop = Math.max(0, top - nav.clientHeight / 2 + el.offsetHeight / 2);
+      }
+    }
+    cachedScroll = nav.scrollTop;
+  }, [pathname, role, mobileMenuOpen]);
+
   const content = (
     <div className="flex h-full flex-col bg-gradient-to-b from-blue-950 via-blue-900 to-blue-800 text-blue-100">
       <div className="flex items-center justify-between px-5 py-5">
@@ -130,7 +178,13 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
         </button>
       </div>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-6">
+      <nav
+        ref={navRef}
+        onScroll={(e) => {
+          cachedScroll = e.currentTarget.scrollTop;
+        }}
+        className="flex-1 space-y-6 overflow-y-auto px-3 pb-6"
+      >
         {visibleGroups.map((group) => (
           <div key={group.title}>
             <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-blue-300/70">
@@ -139,13 +193,15 @@ export default function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarPr
 
             <div className="space-y-1">
               {group.items.map((item) => {
-                const active = item.paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+                const active = item.href === activeHref;
                 const Icon = item.icon;
 
                 return (
                   <Link
                     key={item.href}
                     href={item.target}
+                    data-active={active ? "true" : undefined}
+                    aria-current={active ? "page" : undefined}
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                       active

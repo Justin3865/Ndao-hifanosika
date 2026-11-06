@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { RenumberMatriculesButton } from "@/components/crud/RenumberMatriculesButton";
+import { RenumberEntityButton } from "@/components/crud/RenumberEntityButton";
 import { ClipboardCheck } from "lucide-react";
 import { ActivitySpace } from "@/components/activities/ActivitySpace";
 import { ProjectMilestones } from "@/components/milestones/ProjectMilestones";
@@ -25,7 +26,7 @@ import { ASSIGNABLE_ROLES, ROLE_LABELS, roleLabel, statusLabel } from "@/lib/rol
 const TUTEURS = ["TUTEUR_L3", "TUTEUR_M2"];
 /** Rôles autorisés sur /suivi-evaluation (voir lib/access.ts) */
 const SUIVI_EVAL_ROLES = ["ADMIN", "DIRECTION", "DAF", "COORDINATOR", "RH", "COMMUNICATION", "DSI", "TUTEUR_L3", "TUTEUR_M2"];
-const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 
 const GENDERS = [
   { value: "FEMALE", label: "Femme" },
@@ -67,7 +68,7 @@ export const projectsConfig: ResourceConfig = {
   listKey: "projects",
   itemKey: "project",
   columns: [
-    { header: "Code", render: (p) => <span className="whitespace-nowrap">{p.code}</span> },
+    { header: "Matricule", render: (p) => <span className="whitespace-nowrap font-mono">{p.code}</span> },
     { header: "Projet", render: (p) => <span className="font-medium text-gray-900">{p.name}</span> },
     { header: "Objectif", render: (p) => <span className="line-clamp-3 block min-w-[100px]" title={p.objective || undefined}>{p.objective || "—"}</span> },
     { header: "Slogan", render: (p) => <span className="line-clamp-3 block min-w-[50px] italic" title={p.slogan || undefined}>{p.slogan ? `« ${p.slogan} »` : "—"}</span> },
@@ -90,7 +91,7 @@ export const projectsConfig: ResourceConfig = {
   ],
   fields: [
     { name: "name", label: "Nom du projet", type: "text", required: true },
-    { name: "code", label: "Code", type: "text", required: true },
+    { name: "code", label: "Matricule du projet", type: "entitymatricule", required: true },
     { name: "description", label: "Description", type: "textarea" },
     { name: "objective", label: "Objectif", type: "textarea" },
     { name: "slogan", label: "Slogan du projet", type: "text", full: true, hint: "Imprimé sur les certificats : « nom du projet : slogan » (200 caractères max)." },
@@ -103,7 +104,7 @@ export const projectsConfig: ResourceConfig = {
     { name: "partnerIds", label: "Partenaires du projet", type: "partners", full: true },
   ],
   detail: (p) => [
-    { label: "Code", value: p.code },
+    { label: "Matricule", value: p.code },
     { label: "Statut", value: <StatusBadge status={p.status} /> },
     { label: "Département", value: p.department?.name ?? "—" },
     { label: "Période", value: period(p.startDate, p.endDate) },
@@ -130,6 +131,7 @@ export const projectsConfig: ResourceConfig = {
     },
   ],
   titleOf: (p) => p.name,
+  listExtra: () => <RenumberEntityButton endpoint="/projects" />,
   extra: (p) => <ProjectMilestones projectId={p.id} />,
   searchOf: (p) => `${p.name} ${p.code} ${p.department?.name ?? ""} ${p.objective ?? ""} ${p.slogan ?? ""} ${(p.partnerLinks ?? []).map((l: { partner?: { name?: string } }) => l.partner?.name ?? "").join(" ")}`,
   rowActions: (p, role) =>
@@ -278,10 +280,11 @@ export const beneficiariesConfig: ResourceConfig = {
   listKey: "data",
   itemKey: "data",
   columns: [
+    { header: "Matricule", render: (b) => <span className="whitespace-nowrap font-mono">{b.matricule || "—"}</span> },
     { header: "Nom", render: (b) => <span className="font-medium text-gray-900">{personName(b)}</span> },
     { header: "Genre", render: (b) => genderLabel(b.gender) },
     { header: "Âge", render: (b) => b.age ?? "—" },
-    { header: "Projet", render: (b) => b.project?.name ?? `#${b.projectId}` },
+    { header: "Projet", render: (b) => b.project ? `${b.project.code} — ${b.project.name}` : `#${b.projectId}` },
     { header: "Localité", render: (b) => b.locality || "—" },
     { header: "Contact", render: (b) => b.phone || b.email || "—" },
     {
@@ -295,7 +298,8 @@ export const beneficiariesConfig: ResourceConfig = {
   ],
   fields: [
     // 1) Mombamomba : identité de la personne d'abord (l'âge se déduit de la date de naissance)
-    { name: "firstName", label: "Prénom (facultatif)", type: "text", section: "Informations personnelles" },
+    { name: "matricule", label: "Matricule du bénéficiaire", type: "entitymatricule", section: "Informations personnelles" },
+    { name: "firstName", label: "Prénom (facultatif)", type: "text" },
     { name: "lastName", label: "Nom", type: "text", required: true },
     { name: "gender", label: "Genre", type: "select", options: GENDERS },
     { name: "birthDate", label: "Date de naissance (certificat)", type: "date" },
@@ -339,7 +343,8 @@ export const beneficiariesConfig: ResourceConfig = {
     return cinPrefixError(cin, [v.cinIssuedPlace, v.birthPlace]) ?? cinSexProblem(cin, v.gender) ?? householdProblem(v.householdSize, v.childrenUnder5);
   },
   detail: (b) => [
-    { label: "Projet", value: b.project?.name ?? `#${b.projectId}` },
+    { label: "Matricule", value: b.matricule || "—" },
+    { label: "Projet", value: b.project ? `${b.project.code} — ${b.project.name}` : `#${b.projectId}` },
     { label: "Genre", value: genderLabel(b.gender) },
     { label: "Âge", value: b.age ?? "—" },
     { label: "Téléphone", value: b.phone || "—" },
@@ -377,7 +382,8 @@ export const beneficiariesConfig: ResourceConfig = {
       <TrackingPanel beneficiaryId={b.id} />
     </>
   ),
-  searchOf: (b) => `${personName(b)} ${b.project?.name ?? ""} ${b.email ?? ""}`,
+  searchOf: (b) => `${b.matricule ?? ""} ${personName(b)} ${b.project?.code ?? ""} ${b.project?.name ?? ""} ${b.email ?? ""}`,
+  listExtra: () => <RenumberEntityButton endpoint="/beneficiaries" />,
   createRoles: BENEFICIARY_WRITERS,
   editRoles: BENEFICIARY_WRITERS,
   deleteRoles: ["ADMIN", "DIRECTION", "COORDINATOR"],

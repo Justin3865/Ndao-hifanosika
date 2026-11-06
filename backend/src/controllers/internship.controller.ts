@@ -84,14 +84,17 @@ async function createStudentFromBody(
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true } });
 
   if (existing) {
-    if (["STAGIAIRE_L3", "STAGIAIRE_M2"].includes(String(existing.role))) return { id: existing.id };
+    if (["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"].includes(String(existing.role))) return { id: existing.id };
 
     return { error: "Un compte non stagiaire utilise déjà cet e-mail." };
   }
 
   // Niveau : L3, M2, ou « Autre » (niveau libre précisé par l'utilisateur, compte créé avec les droits d'un stagiaire L3)
-  const isOtherLevel = person.role === "AUTRE";
-  const otherLevel = isOtherLevel ? toText(person.otherLevel) : null;
+  // L1 / L2 / M1 sont des niveaux « Autres » : même fonctionnement que l'option « Autre » (niveau libre)
+  const OTHER_LEVELS: Record<string, string> = { STAGIAIRE_L1: "L1", STAGIAIRE_L2: "L2", STAGIAIRE_M1: "M1" };
+  const fixedOther = OTHER_LEVELS[String(person.role)] ?? null;
+  const isOtherLevel = person.role === "AUTRE" || fixedOther !== null;
+  const otherLevel = fixedOther ?? (isOtherLevel ? toText(person.otherLevel) : null);
 
   if (isOtherLevel && !otherLevel) return { error: "Précisez le niveau du stagiaire (option « Autre »)." };
 

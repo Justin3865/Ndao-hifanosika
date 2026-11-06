@@ -6,7 +6,7 @@
 
 import { prisma } from "../config/database";
 
-export const STUDENT_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+export const STUDENT_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 export const TUTOR_ROLES = ["TUTEUR_L3", "TUTEUR_M2"];
 
 const startOfDay = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();

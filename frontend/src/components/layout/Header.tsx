@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LogOut, Menu, User } from "lucide-react";
 import api from "@/lib/axios";
-import { Logo } from "@/components/brand/Logo";
 import { NotificationBell } from "./NotificationBell";
 import { LanguageSwitch } from "@/components/i18n/LanguageSwitch";
 import { closeSocket } from "@/lib/socket";
@@ -139,10 +138,6 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
             >
               <Menu className="h-5 w-5" />
             </button>
-
-            <div className="lg:hidden">
-              <Logo size={34} withText={false} />
-            </div>
 
             <p className="hidden text-sm text-gray-500 lg:block">
               Plateforme de suivi &amp; évaluation —{" "}

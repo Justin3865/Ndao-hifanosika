@@ -6,6 +6,8 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  nextProjectCode,
+  renumberProjectCodes,
 } from "../controllers/project.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
@@ -28,6 +30,29 @@ router.get(
     "COORDINATOR",
   ),
   getProjects,
+);
+
+/**
+ * GET /api/projects/next-code  (avant /:id)
+ */
+router.get(
+  "/next-code",
+  authorizeRoles(
+    "ADMIN",
+    "DIRECTION",
+    "DAF",
+    "COORDINATOR",
+  ),
+  nextProjectCode,
+);
+
+/**
+ * POST /api/projects/renumber  (avant /:id)
+ */
+router.post(
+  "/renumber",
+  authorizeRoles("ADMIN"),
+  renumberProjectCodes,
 );
 
 /**

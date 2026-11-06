@@ -34,6 +34,9 @@ const ROLE_LABELS: Record<string, string> = {
   TUTEUR_M2: "Tuteur M2",
   STAGIAIRE_L3: "Stagiaire L3",
   STAGIAIRE_M2: "Stagiaire M2",
+  STAGIAIRE_L1: "Stagiaire L1",
+  STAGIAIRE_L2: "Stagiaire L2",
+  STAGIAIRE_M1: "Stagiaire M1",
 };
 
 /** Ville du siège : lieu par défaut quand aucune activité n'a de lieu. */
@@ -274,7 +277,7 @@ export async function listPersonCandidates(type: PersonCertificateType): Promise
     const [created, missions, staff] = await Promise.all([
       prisma.activity.findMany({ where: { status: { not: "CANCELLED" } }, select: { createdById: true, startDate: true, endDate: true, actualEndDate: true, actualStartDate: true } }),
       prisma.mission.findMany({ select: { agentId: true, startedAt: true, endedAt: true } }),
-      prisma.user.findMany({ where: { status: "ACTIVE", NOT: { role: { in: ["STAGIAIRE_L3", "STAGIAIRE_M2"] } } }, select: { id: true } }),
+      prisma.user.findMany({ where: { status: "ACTIVE", NOT: { role: { in: ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"] } } }, select: { id: true } }),
     ]);
 
     created.forEach((a) => touch(a.createdById, dateOf(a)));

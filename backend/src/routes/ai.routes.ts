@@ -5,6 +5,7 @@ import {
   scoreDropoutRisk,
 } from "../controllers/ai.controller";
 
+import { getDashboard } from "../controllers/dashboard.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import { chat, getHouseholds, getModels, trainModels } from "../controllers/ml.controller";
@@ -52,6 +53,9 @@ router.post(
 );
 
 const AI_ROLES = ["ADMIN", "DIRECTION", "DSI", "COORDINATOR"] as const;
+
+// GET /api/ai/dashboard — données des graphiques de l'IntegrationPanel (étaient sans route).
+router.get("/dashboard", authorizeRoles(...AI_ROLES), getDashboard);
 
 router.get("/summary", authorizeRoles(...AI_ROLES), getSummary);
 router.get("/performance", authorizeRoles(...AI_ROLES), getPerformance);

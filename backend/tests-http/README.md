@@ -11,3 +11,5 @@ Ces scripts appellent l'API réelle (aucun mock). Ils créent leurs propres donn
 
 t1 : auth, utilisateurs, profil, départements · t2 : zones, projets, activités, jalons, bénéficiaires
 t3 : évaluations, stages, notifications, membres, certificats · t4 : tracking/GPS, vulnérabilité, dataset ML, IA, rapports, audit, grilles
+
+t6-scope : périmètre des coordinateurs (bénéficiaires, évaluations, ménages, statut de parcours, relances post-programme). Lancer `node tests-http/t6-scope.mjs`, puis `STRICT=1 node tests-http/t6-scope.mjs` avec un backend démarré avec `COORDINATOR_SCOPE=strict`. Crée ses propres données (projets, coordinateurs) : base de TEST uniquement.

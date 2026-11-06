@@ -17,9 +17,12 @@ export interface AudienceValue {
 export const EMPTY_AUDIENCE: AudienceValue = { mode: "user", userId: "", tokens: [] };
 
 const ROLE_CHIPS: Array<{ label: string; roles: string[] }> = [
-  { label: "Tous les stagiaires", roles: ["STAGIAIRE_L3", "STAGIAIRE_M2"] },
+  { label: "Tous les stagiaires", roles: ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"] },
   { label: "Stagiaires L3", roles: ["STAGIAIRE_L3"] },
   { label: "Stagiaires M2", roles: ["STAGIAIRE_M2"] },
+  { label: "Stagiaires L1", roles: ["STAGIAIRE_L1"] },
+  { label: "Stagiaires L2", roles: ["STAGIAIRE_L2"] },
+  { label: "Stagiaires M1", roles: ["STAGIAIRE_M1"] },
   { label: "Tous les tuteurs", roles: ["TUTEUR_L3", "TUTEUR_M2"] },
   { label: "Tuteurs L3", roles: ["TUTEUR_L3"] },
   { label: "Tuteurs M2", roles: ["TUTEUR_M2"] },

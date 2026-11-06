@@ -41,6 +41,14 @@ import finalEvaluationRoutes from "./routes/finalEvaluation.routes";
 import manualProgressRoutes from "./routes/manualProgress.routes";
 import integrationRoutes from "./routes/integration.routes";
 import followUpsRoutes from "./routes/followUps.routes";
+import journeyRoutes from "./routes/journey.routes";
+import attendanceRoutes from "./routes/attendance.routes";
+import exportsRoutes from "./routes/exports.routes";
+import consentsRoutes from "./routes/consents.routes";
+import objectivesRoutes from "./routes/objectives.routes";
+import internshipDocumentsRoutes from "./routes/internshipDocuments.routes";
+import retentionRoutes from "./routes/retention.routes";
+import projectCoordinatorsRoutes from "./routes/projectCoordinators.routes";
 import metricsRoutes from "./routes/metrics.routes";
 import narrativeRoutes from "./routes/narrative.routes";
 import { perfMiddleware } from "./middlewares/perf.middleware";
@@ -49,6 +57,8 @@ import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditMiddleware } from "./middlewares/audit.middleware";
 import { phoneLimit } from "./middlewares/phoneLimit.middleware";
 import { emailLimit } from "./middlewares/emailLimit.middleware";
+import { scopeOverlayRouter } from "./routes/scopeOverlay.routes";
+import { mlDropoutRouter } from "./routes/mlDropout.routes";
 
 const app = express();
 
@@ -99,6 +109,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.use("/api", scopeOverlayRouter); // [lot-protection-perimetre]
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/departements", departementsRoutes);
@@ -111,6 +122,14 @@ app.use("/api/final-evaluation", finalEvaluationRoutes);
 app.use("/api/manual-progress", manualProgressRoutes);
 app.use("/api/integration", integrationRoutes);
 app.use("/api/follow-ups", followUpsRoutes);
+app.use("/api/journey", journeyRoutes);
+app.use("/api/attendance", attendanceRoutes);
+app.use("/api/exports", exportsRoutes);
+app.use("/api/consents", consentsRoutes);
+app.use("/api/objectives", objectivesRoutes);
+app.use("/api/internship-documents", internshipDocumentsRoutes);
+app.use("/api/admin/retention", retentionRoutes);
+app.use("/api/project-coordinators", projectCoordinatorsRoutes);
 app.use("/api/metrics", metricsRoutes);
 app.use("/api/milestones", milestonesRoutes);
 app.use("/api/members", membersRoutes);
@@ -138,6 +157,7 @@ app.use("/api/tracking", trackingRouter);
 app.use("/api/public/tracking", publicTrackingRouter);
 app.use("/api/vulnerability", vulnerabilityRouter);
 app.use("/api/service", serviceRouter);
+app.use("/api/service", mlDropoutRouter); // [lot-protection-perimetre]
 
 app.use((_req, res) => {
   res.status(404).json({

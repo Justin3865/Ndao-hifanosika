@@ -19,6 +19,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import SGDClassifier
@@ -26,6 +27,8 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
+import dropout as dropout_ref
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:4000").rstrip("/")
 SERVICE_KEY = os.getenv("AI_SERVICE_KEY", "")
@@ -107,3 +110,41 @@ def predict_zones(x_service_key: str | None = Header(default=None)):
     df["p"] = proba
     zones = (df.dropna(subset=["zoneId"]).groupby("zoneId")["p"].mean() * 100).round().astype(int)
     return {"zones": [{"zoneId": int(z), "mlScore": int(s)} for z, s in zones.items()]}
+
+
+# ---------------------------------------------------------------------------------------------
+# Risque d'abandon — MODÈLE DE RÉFÉRENCE (méthode R : régression logistique, cf. dropout.py)
+# Express (/api/ai/score/dropout-risk) est la passerelle publique ; ces routes /v1 sont internes.
+# ---------------------------------------------------------------------------------------------
+class DropoutInput(BaseModel):
+    age: float | None = None
+    attendance_rate: float | None = None
+    eval_avg: float | None = None
+    activities_completed: float | None = 0
+    missed_activities: float | None = 0
+
+
+@app.post("/v1/score/dropout-risk")
+def score_dropout_risk(body: DropoutInput, x_service_key: str | None = Header(default=None)):
+    """Score 0-100. Modèle appris si disponible, sinon règle pondérée (champ `model` = rules-v1)."""
+    check_key(x_service_key)
+    return dropout_ref.score_dropout(body.model_dump())
+
+
+@app.post("/v1/train/dropout")
+def train_dropout_route(x_service_key: str | None = Header(default=None)):
+    """Entraîne sur les parcours clos (label BeneficiaryJourney) joints aux variables du backend."""
+    check_key(x_service_key)
+    r = httpx.get(f"{BACKEND_URL}/api/service/dropout-training", headers={"x-service-key": SERVICE_KEY}, timeout=60)
+    r.raise_for_status()
+    try:
+        return dropout_ref.train_dropout(pd.DataFrame(r.json()["data"]))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.get("/v1/dropout/report")
+def dropout_report(x_service_key: str | None = Header(default=None)):
+    check_key(x_service_key)
+    bundle = dropout_ref.load_dropout()
+    return bundle["report"] if bundle else {"message": "Aucun modèle d'abandon entraîné : la règle de repli est utilisée."}

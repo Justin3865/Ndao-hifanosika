@@ -9,11 +9,20 @@ import {
 } from "../controllers/evaluation.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
+import {
+  coordinatorScope,
+  evaluationIdParam,
+  guardBodyProject,
+} from "../middlewares/coordinatorScope.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 
 const router = Router();
 
 router.use(authenticate);
+router.use(coordinatorScope); // périmètre des coordinateurs (lot 20261108)
+router.use(guardBodyProject);
+router.param("id", evaluationIdParam);
+
 
 /**
  * GET /api/evaluations
@@ -28,6 +37,9 @@ router.get(
     "TUTEUR_M2",
     "STAGIAIRE_L3",
     "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   getEvaluations,
 );
@@ -45,6 +57,9 @@ router.get(
     "TUTEUR_M2",
     "STAGIAIRE_L3",
     "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   getEvaluationById,
 );
@@ -62,6 +77,9 @@ router.post(
     "TUTEUR_M2",
     "STAGIAIRE_L3",
     "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   createEvaluation,
 );

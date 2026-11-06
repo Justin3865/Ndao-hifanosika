@@ -15,7 +15,7 @@ const router = Router();
 
 router.use(authenticate);
 
-const STUDENT_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+const STUDENT_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 const TUTOR_ROLES = ["TUTEUR_L3", "TUTEUR_M2"];
 const USER_LIST_ROLES = ["ADMIN", "DIRECTION", "DSI", "RH"];
 
@@ -37,8 +37,9 @@ router.get("/:kind", async (req: Request, res: Response) => {
     if (kind === "projects") {
       const rows = await prisma.project.findMany({
         select: { id: true, name: true, code: true },
-        orderBy: { name: "asc" },
       });
+
+      rows.sort((a, b) => a.code.localeCompare(b.code, "fr", { numeric: true }));
 
       return res.json({
         success: true,

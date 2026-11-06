@@ -9,6 +9,7 @@ import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../lib/prisma"; // la même instance que vos autres routes
 import { authenticate } from "../middlewares/auth.middleware";
 import { env } from "../config/env";
+import { notifyRoles, notifyUsers } from "../utils/notify";
 
 const router = Router();
 
@@ -425,6 +426,25 @@ router.post("/:id/applications", async (req, res) => {
         if (e.code === "P2002" && target.includes("dossierNumber") && attempt < 2) continue;
         throw err;
       }
+    }
+
+    // Notifications (cloche + système Windows / téléphone) : n'empêchent jamais la candidature
+    // Équipe de gestion des stages (mêmes rôles que OFFER_MANAGER_ROLES)
+    void notifyRoles(OFFER_MANAGER_ROLES, {
+      title: "Nouvelle candidature",
+      message: `${fullName} a postulé au stage « ${offer.title} » (dossier ${application.dossierNumber}).`,
+      type: "INFO",
+      channels: "app",
+    });
+
+    // Accusé de réception pour le candidat s'il est connecté
+    if (userId) {
+      void notifyUsers([userId], {
+        title: "Candidature envoyée",
+        message: `Votre candidature au stage « ${offer.title} » a bien été reçue (dossier ${application.dossierNumber}).`,
+        type: "SUCCESS",
+        channels: "app",
+      });
     }
 
     res.status(201).json({ success: true, data: application });

@@ -36,6 +36,14 @@ export const fr = {
   "nav./administration/permissions": "Rôles & accès",
   "nav./security": "Journal d'audit",
   "nav./settings": "Paramètres",
+  "nav./exports": "Export JSON",
+  "nav./parcours": "Parcours",
+  "nav./presences": "Présences",
+  "nav./consentements": "Consentements",
+  "nav./internships/documents": "Documents de stage",
+  "nav./objectifs": "Objectifs",
+  "nav./coordinateurs": "Coordinateurs",
+  "nav./administration/retention": "Conservation des données",
 
   // Libellés communs
   "common.save": "Enregistrer",
@@ -93,6 +101,14 @@ export const fr = {
   "followup.avgSatisfaction": "Satisfaction moyenne",
   "followup.avgIncome": "Revenu moyen (Ar)",
   "followup.saved": "Relance enregistrée.",
+  "journey.readiness.counts": "{closed} parcours clos : {completed} terminés et {dropped} abandons.",
+  "journey.readiness.insufficient": "Insuffisant : il faut au moins 30 parcours clos dont 5 de chaque sorte{more}. En attendant, le score reste fondé sur des règles, sans modèle appris.",
+  "journey.readiness.more": " (encore {n} à saisir)",
+  "journey.readiness.indicative": "Suffisant pour une comparaison, mais indicatif : en dessous de 100 parcours clos, les écarts restent fragiles.",
+  "journey.readiness.reliable": "Effectif confortable pour comparer les règles actuelles et un modèle appris.",
+  "journey.results": "{n} résultats",
+  "coord.idle.title": "{n} coordinateur(s) sans projet affecté",
+  "coord.idle.body": "{names}. Tant qu'aucun projet ne leur est affecté, ils gardent l'accès historique à tous les projets (mode de transition). Affectez-leur leurs projets avant d'activer le mode strict.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -123,6 +139,14 @@ export const mg: Record<TranslationKey, string> = {
   "nav./administration/permissions": "Andraikitra & fidirana",
   "nav./security": "Diarin'ny fanaraha-maso",
   "nav./settings": "Fanamboarana",
+  "nav./exports": "Fanondranana JSON",
+  "nav./parcours": "Dingana arahina",
+  "nav./presences": "Fanatrehana",
+  "nav./consentements": "Fanekena",
+  "nav./internships/documents": "Taratasy momba ny stage",
+  "nav./objectifs": "Tanjona",
+  "nav./coordinateurs": "Mpandrindra",
+  "nav./administration/retention": "Fitehirizana ny angona",
 
   "common.save": "Tahirizina",
   "common.cancel": "Foanana",
@@ -177,6 +201,14 @@ export const mg: Record<TranslationKey, string> = {
   "followup.avgSatisfaction": "Fahafaham-po antonony",
   "followup.avgIncome": "Tolotra antonony (Ar)",
   "followup.saved": "Voatahiry ny fanaraha-maso.",
+  "journey.readiness.counts": "Dingana arahina {closed} efa mikatona : {completed} vita ary {dropped} nijanona.",
+  "journey.readiness.insufficient": "Tsy ampy : mila dingana arahina mikatona 30 farafaharatsiny, ka 5 isaky ny karazana{more}. Raha miandry, ny isa dia mbola mifototra amin'ny fitsipika, tsy misy modely nampiofana.",
+  "journey.readiness.more": " (mbola {n} tsy maintsy ampidirina)",
+  "journey.readiness.indicative": "Ampy hampitahana, nefa manondro fotsiny : raha latsaky ny 100 ny dingana arahina mikatona dia mbola marefo ny tsy fitoviana.",
+  "journey.readiness.reliable": "Isa ampy hampitahana ny fitsipika ankehitriny sy modely nampiofana.",
+  "journey.results": "Valiny {n}",
+  "coord.idle.title": "Mpandrindra {n} tsy mana-tetikasa voatendry",
+  "coord.idle.body": "{names}. Raha tsy mbola misy tetikasa voatendry azy ireo dia mitazona ny fidirana taloha amin'ny tetikasa rehetra (fotoana fampivoarana). Tendreo ny tetikasany alohan'ny hanaovana ny fomba hentitra.",
 };
 
 export const dictionaries: Record<Lang, Record<TranslationKey, string>> = { fr, mg };

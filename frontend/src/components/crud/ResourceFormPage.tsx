@@ -29,6 +29,7 @@ import { PartnersField, parseIds } from "@/components/crud/PartnersField";
 import { ParticipantsField } from "@/components/crud/ParticipantsField";
 import { ProjectsField } from "@/components/crud/ProjectsField";
 import { MatriculeField } from "@/components/crud/MatriculeField";
+import { EntityMatriculeField } from "@/components/crud/EntityMatriculeField";
 import { AddTutorInline } from "@/components/crud/AddTutorInline";
 import { setLastActivity } from "@/lib/lastActivity";
 import { ZoneHierarchyField } from "@/components/zones/ZoneHierarchyField";
@@ -472,6 +473,19 @@ export function ResourceFormPage({
 
     if (field.type === "projects") {
       return <ProjectsField label={field.label} value={String(value ?? "")} onChange={(next) => setValue(field.name, next)} />;
+    }
+
+    if (field.type === "entitymatricule") {
+      return (
+        <EntityMatriculeField
+          endpoint={config.endpoint}
+          label={field.label}
+          required={field.required}
+          isEdit={isEdit}
+          value={String(value ?? "")}
+          onChange={(next) => setValue(field.name, next)}
+        />
+      );
     }
 
     if (field.type === "matricule") {

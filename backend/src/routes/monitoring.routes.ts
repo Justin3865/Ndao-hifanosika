@@ -61,7 +61,7 @@ router.patch("/activities/:id/progress", authorizeRoles(...WRITE), updateActivit
 router.post("/projects/:id/snapshots", authorizeRoles(...WRITE), postSnapshot);
 
 // ----- Stagiaires (filtrés par rôle : un tuteur ne voit que ses stagiaires) -----
-const INTERNSHIP_READ = ["ADMIN", "DIRECTION", "DSI", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2", "STAGIAIRE_L3", "STAGIAIRE_M2"] as const;
+const INTERNSHIP_READ = ["ADMIN", "DIRECTION", "DSI", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2", "STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"] as const;
 router.get("/internships", authorizeRoles(...INTERNSHIP_READ), getInternshipsMonitoring);
 router.get("/internships/:id", authorizeRoles(...INTERNSHIP_READ), getInternshipMonitoring);
 

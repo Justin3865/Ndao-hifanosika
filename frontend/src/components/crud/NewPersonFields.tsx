@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 /**
  * Nouveau stagiaire saisi directement dans le formulaire d'un stage : le compte est créé à l'enregistrement
  * (puis ses informations personnelles : téléphone, naissance, CIN, sont enregistrées dans sa fiche).
@@ -29,6 +31,7 @@ export function NewPersonFields({
   values: Values;
   setValue: (name: string, value: string | boolean) => void;
 }) {
+  const [freeMode, setFreeMode] = useState(false);
   const field = (key: NewPersonKey, label: string, type = "text", placeholder = "") => (
     <label className="block space-y-1 text-sm font-medium text-gray-700">
       {label}
@@ -69,22 +72,53 @@ export function NewPersonFields({
           >
             <option value="STAGIAIRE_L3">Stagiaire L3</option>
             <option value="STAGIAIRE_M2">Stagiaire M2</option>
-            <option value="AUTRE">Autre…</option>
+            <option value="AUTRE">Autres (L1, L2, M1…)</option>
           </select>
         </label>
 
-        {!disabled && String(values[newPersonName("role")]) === "AUTRE" && (
-          <label className="block space-y-1 text-sm font-medium text-gray-700">
-            Précisez le niveau *
-            <input
-              type="text"
-              className={inputClass}
-              placeholder="Ex. Licence 2, Doctorat, Formation professionnelle…"
-              value={String(values[newPersonName("otherLevel")] ?? "")}
-              onChange={(e) => setValue(newPersonName("otherLevel"), e.target.value)}
-            />
-          </label>
-        )}
+        {!disabled && String(values[newPersonName("role")]) === "AUTRE" && (() => {
+          const current = String(values[newPersonName("otherLevel")] ?? "");
+          const preset = ["L1", "L2", "M1"].includes(current);
+          const free = !preset && (current !== "" || freeMode);
+          return (
+            <>
+              <label className="block space-y-1 text-sm font-medium text-gray-700">
+                Niveau (Autres) *
+                <select
+                  className={inputClass}
+                  value={preset ? current : free ? "__free" : ""}
+                  onChange={(e) => {
+                    if (e.target.value === "__free") {
+                      setFreeMode(true);
+                      setValue(newPersonName("otherLevel"), "");
+                    } else {
+                      setFreeMode(false);
+                      setValue(newPersonName("otherLevel"), e.target.value);
+                    }
+                  }}
+                >
+                  <option value="">— Choisir —</option>
+                  <option value="L1">L1</option>
+                  <option value="L2">L2</option>
+                  <option value="M1">M1</option>
+                  <option value="__free">Autre (préciser)…</option>
+                </select>
+              </label>
+              {free && (
+                <label className="block space-y-1 text-sm font-medium text-gray-700">
+                  Précisez le niveau *
+                  <input
+                    type="text"
+                    className={inputClass}
+                    placeholder="Ex. Doctorat, Formation professionnelle…"
+                    value={current}
+                    onChange={(e) => setValue(newPersonName("otherLevel"), e.target.value)}
+                  />
+                </label>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

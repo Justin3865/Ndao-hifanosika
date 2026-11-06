@@ -7,6 +7,9 @@ import api from "@/lib/axios";
 
 export const DEVICE_FLAG = "ndao_device_notifications"; // "off" = désactivé volontairement sur cet appareil
 
+/** Logo officiel Ndao Hifanosika (public/logos/ndao-hifanosika.png) : seule icône utilisée par les notifications. */
+export const NOTIF_ICON = "/logos/ndao-hifanosika.png";
+
 export type DevicePermission = "unsupported" | "default" | "denied" | "granted";
 
 export const deviceSupported = (): boolean =>
@@ -60,7 +63,7 @@ export async function showSystemNotification(
     const n = new Notification(title, {
       body: options.body,
       tag: options.tag,
-      icon: "/apple-touch-icon.png",
+      icon: NOTIF_ICON,
     });
 
     n.onclick = () => {
@@ -77,12 +80,16 @@ export async function showSystemNotification(
   try {
     const reg = await deviceRegistration();
 
-    await reg.showNotification(title, {
+    // `badge` n'est pas présent dans toutes les versions des types DOM : on l'ajoute via un type étendu
+    const swOptions: NotificationOptions & { badge?: string } = {
       body: options.body,
       tag: options.tag,
-      icon: "/apple-touch-icon.png",
+      icon: NOTIF_ICON,
+      badge: NOTIF_ICON,
       data: { url },
-    });
+    };
+
+    await reg.showNotification(title, swOptions);
 
     return null;
   } catch (error) {

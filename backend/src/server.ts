@@ -15,6 +15,7 @@ import { startAnomalyMonitor } from "./controllers/anomalyAlerts.controller";
 import { startAnomalyRealtime } from "./services/anomalyRealtime.service";
 import { startReminderScheduler } from "./services/reminders.service";
 import { startFollowUpScheduler } from "./services/followUp.service";
+import { startAttendanceScheduler } from "./services/attendance.service";
 import { startQueue } from "./utils/jobQueue";
 
 async function startServer() {
@@ -32,6 +33,7 @@ async function startServer() {
     startAnomalyRealtime();
     startAnomalyMonitor();
     startFollowUpScheduler();
+    startAttendanceScheduler();
 
     server.listen(env.PORT, () => {
       logger.success(

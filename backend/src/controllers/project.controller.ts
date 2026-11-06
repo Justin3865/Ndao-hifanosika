@@ -4,6 +4,7 @@ import { logger } from "../config/logger";
 import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 
 import { sendError } from "../middlewares/error.middleware";
+import { projectCode, sortByMatricule } from "../utils/entityMatricule";
 function getAuthUser(req: Request) {
   return (req as AuthenticatedRequest).user;
 }
@@ -148,6 +149,8 @@ export async function getProjects(
       },
     });
 
+    sortByMatricule(projects, "code");
+
     return res.status(200).json({
       success: true,
       count: projects.length,
@@ -291,15 +294,21 @@ export async function createProject(
       });
     }
 
-    if (
-      typeof code !== "string" ||
-      code.trim().length === 0
-    ) {
+    if (code !== undefined && code !== null && typeof code !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Le code du projet est obligatoire.",
+        message: "Le code du projet est invalide.",
       });
     }
+
+    /*
+     * Matricule du projet : celui du formulaire, sinon le prochain
+     * (NH-AAAA-PRJ-0001) généré automatiquement.
+     */
+    const finalCode: string =
+      typeof code === "string" && code.trim().length > 0
+        ? code.trim()
+        : await projectCode.next();
 
     const parsedStartDate = parseOptionalDate(startDate);
     const parsedEndDate = parseOptionalDate(endDate);
@@ -460,7 +469,7 @@ export async function createProject(
      */
     const existingProject = await prisma.project.findUnique({
       where: {
-        code: code.trim(),
+        code: finalCode,
       },
       select: {
         id: true,
@@ -477,7 +486,7 @@ export async function createProject(
     const project = await prisma.project.create({
       data: {
         name: name.trim(),
-        code: code.trim(),
+        code: finalCode,
 
         description:
           typeof description === "string"
@@ -998,5 +1007,48 @@ export async function deleteProject(
     }
 
     return sendError(res, error, "Impossible de supprimer le projet.");
+  }
+}
+
+/**
+ * GET /api/projects/next-code
+ * Prochain matricule de projet proposé (NH-AAAA-PRJ-0001, …).
+ */
+export async function nextProjectCode(
+  _req: Request,
+  res: Response,
+): Promise<Response> {
+  try {
+    return res.status(200).json({
+      success: true,
+      data: { code: await projectCode.next() },
+    });
+  } catch (error) {
+    logger.error("Erreur lors du calcul du prochain matricule projet.", error);
+
+    return sendError(res, error, "Impossible de calculer le prochain matricule.");
+  }
+}
+
+/**
+ * POST /api/projects/renumber  (ADMIN)
+ * Remet tous les matricules de projets en ordre selon la date de création.
+ */
+export async function renumberProjectCodes(
+  _req: Request,
+  res: Response,
+): Promise<Response> {
+  try {
+    const count = await projectCode.renumber();
+
+    return res.status(200).json({
+      success: true,
+      message: `${count} matricule(s) de projet remis en ordre.`,
+      data: { count },
+    });
+  } catch (error) {
+    logger.error("Erreur lors de la remise en ordre des matricules projets.", error);
+
+    return sendError(res, error, "Impossible de remettre les matricules en ordre.");
   }
 }

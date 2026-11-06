@@ -1,6 +1,9 @@
 /* Service worker — notifications système (toast en bas à droite de Windows, centre de notifications macOS/Android).
    À placer dans le dossier public/ du frontend (accessible sur /sw.js). */
 
+// Logo officiel Ndao Hifanosika (public/logos/ndao-hifanosika.png)
+const ICON = "/logos/ndao-hifanosika.png";
+
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
@@ -18,10 +21,10 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(
     self.registration.showNotification(title, {
-      body: data.body || "",
+      body: data.body || "Une nouvelle notification est disponible.",
       tag: data.tag || undefined, // même tag = pas de doublon avec l'affichage local
-      icon: "/apple-touch-icon.png",
-      badge: "/apple-touch-icon.png",
+      icon: ICON,
+      badge: ICON,
       requireInteraction: false,
       data: { url: data.url || "/notifications" },
     }),

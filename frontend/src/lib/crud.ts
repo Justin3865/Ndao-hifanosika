@@ -22,6 +22,7 @@ export type FieldType =
   | "identity"
   | "newperson"
   | "matricule"
+  | "entitymatricule"
   | "partners"
   | "participants"
   | "projects";

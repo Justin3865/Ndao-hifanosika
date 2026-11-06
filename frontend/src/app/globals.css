@@ -1178,3 +1178,15 @@ table .status-cell {
 .dark .bg-sky-100 {
   background-color: rgba(56, 189, 248, 0.22) !important;
 }
+
+/* Badges violets (ex. « Mémoire ») : texte clair et lisible sur fond sombre */
+.dark .text-purple-600,
+.dark .text-purple-700,
+.dark .text-purple-800,
+.dark .text-violet-600,
+.dark .text-violet-700,
+.dark .text-violet-800,
+.dark .text-indigo-700,
+.dark .text-indigo-800 {
+  color: #e9d5ff !important;
+}

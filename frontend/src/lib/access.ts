@@ -15,10 +15,13 @@ export const ALL_ROLES = [
   "TUTEUR_M2",
   "STAGIAIRE_L3",
   "STAGIAIRE_M2",
+  "STAGIAIRE_L1",
+  "STAGIAIRE_L2",
+  "STAGIAIRE_M1",
 ] as const;
 
 const TUTEURS = ["TUTEUR_L3", "TUTEUR_M2"] as const;
-const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2"] as const;
+const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"] as const;
 
 interface AccessRule {
   pattern: RegExp;
@@ -99,6 +102,18 @@ const ACCESS_RULES: AccessRule[] = [
 
   // Bénéficiaires
   { pattern: /^\/follow-ups(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+  // Parcours (miroir de GET /api/journey) ; la modification est limitée à ADMIN / COORDINATOR côté API
+  { pattern: /^\/parcours(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+  // Affectation des coordinateurs aux projets (miroir de /api/project-coordinators)
+  { pattern: /^\/coordinateurs(\/|$)/, roles: ["ADMIN", "DIRECTION"] },
+  // Présences aux séances (miroir de /api/attendance) ; le pointage est limité à ADMIN / COORDINATOR côté API
+  { pattern: /^\/presences(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+  // Consentement des tuteurs légaux des mineurs (miroir de /api/consents)
+  { pattern: /^\/consentements(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+  // Objectifs individuels : chacun voit les siens ; les gestionnaires (ADMIN/RH/DIRECTION) voient ceux des autres
+  { pattern: /^\/objectifs(\/|$)/, roles: ["*"] },
+  // Export JSON : le détail par jeu de données est vérifié côté API (canExport)
+  { pattern: /^\/exports(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "RH", "COMMUNICATION", "COORDINATOR"] },
   { pattern: /^\/beneficiaries(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"] },
 
   // Évaluations : grilles et campagnes = pilotage uniquement
@@ -114,6 +129,9 @@ const ACCESS_RULES: AccessRule[] = [
   // Offres de stage : la page /stages est publique (lecture) ; cette règle sert à afficher
   // les entrées « Offres de stage » / « Nouvelle offre » du menu et à ouvrir la page dans l'application.
   { pattern: /^\/stages(\/|$)/, roles: ["ADMIN", "RH", "COORDINATOR"] },
+
+  // Documents de stage (convention, rapport, mémoire) : droits fins par stage côté API
+  { pattern: /^\/internships\/documents\/?$/, roles: ["ADMIN", "RH", ...TUTEURS, ...STAGIAIRES] },
 
   // Stages (espace stagiaires) : invisible pour DIRECTION, DSI, DAF, COMMUNICATION
   { pattern: /^\/internships\/(create|[^/]+\/edit)\/?$/, roles: ["ADMIN", "RH", "COORDINATOR", ...TUTEURS] },

@@ -79,7 +79,7 @@ interface InternshipRow {
 const REPORT_ROLES = ["ADMIN", "DIRECTION", "DAF", "RH", "COMMUNICATION", "COORDINATOR"];
 const ZONE_ROLES = ["ADMIN", "DIRECTION", "DAF", "COMMUNICATION", "COORDINATOR"];
 const TRACKING_ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"];
-const INTERNSHIP_ROLES = ["ADMIN", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2", "STAGIAIRE_L3", "STAGIAIRE_M2"];
+const INTERNSHIP_ROLES = ["ADMIN", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2", "STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 
 const KPIS = [
   { key: "projects", label: "Projets", href: "/projects", icon: Briefcase, tone: "from-blue-600 to-blue-800" },

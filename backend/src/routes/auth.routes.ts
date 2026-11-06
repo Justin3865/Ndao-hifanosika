@@ -9,10 +9,12 @@ import {
   verifyResetCode,
   resetPassword,
   me,
+  changePassword,
 } from "../controllers/auth.controller";
 
 import { authenticate } from "../middlewares/auth.middleware";
 import { twoFactorGate } from "../middlewares/twoFactorGate.middleware";
+import { loginRateLimit, resetRateLimit } from "../middlewares/loginRateLimit.middleware";
 
 const router = Router();
 
@@ -24,7 +26,7 @@ const router = Router();
  * twoFactorGate : si le compte a activé l'authentification à deux facteurs, réclame le code
  * de l'application d'authentification avant de laisser le contrôleur ouvrir la session.
  */
-router.post("/login", twoFactorGate, login);
+router.post("/login", loginRateLimit, twoFactorGate, login);
 
 /**
  * POST /api/auth/register
@@ -37,7 +39,7 @@ router.post("/login", twoFactorGate, login);
  *   role   = STAGIAIRE_L3
  *   status = PENDING
  */
-router.post("/register", register);
+router.post("/register", resetRateLimit, register);
 
 /**
  * POST /api/auth/logout
@@ -62,6 +64,7 @@ router.post("/refresh", refresh);
  */
 router.post(
   "/forgot-password",
+  resetRateLimit,
   forgotPassword,
 );
 
@@ -72,6 +75,7 @@ router.post(
  */
 router.post(
   "/verify-reset-code",
+  resetRateLimit,
   verifyResetCode,
 );
 
@@ -82,8 +86,17 @@ router.post(
  */
 router.post(
   "/reset-password",
+  resetRateLimit,
   resetPassword,
 );
+
+/**
+ * POST /api/auth/change-password
+ *
+ * Protégé par JWT. Corps : { currentPassword, newPassword, confirmPassword? }
+ * (contrat de srcf/src/services/auth.service.ts::changePassword).
+ */
+router.post("/change-password", authenticate, changePassword);
 
 /**
  * GET /api/auth/me

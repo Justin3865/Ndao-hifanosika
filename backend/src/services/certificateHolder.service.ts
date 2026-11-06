@@ -21,7 +21,7 @@ export const HOLDER_TYPES: HolderType[] = ["VOLUNTEER", "STAFF", "TRAINING", "BE
 const ORG_CITY = process.env.ORG_CITY || "Fianarantsoa";
 
 /** Rôles qui sont des stagiaires : exclus de « Mission / emploi à l'ONG ». */
-export const INTERN_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2"];
+export const INTERN_ROLES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administrateur système",

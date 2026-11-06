@@ -42,6 +42,9 @@ const ALL_ROLES = [
   "TUTEUR_M2",
   "STAGIAIRE_L3",
   "STAGIAIRE_M2",
+  "STAGIAIRE_L1",
+  "STAGIAIRE_L2",
+  "STAGIAIRE_M1",
 ];
 
 /** Rôles qui peuvent ENVOYER un nouveau message (avec pièces jointes / position). */

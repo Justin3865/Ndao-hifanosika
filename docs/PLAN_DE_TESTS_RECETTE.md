@@ -38,10 +38,18 @@ Légende : **R** = résultat attendu. Colonne « Résultat » à remplir par le 
 | R16 | §6 Performance | `npm run perf` sur la recette | p95 ≤ 500 ms (API), ≤ 2 s (pages) | |
 | R17 | §10 Sauvegarde | `test-restore.sh` | « Restauration OK : N tables » | |
 | R18 | §6 Disponibilité | `docker compose stop back` puis `start` | Redémarrage automatique, `/health` répond | |
+| R19 | §5.4 Présence | **Présences** : choisir un projet et une séance, décocher des absents, enregistrer | Taux de présence par bénéficiaire mis à jour ; niveau « Trop peu de séances » sous 3 séances | |
+| R20 | §5.3 Objectifs | **Objectifs** (RH) : créer un objectif chiffré pour un membre ; le membre met à jour sa valeur atteinte | Barre de progression ; statut « Atteint » à 100 % ; objectif échu listé dans les alertes | |
+| R21 | §5.3 Documents de stage | **Documents de stage** : le stagiaire dépose son rapport (PDF) ; la RH dépose la convention ; un autre stagiaire tente d'ouvrir le stage | Dépôts visibles du stagiaire, du tuteur, de la RH ; refus (403) pour l'autre stagiaire ; fichier > 8 Mo refusé | |
+| R22 | §10 Consentement | **Consentements** : enregistrer le tuteur légal d'un mineur, puis le retirer | État Manquant → Accordé → Retiré ; le retrait reste daté | |
+| R23 | §10 Purge | **Conservation des données** : simuler puis exécuter | Compteurs cohérents ; une ligne « RETENTION_PURGE » dans le journal d'audit ; aucune donnée métier supprimée | |
+| R24 | §6 Export JSON | **Export JSON** en ADMIN puis en COMMUNICATION (bénéficiaires) | Fichier valide ; en COMMUNICATION : pseudonymes `B-00012`, aucun nom/contact/GPS | |
+| R25 | §5.1 Périmètre | Coordinateur affecté au projet A : appeler `/api/attendance/summary?projectId=B` et `/api/exports/json?dataset=beneficiaries&projectId=B` | 403 « ne fait pas partie de votre périmètre » | |
+| R26 | §10 Rôles | Un stagiaire appelle `/api/admin/retention` et `/api/consents` | 403 | |
 
 ## 3. Couverture actuelle (à jour au 4 nov. 2026)
 Tests automatisés **exécutés lors de la préparation de ce lot** : back unitaire 16/16, front 8/8, narration IA 6/6, baseline vs ML 5/5 (voir §5 sur les limites). Les 22 tests IA, 4 tests ML et 3 tests back préexistants, ainsi que les scripts `tests-http`, n'ont pas été relancés ici (pas de base PostgreSQL ni de dépendances Python complètes dans l'environnement de préparation).
-Reste à faire avant la soutenance : exécuter R01–R18 sur la recette et joindre ce tableau rempli au mémoire ; ajouter des tests de composants React si le temps le permet.
+Reste à faire avant la soutenance : exécuter R01–R26 sur la recette et joindre ce tableau rempli au mémoire ; ajouter des tests de composants React si le temps le permet.
 
 ## 4. Critères d'acceptation
 Aucun cas critique (R01, R03, R06, R07, R08, R13) en échec ; ≥ 90 % des autres cas OK ; objectifs de performance atteints ou écarts expliqués.

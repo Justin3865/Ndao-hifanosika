@@ -22,3 +22,40 @@ Zones GPS et vulnérabilité des ménages, missions/enquêtes terrain, messageri
 4. Synthèse par LLM : désactivée tant que `LLM_API_KEY` et `LLM_MODEL` ne sont pas définis.
 5. Tests de composants React, tests de charge réels et résultats de recette : à produire sur la recette.
 6. Le périmètre des coordinateurs (« ne voit que ses projets ») n'est pas filtré par projet dans le code existant ; les nouvelles routes suivent la même règle.
+
+## Lot 20261108 — ajouts (aucune fonctionnalité existante supprimée)
+| Exigence | Ajout | Où |
+|---|---|---|
+| Label « abandon » réel (§9.3) | statut du parcours ACTIVE / COMPLETED / DROPPED_OUT, taux d'abandon (parcours actifs exclus), export de labels 0/1 | `srcb/src/services/journey.service.ts`, `/api/journey`, `srcf/src/app/parcours`, migration `20261108000000…` |
+| Périmètre des coordinateurs | affectation coordinateur → projets ; filtrage des bénéficiaires, évaluations, relances post-programme, statut de parcours et ménages vulnérables ; contrôle des écritures (`projectId`) | `coordinatorScope.middleware.ts`, `/api/project-coordinators`, `srcf/src/app/coordinateurs` |
+| Docker, CI/CD, sauvegardes (§7.2, 10) | `deploy/` (compose dev/recette/prod, Caddy HTTPS, sauvegarde/restauration/test) et `.github/workflows/ci.yml` recréés | `deploy/`, `.github/workflows/` |
+
+### Points à valider (non testés ici)
+* Périmètre : tests d'intégration avec PostgreSQL (un coordinateur affecté au projet A ne doit rien voir du projet B) ; seules les règles pures sont testées automatiquement.
+* Mode transition : un coordinateur sans affectation garde l'accès historique tant que `COORDINATOR_SCOPE=strict` n'est pas défini.
+* Non filtrés à ce jour : `/api/vulnerability/zones`, tableaux de bord et rapports agrégés, services IA/ML.
+* `deploy/` et le workflow CI n'ont pas été exécutés (pas de Docker ni de GitHub dans l'environnement de rédaction) : syntaxe YAML et scripts vérifiés seulement.
+
+## Lot 20261109 — conformité au cahier des charges (ajouts uniquement)
+Ce lot ne modifie aucune table ni aucune route existantes : 4 tables nouvelles (migration `20261109000000_cahier_gaps`), 6 groupes de routes nouveaux, 6 pages nouvelles.
+
+| Exigence du cahier | Ajout | Où |
+|---|---|---|
+| §5.4 présence aux sessions | pointage des bénéficiaires par séance, taux et niveau de présence (le niveau n'est évalué qu'à partir de 3 séances) | `/api/attendance`, page `/presences`, table `BeneficiaryAttendance` |
+| §5.3 objectifs individuels / KPI RH, alertes RH | objectifs par membre (cible, valeur atteinte, échéance), progression, objectifs en retard | `/api/objectives`, page `/objectifs`, table `MemberObjective` |
+| §5.3 convention de stage, dépôt rapport/mémoire | dépôt, liste, téléchargement, suppression (PDF, Word, PNG, JPEG, 8 Mo max) ; droits par stage | `/api/internship-documents`, page `/internships/documents`, table `InternshipDocument` |
+| §10 consentement des tuteurs légaux | consentement daté par bénéficiaire mineur, retrait conservé, liste des consentements manquants | `/api/consents`, page `/consentements`, table `BeneficiaryConsent` |
+| §10 conservation et purge | simulation puis purge des **journaux techniques** uniquement (audit ≥ 12 mois, notifications lues, rappels, jetons expirés) ; confirmation exigée, action journalisée | `/api/admin/retention`, page `/administration/retention` |
+| §6 portabilité JSON ; §10 anonymisation pour la Communication | export JSON par jeu de données, périmètre coordinateur respecté, lignes pseudonymisées pour la Communication | `/api/exports/json`, page `/exports` |
+| §11 MCD/MLD | MCD (Mermaid) + dictionnaire généré depuis le schéma : 53 entités | `docs/MCD_MLD.md`, `srcb/scripts/gen-mcd.py` |
+| §11 plan de maintenance | procédures et calendrier | `docs/PLAN_MAINTENANCE.md` |
+
+Tests automatiques ajoutés : 6 (back, règles pures `gapRules`) + 2 (front) ; les 49 tests unitaires back passent, y compris les 43 existants.
+
+### Ce qui n'est PAS fait ou PAS vérifié (à dire tel quel)
+* Ces ajouts n'ont **pas été exécutés** contre PostgreSQL ni dans un navigateur (pas de base ni de dépendances installées dans l'environnement de rédaction). Vérifiés : règles pures (tests), cohérence de syntaxe, parité des droits d'export front/back. À faire : `npm install`, `npx prisma generate`, `npm run migrate:deploy`, `npm run typecheck`, `npm run build` (back et front), puis recette R19–R26.
+* **Score de risque d'abandon** : il reste un score à règles ; aucun modèle n'est entraîné. Le taux de présence est désormais disponible mais **n'est pas encore branché** comme variable du score ni du service ML.
+* **Politique de conservation** : les durées par défaut (audit 24 mois, notifications 12 mois, rappels 6 mois) sont une proposition technique ; la durée légale applicable à Madagascar et les exigences des bailleurs restent à faire valider par la Direction (§14.2 point 12). La purge n'est pas planifiée automatiquement : elle se lance à la main depuis l'administration.
+* **Chiffrement au repos** de la base : non traité dans le code ; relève de l'hébergement (disque/volume chiffré, sauvegardes chiffrées) — à décider avec la DSI (§14.2 point 9).
+* Les documents de stage sont stockés dans PostgreSQL (BYTEA), comme les preuves d'activité existantes ; au-delà de quelques milliers de fichiers, prévoir un stockage objet.
+* Résultats de recette R01–R26 et mesures de performance : toujours à produire sur l'environnement de recette.

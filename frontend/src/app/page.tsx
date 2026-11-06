@@ -190,11 +190,11 @@ const modules = [
 ========================================================= */
 
 const authInputWrap =
-  "flex h-11 items-center gap-3 rounded-xl border border-slate-600/60 bg-slate-700/60 px-3 focus-within:border-red-500";
+  "flex h-11 items-center gap-3 rounded-xl border border-[#cbd5e1] bg-white px-3 focus-within:border-blue-500 dark:border-slate-600/60 dark:bg-slate-700/60 dark:focus-within:border-red-500";
 const authInput =
-  "w-full bg-transparent text-sm text-white placeholder:text-slate-400 outline-none";
+  "w-full bg-transparent text-sm text-[#0f172a] placeholder:text-[#94a3b8] outline-none dark:text-white dark:placeholder:text-slate-400";
 const authLabel =
-  "mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400";
+  "mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#64748b] dark:text-[#94a3b8]!";
 
 /* =========================================================
    HOME PAGE
@@ -998,20 +998,20 @@ export default function HomePage() {
           aria-modal="true"
           className={
             isAuthTabs
-              ? "fixed inset-0 z-[1000] flex h-[100dvh] items-center justify-center overflow-hidden bg-[#0f1424] px-4"
+              ? "fixed inset-0 z-[1000] flex h-[100dvh] items-center justify-center overflow-hidden bg-[#f1f5f9] px-4 dark:bg-[#0f1424]"
               : "fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6"
           }
         >
           {isAuthTabs && (
-            <div className="flex max-h-full w-full max-w-md flex-col rounded-3xl border border-slate-700/70 bg-[#1e2638] p-5 shadow-2xl sm:p-6">
+            <div className="flex max-h-full w-full max-w-md flex-col rounded-3xl border border-[#e2e8f0] bg-white p-5 shadow-2xl sm:p-6 dark:border-slate-700/70 dark:bg-[#1e2638]">
               <div className="flex justify-center">
                 <Image src="/logos/ndao-hifanosika.png" alt="Ndao Hifanosika" width={160} height={56} priority className="h-12 w-auto object-contain" />
               </div>
-              <h2 className="mt-2 text-center text-xl font-bold text-white">
+              <h2 className="mt-2 text-center text-xl font-bold text-[#0f172a] dark:text-white">
                 {authModal === "login" ? "Bon retour !" : "Créer un compte"}
               </h2>
 
-              <div className="mt-3 flex rounded-2xl border border-slate-600/60 bg-slate-800/60 p-1">
+              <div className="mt-3 flex rounded-2xl border border-[#e2e8f0] bg-[#f1f5f9] p-1 dark:border-slate-600/60 dark:bg-slate-800/60">
                 {(["login", "register"] as const).map((t) => (
                   <button
                     key={t}
@@ -1019,8 +1019,8 @@ export default function HomePage() {
                     onClick={() => switchAuth(t)}
                     className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${
                       authModal === t
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
-                        : "text-slate-400 hover:text-white"
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20 dark:shadow-blue-900/40"
+                        : "text-[#64748b] hover:text-[#0f172a] dark:text-slate-400 dark:hover:text-white"
                     }`}
                   >
                     {t === "login" ? "Connexion" : "Inscription"}
@@ -1033,22 +1033,22 @@ export default function HomePage() {
                   <div>
                     <label className={authLabel}>Adresse e-mail</label>
                     <div className={authInputWrap}>
-                      <Mail className="h-4 w-4 text-slate-400" />
+                      <Mail className="h-4 w-4 text-[#94a3b8] dark:text-slate-400" />
                       <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="exemple@email.com" autoComplete="email" className={authInput} />
                     </div>
                   </div>
                   <div>
                     <label className={authLabel}>Mot de passe</label>
                     <div className={authInputWrap}>
-                      <Lock className="h-4 w-4 text-slate-400" />
+                      <Lock className="h-4 w-4 text-[#94a3b8] dark:text-slate-400" />
                       <input type={showPassword ? "text" : "password"} value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Votre mot de passe" autoComplete="current-password" className={authInput} />
-                      <button type="button" onClick={() => setShowPassword((v) => !v)} className="text-slate-400 hover:text-white">
+                      <button type="button" onClick={() => setShowPassword((v) => !v)} className="text-[#94a3b8] hover:text-[#0f172a] dark:text-slate-400 dark:hover:text-white">
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 text-xs text-slate-400">
+                    <label className="flex items-center gap-2 text-xs text-[#64748b] dark:text-[#94a3b8]!">
                       <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="accent-red-600" />
                       Se souvenir de moi
                     </label>
@@ -1082,7 +1082,7 @@ export default function HomePage() {
                   <div>
                     <label className={authLabel}>Adresse e-mail</label>
                     <div className={authInputWrap}>
-                      <Mail className="h-4 w-4 text-slate-400" />
+                      <Mail className="h-4 w-4 text-[#94a3b8] dark:text-slate-400" />
                       <input type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="exemple@email.com" className={authInput} />
                     </div>
                   </div>
@@ -1091,7 +1091,7 @@ export default function HomePage() {
                       <label className={authLabel}>Mot de passe</label>
                       <div className={authInputWrap}>
                         <input type={showPassword ? "text" : "password"} value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Min. 8 caractères" className={authInput} />
-                        <button type="button" onClick={() => setShowPassword((v) => !v)} className="text-slate-400 hover:text-white">
+                        <button type="button" onClick={() => setShowPassword((v) => !v)} className="text-[#94a3b8] hover:text-[#0f172a] dark:text-slate-400 dark:hover:text-white">
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
@@ -1100,13 +1100,13 @@ export default function HomePage() {
                       <label className={authLabel}>Confirmer</label>
                       <div className={authInputWrap}>
                         <input type={showConfirmPassword ? "text" : "password"} value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirmez" className={authInput} />
-                        <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="text-slate-400 hover:text-white">
+                        <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="text-[#94a3b8] hover:text-[#0f172a] dark:text-slate-400 dark:hover:text-white">
                           {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-blue-300">
+                  <div className="flex gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-[#1d4ed8] dark:text-blue-300">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
                     <p>Après votre inscription, votre compte sera placé en attente. Un administrateur devra le vérifier et l'activer avant votre première connexion.</p>
                   </div>
@@ -1117,7 +1117,7 @@ export default function HomePage() {
                 </form>
               )}
 
-              <p className="mt-4 text-center text-xs text-slate-400">
+              <p className="mt-4 text-center text-xs text-[#64748b] dark:text-slate-400">
                 {authModal === "login" ? (
                   <>
                     Pas encore de compte ?{" "}
@@ -1135,7 +1135,7 @@ export default function HomePage() {
                 )}
               </p>
 
-              <button type="button" onClick={closeAuth} className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-300">
+              <button type="button" onClick={closeAuth} className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-[#64748b] hover:text-[#0f172a] dark:text-slate-500 dark:hover:text-slate-300">
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Retour à l'accueil
               </button>

@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import { logger } from "../config/logger";
 
+import { db } from "../utils/db";
 import { sendError } from "../middlewares/error.middleware";
+import { scoreDropout } from "../services/dropoutScoring";
 import { probeAiServices } from "../services/pyservices.service";
 export async function aiHealth(
   req: Request,
@@ -28,95 +30,88 @@ export async function aiHealth(
   }
 }
 
+/**
+ * POST /api/ai/score/dropout-risk
+ *
+ * MODÈLE DE RÉFÉRENCE UNIQUE : services/dropoutScoring.ts
+ *   1) ml_service (méthode R : régression logistique entraînée sur les labels du parcours)
+ *   2) repli : règle pondérée (rules-v1)
+ *
+ * Corps : { beneficiaryId? , age?, attendanceRate?, evaluationAverage, activitiesCompleted?, missedActivities? }
+ * Si beneficiaryId est fourni et attendanceRate absent, le taux de présence est calculé
+ * depuis BeneficiaryAttendance (séances pointées présent / séances pointées).
+ */
 export async function scoreDropoutRisk(
   req: Request,
   res: Response,
 ): Promise<void> {
   try {
-    const {
-      age,
-      attendanceRate,
-      evaluationAverage,
-      activitiesCompleted,
-      missedActivities,
-    } = req.body;
+    const { age, activitiesCompleted, missedActivities } = req.body ?? {};
+    let { attendanceRate } = req.body ?? {};
+    const { evaluationAverage, beneficiaryId } = req.body ?? {};
 
-    if (
-      attendanceRate === undefined ||
-      evaluationAverage === undefined
-    ) {
+    let attendanceSource: "request" | "attendance" = "request";
+    let sessionsRecorded: number | null = null;
+
+    if ((attendanceRate === undefined || attendanceRate === null) && beneficiaryId !== undefined) {
+      const id = Number(beneficiaryId);
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({ success: false, message: "beneficiaryId invalide." });
+        return;
+      }
+      const rows = await db.beneficiaryAttendance.findMany({
+        where: { beneficiaryId: id },
+        select: { present: true },
+      });
+      sessionsRecorded = rows.length;
+      if (rows.length > 0) {
+        attendanceRate = Math.round((rows.filter((r: { present: boolean }) => r.present).length / rows.length) * 1000) / 10;
+        attendanceSource = "attendance";
+      }
+    }
+
+    if (attendanceRate === undefined || attendanceRate === null || evaluationAverage === undefined) {
       res.status(400).json({
         success: false,
         message:
-          "attendanceRate et evaluationAverage sont obligatoires",
+          "evaluationAverage est obligatoire, ainsi que attendanceRate (ou un beneficiaryId ayant des présences pointées)",
       });
       return;
     }
-
-    /*
-     * Version MVP :
-     * Le calcul définit simplement un score indicatif.
-     *
-     * Dans la version finale, cette fonction appellera
-     * le service FastAPI /score/dropout-risk.
-     */
 
     const attendance = Number(attendanceRate);
     const average = Number(evaluationAverage);
     const missed = Number(missedActivities ?? 0);
     const completed = Number(activitiesCompleted ?? 0);
-
-    let riskScore = 0;
-
-    if (attendance < 50) {
-      riskScore += 40;
-    } else if (attendance < 70) {
-      riskScore += 25;
-    } else if (attendance < 85) {
-      riskScore += 10;
+    if ([attendance, average, missed, completed].some((v) => !Number.isFinite(v))) {
+      res.status(400).json({ success: false, message: "Valeurs numériques invalides." });
+      return;
     }
 
-    if (average < 8) {
-      riskScore += 30;
-    } else if (average < 10) {
-      riskScore += 20;
-    } else if (average < 12) {
-      riskScore += 10;
-    }
-
-    if (missed >= 5) {
-      riskScore += 20;
-    } else if (missed >= 3) {
-      riskScore += 10;
-    }
-
-    if (completed === 0) {
-      riskScore += 10;
-    }
-
-    riskScore = Math.min(100, Math.max(0, riskScore));
-
-    let level: "LOW" | "MEDIUM" | "HIGH";
-
-    if (riskScore >= 60) {
-      level = "HIGH";
-    } else if (riskScore >= 30) {
-      level = "MEDIUM";
-    } else {
-      level = "LOW";
-    }
+    const result = await scoreDropout({
+      age: age !== undefined && age !== null ? Number(age) : null,
+      attendanceRate: attendance,
+      evaluationAverage: average,
+      activitiesCompleted: completed,
+      missedActivities: missed,
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        age: age !== undefined ? Number(age) : null,
+        age: age !== undefined && age !== null ? Number(age) : null,
         attendanceRate: attendance,
+        attendanceSource,
+        sessionsRecorded,
         evaluationAverage: average,
         activitiesCompleted: completed,
         missedActivities: missed,
-        riskScore,
-        riskLevel: level,
-        model: "MVP",
+        riskScore: result.riskScore,
+        riskLevel: result.riskLevel,
+        probability: result.probability,
+        model: result.model,
+        source: result.source,
+        factors: result.factors,
         timestamp: new Date().toISOString(),
       },
     });

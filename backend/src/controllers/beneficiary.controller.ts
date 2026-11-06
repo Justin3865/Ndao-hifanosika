@@ -7,6 +7,7 @@ import { parseIdentity } from "../utils/identity";
 import { cinSexProblem, householdProblem, parseDisabilityTypes } from "../utils/fieldRules";
 
 import { sendError } from "../middlewares/error.middleware";
+import { beneficiaryMatricule, sortByMatricule } from "../utils/entityMatricule";
 export async function getBeneficiaries(
   req: Request,
   res: Response,
@@ -31,6 +32,8 @@ export async function getBeneficiaries(
         createdAt: "desc",
       },
     });
+
+    sortByMatricule(beneficiaries, "matricule");
 
     res.status(200).json({
       success: true,
@@ -334,27 +337,49 @@ export async function createBeneficiary(
       return;
     }
 
-    const beneficiary = await prisma.beneficiary.create({
-      data: {
-        projectId: Number(projectId),
-        firstName: firstName ?? "",
-        lastName,
-        gender,
-        phone,
-        email,
-        vulnerable: vulnerable ?? false,
-        ...parsed.data,
-      },
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
+    // Matricule : celui saisi (unique), sinon NH-AAAA-BEN-0001 généré automatiquement
+    const givenMatricule =
+      typeof req.body.matricule === "string" ? req.body.matricule.trim() : "";
+
+    if (givenMatricule) {
+      const taken = await prisma.beneficiary.findUnique({
+        where: { matricule: givenMatricule },
+        select: { id: true },
+      });
+
+      if (taken) {
+        res.status(409).json({
+          success: false,
+          message: "Ce matricule de bénéficiaire existe déjà.",
+        });
+        return;
+      }
+    }
+
+    const beneficiary = await beneficiaryMatricule.createWith(givenMatricule, (matricule) =>
+      prisma.beneficiary.create({
+        data: {
+          projectId: Number(projectId),
+          firstName: firstName ?? "",
+          lastName,
+          gender,
+          phone,
+          email,
+          vulnerable: vulnerable ?? false,
+          ...parsed.data,
+          matricule,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
           },
         },
-      },
-    });
+      }),
+    );
 
     logger.info(`Bénéficiaire créé : ${beneficiary.id}`);
 
@@ -462,6 +487,30 @@ export async function updateBeneficiary(
       return;
     }
 
+    // Matricule modifiable (unique) ; vide ou inchangé = on ne touche à rien
+    let newMatricule: string | undefined;
+
+    if (typeof req.body.matricule === "string" && req.body.matricule.trim()) {
+      const wanted = req.body.matricule.trim();
+
+      if (wanted !== existing.matricule) {
+        const taken = await prisma.beneficiary.findUnique({
+          where: { matricule: wanted },
+          select: { id: true },
+        });
+
+        if (taken && taken.id !== id) {
+          res.status(409).json({
+            success: false,
+            message: "Ce matricule de bénéficiaire existe déjà.",
+          });
+          return;
+        }
+
+        newMatricule = wanted;
+      }
+    }
+
     const beneficiary = await prisma.beneficiary.update({
       where: { id },
       data: {
@@ -474,6 +523,7 @@ export async function updateBeneficiary(
         email,
         vulnerable,
         ...parsed.data,
+        matricule: newMatricule,
       },
       include: {
         project: {
@@ -537,5 +587,48 @@ export async function deleteBeneficiary(
     logger.error("Erreur suppression bénéficiaire", error);
 
     sendError(res, error, "Erreur lors de la suppression du bénéficiaire");
+  }
+}
+
+/**
+ * GET /api/beneficiaries/next-code
+ * Prochain matricule de bénéficiaire proposé (NH-AAAA-BEN-0001, …).
+ */
+export async function nextBeneficiaryCode(
+  _req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    res.status(200).json({
+      success: true,
+      data: { code: await beneficiaryMatricule.next() },
+    });
+  } catch (error) {
+    logger.error("Erreur calcul du prochain matricule bénéficiaire", error);
+
+    sendError(res, error, "Impossible de calculer le prochain matricule");
+  }
+}
+
+/**
+ * POST /api/beneficiaries/renumber  (ADMIN)
+ * Remet tous les matricules de bénéficiaires en ordre selon la date de création.
+ */
+export async function renumberBeneficiaryMatricules(
+  _req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const count = await beneficiaryMatricule.renumber();
+
+    res.status(200).json({
+      success: true,
+      message: `${count} matricule(s) de bénéficiaire remis en ordre.`,
+      data: { count },
+    });
+  } catch (error) {
+    logger.error("Erreur remise en ordre des matricules bénéficiaires", error);
+
+    sendError(res, error, "Impossible de remettre les matricules en ordre");
   }
 }

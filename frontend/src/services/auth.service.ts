@@ -578,6 +578,18 @@ class AuthService {
       STAGIAIRE_M2: [
         "read",
       ],
+
+      STAGIAIRE_L1: [
+        "read",
+      ],
+
+      STAGIAIRE_L2: [
+        "read",
+      ],
+
+      STAGIAIRE_M1: [
+        "read",
+      ],
     };
 
     const role =

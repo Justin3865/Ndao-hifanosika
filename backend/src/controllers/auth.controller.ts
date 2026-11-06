@@ -879,3 +879,45 @@ export async function resetPassword(req: Request, res: Response): Promise<Respon
     return sendError(res, error, "Erreur interne du serveur.");
   }
 }
+
+/**
+ * POST /api/auth/change-password — l'utilisateur connecté change son mot de passe.
+ * Contrat front : { currentPassword, newPassword, confirmPassword? }.
+ */
+export async function changePassword(req: Request, res: Response): Promise<Response> {
+  try {
+    const userId = (req as Request & { user?: { id: number } }).user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: "Authentification requise." });
+
+    const currentPassword = String(req.body?.currentPassword ?? "");
+    const newPassword = String(req.body?.newPassword ?? "");
+    const confirmPassword = req.body?.confirmPassword;
+
+    if (!currentPassword) return res.status(400).json({ success: false, message: "Le mot de passe actuel est requis." });
+    if (newPassword.length < 12 || newPassword.length > 128) {
+      return res.status(400).json({ success: false, message: "Le mot de passe doit contenir entre 12 et 128 caractères." });
+    }
+    if (confirmPassword !== undefined && String(confirmPassword) !== newPassword) {
+      return res.status(400).json({ success: false, message: "Les mots de passe ne correspondent pas." });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ success: false, message: "Le nouveau mot de passe doit être différent de l'actuel." });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, password: true } });
+    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(400).json({ success: false, message: "Mot de passe actuel incorrect." });
+    }
+
+    const password = await bcrypt.hash(newPassword, 12);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { password } }),
+      // Invalide les liens de réinitialisation encore en attente.
+      prisma.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } }),
+    ]);
+    return res.status(200).json({ success: true, message: "Mot de passe modifié avec succès." });
+  } catch (error) {
+    logger.error("Erreur lors du changement de mot de passe.", error);
+    return sendError(res, error, "Erreur interne du serveur.");
+  }
+}

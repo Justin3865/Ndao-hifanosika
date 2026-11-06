@@ -31,6 +31,9 @@ router.get(
     "TUTEUR_M2",
     "STAGIAIRE_L3",
     "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   getInternships,
 );
@@ -64,6 +67,9 @@ router.get(
     "TUTEUR_M2",
     "STAGIAIRE_L3",
     "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   getInternshipById,
 );
@@ -135,4 +141,4 @@ router.delete(
   deleteInternship,
 );
 
-export default router;
+export default router;

@@ -41,3 +41,10 @@ yarn-error.log*
 next-env.d.ts
 # env local
 .env.local
+
+# ---------- Sauvegardes locales et résidus (ajouté lot 20261109) ----------
+*.bak
+*.bak-*
+*.backup
+desktop.ini
+resultat.txt
