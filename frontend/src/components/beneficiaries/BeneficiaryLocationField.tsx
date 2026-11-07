@@ -33,9 +33,30 @@ const LEVEL_FIELDS = [
   { key: "adminFokontany", label: "Fokontany", color: LEVEL_COLORS.FOKONTANY },
 ] as const;
 
+/** Le géocodage Google est refusé (facturation non activée) : on arrête de l'appeler et on masque son message d'erreur. */
+let geocodeBlocked = false;
+let consoleFiltered = false;
+
+function silenceGeocodingBillingError() {
+  if (consoleFiltered || typeof window === "undefined") return;
+  consoleFiltered = true;
+
+  const original = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const first = String(args[0] ?? "");
+    if (first.includes("Geocoding Service") || first.includes("You must enable Billing")) {
+      geocodeBlocked = true;
+      return;
+    }
+    original(...args);
+  };
+}
+
 /** Adresse lisible d'un point (géocodage inverse Google) ; "" si indisponible. */
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
-  if (!MAPS_ENABLED) return "";
+  if (!MAPS_ENABLED || geocodeBlocked) return "";
+
+  silenceGeocodingBillingError();
 
   try {
     await loadGoogleMaps();
@@ -48,11 +69,18 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
   if (!g?.maps?.Geocoder) return "";
 
   return new Promise((resolve) => {
-    new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: Array<{ types?: string[]; formatted_address?: string }> | null, status: string) => {
-      if (status !== "OK" || !results?.length) return resolve("");
-      const best = results.find((r) => !r.types?.includes("plus_code")) ?? results[0];
-      resolve(String(best.formatted_address ?? "").slice(0, 280));
-    });
+    try {
+      const pending = new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: Array<{ types?: string[]; formatted_address?: string }> | null, status: string) => {
+        if (status === "REQUEST_DENIED") geocodeBlocked = true;
+        if (status !== "OK" || !results?.length) return resolve("");
+        const best = results.find((r) => !r.types?.includes("plus_code")) ?? results[0];
+        resolve(String(best.formatted_address ?? "").slice(0, 280));
+      });
+      // Évite une "unhandled promise rejection" quand Google refuse la requête
+      if (pending && typeof pending.catch === "function") pending.catch(() => resolve(""));
+    } catch {
+      resolve("");
+    }
   });
 }
 

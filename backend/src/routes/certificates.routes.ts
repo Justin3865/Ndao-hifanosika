@@ -21,7 +21,7 @@ const ISSUERS = ["ADMIN", "DIRECTION", "RH"] as const;
 
 const CATEGORY_CODE: Record<string, string> = {
   INTERNSHIP: "STG",
-  VOLUNTEER: "BEN",
+  VOLUNTEER: "VOL",
   STAFF: "TRV",
   TRAINING: "FOR",
   BENEFICIARY: "BNF",
@@ -40,28 +40,36 @@ async function nextCode(type: string): Promise<string> {
   return `${prefix}${String(max + 1).padStart(4, "0")}`;
 }
 
+/** Premier code libre : le matricule lui-même, puis -2, -3… (2e certificat de la même personne, ancien certificat révoqué) */
+async function codeFromMatricule(matricule: string): Promise<string> {
+  const rows: Array<{ code: string }> = await db.certificate.findMany({
+    where: { code: { startsWith: matricule } },
+    select: { code: true },
+  });
+
+  const used = new Set(rows.map((r) => r.code));
+  if (!used.has(matricule)) return matricule;
+
+  let n = 2;
+  while (used.has(`${matricule}-${n}`)) n++;
+  return `${matricule}-${n}`;
+}
+
 /**
  * Code (N°) du certificat.
  * Certificat de stage d'un stagiaire : son matricule (NH-2026-STG-0001), toujours le même.
- * Un 2e certificat du même stagiaire (autre stage, ancien certificat révoqué) : suffixe -2, -3…
- * Autres cas : numérotation séquentielle par catégorie.
+ * Certificat de bénéficiaire : le matricule de la fiche du bénéficiaire (NH-2026-BEN-0000016), lu dans « Bénéficiaires ».
+ * Un 2e certificat de la même personne (autre stage, ancien certificat révoqué) : suffixe -2, -3…
+ * Autres cas (dont un bénéficiaire « cas particulier » absent de la base) : numérotation séquentielle par catégorie.
+ * Le préfixe BEN est réservé aux bénéficiaires : les certificats de bénévoles utilisent VOL.
  */
-async function codeFor(type: string, userId: number | null): Promise<string> {
+async function codeFor(type: string, userId: number | null, beneficiaryMatricule: string | null = null): Promise<string> {
   if (type === "INTERNSHIP" && userId) {
     const { matricule } = await getOrAssignMatricule(userId);
-
-    const rows: Array<{ code: string }> = await db.certificate.findMany({
-      where: { code: { startsWith: matricule } },
-      select: { code: true },
-    });
-
-    const used = new Set(rows.map((r) => r.code));
-    if (!used.has(matricule)) return matricule;
-
-    let n = 2;
-    while (used.has(`${matricule}-${n}`)) n++;
-    return `${matricule}-${n}`;
+    return codeFromMatricule(matricule);
   }
+
+  if (type === "BENEFICIARY" && beneficiaryMatricule) return codeFromMatricule(beneficiaryMatricule);
 
   return nextCode(type);
 }
@@ -643,6 +651,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
 
     let finalScore: number | null = null;
     let mention: string | null = null;
+    let beneficiaryMatricule: string | null = null;
 
     if (type === "BENEFICIARY" && !specialCase) {
       if (!beneficiaryId || !Number.isInteger(beneficiaryId) || beneficiaryId <= 0) {
@@ -657,6 +666,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
           email: true,
           phone: true,
           projectId: true,
+          matricule: true,
           birthDate: true,
           birthPlace: true,
           cinNumber: true,
@@ -668,6 +678,9 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       });
 
       if (!beneficiary) return res.status(404).json({ success: false, message: "Bénéficiaire introuvable" });
+
+      // N° du certificat = matricule du bénéficiaire
+      beneficiaryMatricule = beneficiary.matricule?.trim() || null;
 
       // Identité (naissance + CIN) lue dans la fiche du bénéficiaire
       holderBirthDate = beneficiary.birthDate ?? holderBirthDate;
@@ -958,7 +971,7 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
       try {
         row = await db.certificate.create({
           data: {
-            code: await codeFor(type, userId),
+            code: await codeFor(type, userId, beneficiaryMatricule),
             type,
             holderName,
             holderEmail,
