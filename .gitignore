@@ -55,7 +55,7 @@ next-env.d.ts
 dist/
 **/generated/prisma/
 .cache/
-uploads/
+/backend/uploads/
 
 # ---------- Python (ai-service, ml-service) ----------
 .venv/
@@ -68,12 +68,15 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 
-# ---------- Binaires Windows / compilés (venv déjà couvert, sécurité en plus) ----------
+# ---------- Binaires Windows / compilés ----------
 *.exe
 *.pyd
 *.dll
 *.lib
 *.so
+# Exception : binaires volontaires dans deploy/ (décommenter si besoin)
+# !deploy/**/*.exe
+# !deploy/**/*.dll
 
 # ---------- Tests et couverture ----------
 coverage/
@@ -95,12 +98,14 @@ Thumbs.db
 
 # ---------- Éditeurs et outils IA ----------
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .windsurf/
 .cursor/
 .claude/
 
-# ---------- Sauvegardes locales et résidus (ajouté lot 20261109) ----------
+# ---------- Sauvegardes locales et résidus ----------
 *.bak
 *.bak-*
 *.backup
@@ -112,7 +117,7 @@ appliquer*.py
 appliquer*.js
 /new_block.ts
 
-# ---------- Backend : scripts SQL / Prisma jetables (racine de backend/) ----------
+# ---------- Backend : scripts SQL / Prisma jetables ----------
 backend/*.sql
 backend/db-actuelle.prisma
 backend/prisma-additions.prisma
@@ -123,7 +128,7 @@ backend/skills-lock.json
 DEAD_CODE.txt
 docs/outils/i18n-manque.json
 docs/outils/i18n-a-traduire.csv
-# ml-service/rapport_*/        <- esorina ny "#" raha azo averina amin'ny script
+# ml-service/rapport_*/    <- esorina ny "#" raha tsy tianao tazonina
 
 # ---------- ML : modèles entraînés ----------
 *.pkl
