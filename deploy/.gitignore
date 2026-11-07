@@ -1,4 +1,0 @@
-.env.dev
-.env.staging
-.env.prod
-*.dump

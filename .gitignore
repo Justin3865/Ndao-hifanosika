@@ -1,0 +1,144 @@
+# =====================================================
+# .gitignore unique - Ndao Hifanosika
+# À placer à la racine : C:\ndao-hifanosika\.gitignore
+# (valable pour frontend, backend, ai-service, ml-service)
+# =====================================================
+
+# ---------- Dépendances ----------
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ---------- Environnement et secrets ----------
+.env
+.env.*
+*.env
+.envrc
+secrets/
+.secrets/
+credentials.json
+service-account*.json
+firebase-adminsdk*.json
+google-credentials*.json
+vapid*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.npmrc
+.pypirc
+.netrc
+
+# Exceptions : modèles sans valeurs (DOIVENT rester APRÈS les règles ci-dessus)
+!.env.example
+!.env.local.example
+!.env.*.example
+
+# ---------- Next.js (frontend) ----------
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+
+# ---------- Backend (Node / TypeScript / Prisma) ----------
+dist/
+**/generated/prisma/
+.cache/
+uploads/
+
+# ---------- Python (ai-service, ml-service) ----------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.ipynb_checkpoints/
+
+# ---------- Binaires Windows / compilés (venv déjà couvert, sécurité en plus) ----------
+*.exe
+*.pyd
+*.dll
+*.lib
+*.so
+
+# ---------- Tests et couverture ----------
+coverage/
+.coverage
+htmlcov/
+
+# ---------- Journaux ----------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------- Système (Windows / macOS) ----------
+desktop.ini
+Thumbs.db
+.DS_Store
+*.lnk
+
+# ---------- Éditeurs et outils IA ----------
+.idea/
+.vscode/
+.windsurf/
+.cursor/
+.claude/
+
+# ---------- Sauvegardes locales et résidus (ajouté lot 20261109) ----------
+*.bak
+*.bak-*
+*.backup
+.test-build/
+resultat.txt
+
+# ---------- Scripts de patch jetables ----------
+appliquer*.py
+appliquer*.js
+/new_block.ts
+
+# ---------- Backend : scripts SQL / Prisma jetables (racine de backend/) ----------
+backend/*.sql
+backend/db-actuelle.prisma
+backend/prisma-additions.prisma
+backend/prisma7.config.ts
+backend/skills-lock.json
+
+# ---------- Fichiers générés / rapports ----------
+DEAD_CODE.txt
+docs/outils/i18n-manque.json
+docs/outils/i18n-a-traduire.csv
+# ml-service/rapport_*/        <- esorina ny "#" raha azo averina amin'ny script
+
+# ---------- ML : modèles entraînés ----------
+*.pkl
+*.joblib
+*.onnx
+*.h5
+*.pt
+
+# ---------- Sauvegardes base de données ----------
+*.dump
+*.sql.gz
+backups/
+
+# ---------- Archives et fichiers temporaires ----------
+*.zip
+*.tmp
+*.swp
+~$*
