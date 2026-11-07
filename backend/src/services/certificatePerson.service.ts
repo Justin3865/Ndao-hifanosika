@@ -66,6 +66,7 @@ export interface PersonCertificateSuggestion {
     reports: number;
     ratings: number;
     missions: number;
+    missionCodes: string[];
     distanceKm: number;
     createdActivities: number;
   };
@@ -97,7 +98,7 @@ export async function getPersonCertificateSuggestion(userId: number, type: Perso
       select: { activityId: true, checkedInAt: true, report: true, rating: true },
     }),
     prisma.activity.findMany({ where: { createdById: userId }, select: { id: true } }),
-    prisma.mission.findMany({ where: { agentId: userId }, select: { startedAt: true, endedAt: true, distanceKm: true } }),
+    prisma.mission.findMany({ where: { agentId: userId }, orderBy: { startedAt: "asc" }, select: { code: true, startedAt: true, endedAt: true, distanceKm: true } }),
   ]);
 
   const participationByActivity = new Map(participations.map((p) => [p.activityId, p]));
@@ -194,6 +195,13 @@ export async function getPersonCertificateSuggestion(userId: number, type: Perso
     theme = sortedByDate.length ? sortedByDate.slice(0, 3).map((a) => a.title).join(" ; ") : null;
   }
 
+  // Missions terrain : leurs matricules (NH-AAAA-MIS-xxxx) figurent dans le thème du certificat
+  const missionCodes = type === "STAFF" ? missions.map((m) => m.code).filter((c): c is string => !!c) : [];
+  if (missionCodes.length) {
+    const label = `Mission(s) terrain : ${missionCodes.slice(0, 3).join(", ")}${missionCodes.length > 3 ? ` (+${missionCodes.length - 3})` : ""}`;
+    theme = theme ? `${theme} ; ${label}` : label;
+  }
+
   return {
     type,
     hasData,
@@ -215,6 +223,7 @@ export async function getPersonCertificateSuggestion(userId: number, type: Perso
       reports: mine.filter((p) => p.report && p.report.trim()).length,
       ratings: rated.length,
       missions: type === "STAFF" ? missions.length : 0,
+      missionCodes,
       distanceKm: type === "STAFF" ? round1(missions.reduce((sum, m) => sum + (m.distanceKm ?? 0), 0)) : 0,
       createdActivities: type === "STAFF" ? created.filter((a) => kept.has(a.id)).length : 0,
     },

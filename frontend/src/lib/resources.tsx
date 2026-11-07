@@ -28,6 +28,13 @@ const TUTEURS = ["TUTEUR_L3", "TUTEUR_M2"];
 const SUIVI_EVAL_ROLES = ["ADMIN", "DIRECTION", "DAF", "COORDINATOR", "RH", "COMMUNICATION", "DSI", "TUTEUR_L3", "TUTEUR_M2"];
 const STAGIAIRES = ["STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
 
+const HOUSING_OPTIONS = [
+  { value: "Dur (briques / béton)", label: "Dur (briques / béton)" },
+  { value: "Semi-dur", label: "Semi-dur" },
+  { value: "Traditionnel (terre / bois)", label: "Traditionnel (terre / bois)" },
+  { value: "Précaire", label: "Précaire" },
+];
+
 const GENDERS = [
   { value: "FEMALE", label: "Femme" },
   { value: "MALE", label: "Homme" },
@@ -320,6 +327,15 @@ export const beneficiariesConfig: ResourceConfig = {
     { name: "childrenUnder5", label: "Enfants de moins de 5 ans", type: "number", min: 0, max: 20 },
     { name: "hasDisability", label: "Personne en situation de handicap dans le ménage", type: "checkbox" },
     { name: "disabilityTypes", label: "Type(s) de handicap (plusieurs choix possibles)", type: "multicheck", options: DISABILITY_OPTIONS, showIf: "hasDisability", full: true },
+    // 4) Questions de l'enquête de ménage (mêmes champs que « Nouveau ménage à enquêter » en mission)
+    { name: "outOfSchoolChildren", label: "Enfants non scolarisés", type: "number", min: 0, max: 50 },
+    { name: "mealsPerDay", label: "Repas par jour", type: "number", min: 0, max: 10 },
+    { name: "housingType", label: "Type d'habitat", type: "select", options: HOUSING_OPTIONS },
+    { name: "healthIssues", label: "Problèmes de santé dans le ménage", type: "checkbox" },
+    { name: "waterAccess", label: "Accès à l'eau potable", type: "checkbox", defaultValue: true },
+    { name: "electricityAccess", label: "Accès à l'électricité", type: "checkbox" },
+    { name: "vulnerable", label: "Ménage jugé vulnérable par l'agent", type: "checkbox" },
+    { name: "notes", label: "Observations (facultatif)", type: "textarea", full: true },
     { name: "home", label: "Domicile du ménage (carte)", type: "beneficiaryzone", full: true },
   ],
   // Cohérence entre champs : enfants ≤ ménage, sexe du CIN = genre, dates de naissance / CIN / duplicata
@@ -361,6 +377,11 @@ export const beneficiariesConfig: ResourceConfig = {
     { label: "Revenu mensuel", value: fmtMoney(b.monthlyIncome) },
     { label: "Enfants < 5 ans", value: b.childrenUnder5 ?? "—" },
     { label: "Handicap", value: b.hasDisability ? (disabilityLabels(b.disabilityTypes) ? `Oui — ${disabilityLabels(b.disabilityTypes)}` : "Oui") : "Non" },
+    { label: "Enfants non scolarisés", value: b.outOfSchoolChildren ?? "—" },
+    { label: "Repas par jour", value: b.mealsPerDay ?? "—" },
+    { label: "Habitat", value: b.housingType || "—" },
+    { label: "Santé / eau / électricité", value: `${b.healthIssues === true ? "Problèmes de santé" : b.healthIssues === false ? "Pas de problème de santé" : "Santé —"} · ${b.waterAccess === false ? "Sans eau potable" : b.waterAccess === true ? "Eau potable" : "Eau —"} · ${b.electricityAccess === false ? "Sans électricité" : b.electricityAccess === true ? "Électricité" : "Électricité —"}` },
+    { label: "Observations", value: b.notes || "—" },
     { label: "Date de naissance", value: b.birthDate ? fmtDate(b.birthDate) : "—" },
     { label: "Lieu de naissance", value: b.birthPlace || "—" },
     { label: "N° CIN", value: b.cinNumber || "—" },
@@ -825,6 +846,7 @@ export const zonesConfig: ResourceConfig = {
     { name: "address", label: "Adresse postale (remplie automatiquement)", type: "text", full: true },
     { name: "latitude", label: "Latitude (automatique)", type: "text", required: true },
     { name: "longitude", label: "Longitude (automatique)", type: "text", required: true },
+    { name: "position", label: "Position exacte", type: "geopoint", full: true },
     { name: "isHeadquarters", label: "Siège de l'ONG (affiché sur la page d'accueil)", type: "checkbox" },
     { name: "isActive", label: "Zone active", type: "checkbox", defaultValue: true },
   ],

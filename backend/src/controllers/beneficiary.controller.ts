@@ -7,7 +7,7 @@ import { parseIdentity } from "../utils/identity";
 import { cinSexProblem, householdProblem, parseDisabilityTypes } from "../utils/fieldRules";
 
 import { sendError } from "../middlewares/error.middleware";
-import { beneficiaryMatricule, sortByMatricule } from "../utils/entityMatricule";
+import { beneficiaryMatricule, renumberPersons, sortByMatricule } from "../utils/entityMatricule";
 export async function getBeneficiaries(
   req: Request,
   res: Response,
@@ -160,6 +160,8 @@ function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
     ["householdSize", "La taille du ménage", 1, 40, true],
     ["monthlyIncome", "Le revenu mensuel", 0, 1_000_000_000_000, false],
     ["childrenUnder5", "Le nombre d'enfants de moins de 5 ans", 0, 20, true],
+    ["outOfSchoolChildren", "Le nombre d'enfants non scolarisés", 0, 50, true],
+    ["mealsPerDay", "Le nombre de repas par jour", 0, 10, true],
     ["zoneId", "La zone", 1, 2_147_483_647, true],
   ];
 
@@ -192,6 +194,12 @@ function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
     data.hasDisability = body.hasDisability === true || body.hasDisability === "true";
   }
 
+  // Données d'enquête du ménage (santé, eau, électricité) : vrai / faux, ou vide = non renseigné
+  for (const key of ["healthIssues", "waterAccess", "electricityAccess"] as const) {
+    if (body[key] === undefined) continue;
+    data[key] = body[key] === null || body[key] === "" ? null : body[key] === true || body[key] === "true";
+  }
+
   // Types de handicap (sélection multiple) : conservés seulement si le ménage compte une personne en situation de handicap
   if (body.disabilityTypes !== undefined || data.hasDisability === false) {
     const types = data.hasDisability === false ? [] : parseDisabilityTypes(body.disabilityTypes);
@@ -213,6 +221,8 @@ function parseBeneficiaryBody(body: Record<string, unknown>): ParsedBody {
     ["adminCommune", "La commune", 120],
     ["adminFokontany", "Le fokontany", 120],
     ["addressDetail", "L'adresse exacte", 300],
+    ["housingType", "Le type d'habitat", 60],
+    ["notes", "Les observations", 1000],
   ];
 
   for (const [key, label, max] of placeSpecs) {
@@ -337,7 +347,7 @@ export async function createBeneficiary(
       return;
     }
 
-    // Matricule : celui saisi (unique), sinon NH-AAAA-BEN-0001 généré automatiquement
+    // Matricule : celui saisi (unique), sinon NH-AAAA-BEN-0000001 généré automatiquement (dernier bénéficiaire + 1)
     const givenMatricule =
       typeof req.body.matricule === "string" ? req.body.matricule.trim() : "";
 
@@ -350,7 +360,7 @@ export async function createBeneficiary(
       if (taken) {
         res.status(409).json({
           success: false,
-          message: "Ce matricule de bénéficiaire existe déjà.",
+          message: "Ce matricule existe déjà.",
         });
         return;
       }
@@ -592,7 +602,7 @@ export async function deleteBeneficiary(
 
 /**
  * GET /api/beneficiaries/next-code
- * Prochain matricule de bénéficiaire proposé (NH-AAAA-BEN-0001, …).
+ * Prochain matricule de bénéficiaire proposé (dernier bénéficiaire + 1 : NH-AAAA-BEN-0000016, …). Les enquêtes n'y comptent pas.
  */
 export async function nextBeneficiaryCode(
   _req: Request,
@@ -612,14 +622,14 @@ export async function nextBeneficiaryCode(
 
 /**
  * POST /api/beneficiaries/renumber  (ADMIN)
- * Remet tous les matricules de bénéficiaires en ordre selon la date de création.
+ * Remet tous les matricules de bénéficiaires en ordre selon la date de création (les enquêtes ENQ ne sont pas touchées).
  */
 export async function renumberBeneficiaryMatricules(
   _req: Request,
   res: Response,
 ): Promise<void> {
   try {
-    const count = await beneficiaryMatricule.renumber();
+    const count = await renumberPersons();
 
     res.status(200).json({
       success: true,

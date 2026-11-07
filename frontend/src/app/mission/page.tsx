@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/crud";
 import { haversineKm, fmtKm } from "@/lib/geo";
 import { scoreColor, useHouseholds } from "@/lib/useLiveTargets";
 import { getStoredRole } from "@/lib/access";
+import CandidateSurveyCard from "@/components/enrollment/CandidateSurveyCard";
 
 const FIELD_ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"];
 
@@ -291,6 +292,8 @@ export default function MissionPage() {
             )}
           </div>
         )}
+
+        {active && <CandidateSurveyCard position={position} />}
 
         {canSeeHouseholds && position && (
           <div className="grid gap-6 lg:grid-cols-[1fr_340px]">

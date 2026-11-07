@@ -19,6 +19,9 @@ import {
 } from "../services/field.service";
 
 import { sendError } from "../middlewares/error.middleware";
+import { missionCode } from "../utils/entityMatricule";
+import { haversineKm } from "../ml/geo";
+import { cleanTrack, trackDistanceKm } from "../utils/gpsTrack";
 /* ===================================================================
  * SUIVI TERRAIN — position partagée par le bénéficiaire LUI-MÊME,
  * après consentement, avec possibilité d'arrêter à tout moment.
@@ -332,7 +335,7 @@ trackingRouter.get("/missions", authorizeRoles(...ADMIN_VIEW), async (req: Reque
       orderBy: { startedAt: "desc" },
       take: 200,
       include: {
-        agent: { select: { id: true, firstName: true, lastName: true } },
+        agent: { select: { id: true, firstName: true, lastName: true, agentMatricule: true } },
         _count: { select: { points: true, surveys: true } },
       },
     });
@@ -341,7 +344,8 @@ trackingRouter.get("/missions", authorizeRoles(...ADMIN_VIEW), async (req: Reque
       success: true,
       data: rows.map((m) => ({
         id: m.id,
-        agent: { id: m.agent.id, name: `${m.agent.firstName} ${m.agent.lastName}` },
+        code: m.code,
+        agent: { id: m.agent.id, name: `${m.agent.firstName} ${m.agent.lastName}`, matricule: m.agent.agentMatricule ?? null },
         startedAt: m.startedAt,
         endedAt: m.endedAt,
         distanceKm: Math.round(m.distanceKm * 10) / 10,
@@ -355,6 +359,67 @@ trackingRouter.get("/missions", authorizeRoles(...ADMIN_VIEW), async (req: Reque
   }
 });
 
+/**
+ * Enquêtes d'une mission avec matricule, début / fin, durée et anomalies repérées :
+ * durée très courte ou trop longue, hors de la période de la mission, position éloignée du trajet, même ménage enquêté plusieurs fois.
+ */
+function describeSurveys(mission: any) {
+  const surveys: any[] = mission.surveys ?? [];
+  const points: Array<{ latitude: number; longitude: number }> = mission.points ?? [];
+  const perBeneficiary = new Map<number, number>();
+  surveys.forEach((sv) => perBeneficiary.set(sv.beneficiaryId, (perBeneficiary.get(sv.beneficiaryId) ?? 0) + 1));
+
+  return surveys.map((sv) => {
+    const end: Date = sv.endedAt ?? sv.createdAt;
+    const start: Date | null = sv.startedAt ?? null;
+    const durationSec = start ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000)) : null;
+    const anomalies: string[] = [];
+
+    if (durationSec !== null) {
+      if (durationSec < 60) anomalies.push("Durée très courte (moins d'1 min)");
+      if (durationSec > 3 * 3600) anomalies.push("Durée anormalement longue (plus de 3 h)");
+    }
+
+    if ((start && start.getTime() < mission.startedAt.getTime()) || (mission.endedAt && end.getTime() > mission.endedAt.getTime())) {
+      anomalies.push("Hors de la période de la mission");
+    }
+
+    if (sv.latitude !== null && sv.longitude !== null && points.length) {
+      let nearest = Infinity;
+      for (const p of points) nearest = Math.min(nearest, haversineKm(sv.latitude, sv.longitude, p.latitude, p.longitude));
+      if (nearest > 0.3) anomalies.push(`Position à ${nearest.toFixed(1)} km du trajet`);
+    }
+
+    if ((perBeneficiary.get(sv.beneficiaryId) ?? 0) > 1) anomalies.push("Même ménage enquêté plusieurs fois dans cette mission");
+
+    return {
+      id: sv.id,
+      code: sv.code ?? null,
+      beneficiaryName: `${sv.beneficiary.firstName} ${sv.beneficiary.lastName}`,
+      beneficiaryMatricule: sv.beneficiary.matricule ?? null,
+      latitude: sv.latitude,
+      longitude: sv.longitude,
+      vulnerable: sv.vulnerable,
+      startedAt: start,
+      endedAt: end,
+      durationSec,
+      anomalies,
+      createdAt: sv.createdAt,
+    };
+  });
+}
+
+/** POST /api/tracking/missions/renumber (ADMIN) — remet les matricules de mission en ordre (0001, 0002…) */
+trackingRouter.post("/missions/renumber", authorizeRoles("ADMIN"), async (_req: Request, res: Response) => {
+  try {
+    const count = await missionCode.renumber();
+    res.json({ success: true, message: `${count} matricule(s) de mission remis en ordre.`, data: { count } });
+  } catch (error) {
+    logger.error("Erreur remise en ordre des matricules de mission", error);
+    sendError(res, error, "Impossible de remettre les matricules en ordre");
+  }
+});
+
 /** GET /api/tracking/missions/:id — trajet + enquêtes réalisées en chemin */
 trackingRouter.get("/missions/:id", authorizeRoles(...ADMIN_VIEW), async (req: Request, res: Response) => {
   try {
@@ -363,41 +428,47 @@ trackingRouter.get("/missions/:id", authorizeRoles(...ADMIN_VIEW), async (req: R
     const mission = await prisma.mission.findUnique({
       where: { id },
       include: {
-        agent: { select: { firstName: true, lastName: true } },
+        agent: { select: { firstName: true, lastName: true, agentMatricule: true } },
         points: { orderBy: { createdAt: "asc" }, take: 5000 },
         surveys: {
           orderBy: { createdAt: "asc" },
-          include: { beneficiary: { select: { firstName: true, lastName: true } } },
+          include: { beneficiary: { select: { firstName: true, lastName: true, matricule: true } } },
         },
       },
     });
 
     if (!mission) return res.status(404).json({ success: false, message: "Mission introuvable" });
 
+    // Tracé nettoyé (sans points imprécis ni sauts GPS) : la carte, la distance et les anomalies s'appuient dessus
+    const track = cleanTrack(mission.points);
+    const distanceKm = track.length >= 2 ? trackDistanceKm(track) : mission.distanceKm;
+
+    // Mission terminée : on corrige la distance enregistrée pour que la liste et le détail affichent la même valeur
+    if (mission.endedAt && Math.abs(distanceKm - mission.distanceKm) > 0.005) {
+      await prisma.mission.update({ where: { id: mission.id }, data: { distanceKm } }).catch(() => undefined);
+    }
+
     res.json({
       success: true,
       data: {
         mission: {
           id: mission.id,
+          code: mission.code,
           agentName: `${mission.agent.firstName} ${mission.agent.lastName}`,
+          agentMatricule: mission.agent.agentMatricule ?? null,
           startedAt: mission.startedAt,
           endedAt: mission.endedAt,
-          distanceKm: Math.round(mission.distanceKm * 10) / 10,
+          distanceKm: Math.round(distanceKm * 100) / 100,
+          pointsKept: track.length,
+          pointsIgnored: mission.points.length - track.length,
         },
-        points: mission.points.map((p) => ({
+        points: track.map((p) => ({
           latitude: p.latitude,
           longitude: p.longitude,
           altitude: p.altitude,
           createdAt: p.createdAt,
         })),
-        surveys: mission.surveys.map((sv) => ({
-          id: sv.id,
-          beneficiaryName: `${sv.beneficiary.firstName} ${sv.beneficiary.lastName}`,
-          latitude: sv.latitude,
-          longitude: sv.longitude,
-          vulnerable: sv.vulnerable,
-          createdAt: sv.createdAt,
-        })),
+        surveys: describeSurveys({ ...mission, points: track }),
       },
     });
   } catch (error) {
@@ -518,9 +589,9 @@ trackingRouter.get("/survey-targets", MISSION_ACCESS, async (req: Request, res: 
 
     const rows = await prisma.beneficiary.findMany({
       where: q
-        ? { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }] }
+        ? { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }, { matricule: { contains: q, mode: "insensitive" } }] }
         : undefined,
-      select: { id: true, firstName: true, lastName: true, project: { select: { name: true } } },
+      select: { id: true, firstName: true, lastName: true, matricule: true, project: { select: { name: true } } },
       orderBy: { lastName: "asc" },
       take: 25,
     });
@@ -537,6 +608,7 @@ trackingRouter.get("/survey-targets", MISSION_ACCESS, async (req: Request, res: 
       data: rows.map((r) => ({
         id: r.id,
         name: `${r.firstName} ${r.lastName}`,
+        matricule: r.matricule ?? null,
         projectName: r.project?.name ?? null,
         surveyed: done.has(r.id),
       })),

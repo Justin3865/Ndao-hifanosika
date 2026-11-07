@@ -59,6 +59,7 @@ import { phoneLimit } from "./middlewares/phoneLimit.middleware";
 import { emailLimit } from "./middlewares/emailLimit.middleware";
 import { scopeOverlayRouter } from "./routes/scopeOverlay.routes";
 import { mlDropoutRouter } from "./routes/mlDropout.routes";
+import { enrollmentRouter } from "./routes/enrollment.routes";
 
 const app = express();
 
@@ -154,6 +155,7 @@ app.use("/api/public/certificates", publicCertificateRouter);
 app.use("/api/evaluation-grids", gridsRouter);
 app.use("/api/evaluation-campaigns", campaignsRouter);
 app.use("/api/tracking", trackingRouter);
+app.use("/api/enrollment", enrollmentRouter);
 app.use("/api/public/tracking", publicTrackingRouter);
 app.use("/api/vulnerability", vulnerabilityRouter);
 app.use("/api/service", serviceRouter);

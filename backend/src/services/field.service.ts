@@ -5,16 +5,16 @@ import { retrainSoon, scoreHouseholds } from "../ml/vulnerability";
 import { emitToTracking, emitToUser } from "../realtime/socket";
 import { isOnline } from "../realtime/presence";
 import { db } from "../utils/db";
+import { ensureAgentMatricule, missionCode, surveyCode } from "../utils/entityMatricule";
+import { cleanTrack, MAX_ACCURACY_M, MAX_SPEED_KMH, trackDistanceKm } from "../utils/gpsTrack";
 import { lookupElevation } from "../controllers/elevation.controller";
 
 /* ===================================================================
  * Missions terrain, positions GPS des agents et enquêtes ménages
  * =================================================================== */
 
-/** Rôles autorisés à partir en mission (tout le personnel sauf stagiaires). */
-export const MISSION_ROLES = [
-  "ADMIN", "DIRECTION", "DSI", "DAF", "RH", "COMMUNICATION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2",
-];
+/** Rôles autorisés à partir en mission : coordinateurs de projet (cahier des charges §4) + ADMIN / DIRECTION. */
+export const MISSION_ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"];
 
 /** Rôles listés comme « agents de terrain » (surchargeable : FIELD_AGENT_ROLES=A,B,C). */
 const envRoles = (process.env.FIELD_AGENT_ROLES ?? "").split(",").map((r) => r.trim()).filter(Boolean);
@@ -102,7 +102,9 @@ export async function startMission(userId: number) {
     }
   }
 
-  const mission = await prisma.mission.create({ data: { agentId: userId } });
+  await ensureAgentMatricule(userId);
+
+  const mission = await missionCode.createWith(null, (code) => prisma.mission.create({ data: { agentId: userId, code } }));
   await prisma.user.update({ where: { id: userId }, data: { sharingLocation: true } });
   emitToUser(userId, "mission:state", { active: true, missionId: mission.id, startedAt: mission.startedAt });
   emitToTracking("mission:started", { id: userId, missionId: mission.id });
@@ -113,7 +115,22 @@ export async function finishMission(userId: number, reason: "agent" | "auto" = "
   const active = await getActiveMission(userId);
 
   if (active) {
-    await prisma.mission.update({ where: { id: active.id }, data: { endedAt: new Date(), endReason: reason } });
+    // Distance définitive : recalculée sur le tracé nettoyé (sans sauts GPS)
+    let distanceKm: number | undefined;
+
+    try {
+      const points = await prisma.missionPoint.findMany({
+        where: { missionId: active.id },
+        orderBy: { createdAt: "asc" },
+        take: 20000,
+        select: { latitude: true, longitude: true, accuracy: true, createdAt: true },
+      });
+      if (points.length >= 2) distanceKm = trackDistanceKm(cleanTrack(points));
+    } catch {
+      distanceKm = undefined;
+    }
+
+    await prisma.mission.update({ where: { id: active.id }, data: { endedAt: new Date(), endReason: reason, ...(distanceKm !== undefined ? { distanceKm } : {}) } });
     lastStored.delete(active.id);
   }
 
@@ -149,12 +166,18 @@ export async function recordMissionPosition(userId: number, p: PositionInput) {
       data: { missionId: mission.id, latitude, longitude, altitude, accuracy, heading },
     });
 
-    // Un saut de plus de 5 km entre deux points = signal GPS aberrant, non compté dans la distance
-    if (prev && moved >= 15 && moved < 5000) {
+    // Distance : on ne compte qu'un vrai déplacement (au-dessus du bruit du GPS), avec une précision correcte
+    // et une vitesse plausible ; un point imprécis ou un saut GPS ne sert pas de repère pour la suite.
+    const reliable = accuracy == null || accuracy <= MAX_ACCURACY_M;
+    const hours = prev ? (now - prev.at) / 3_600_000 : 0;
+    const plausible = !prev || hours <= 0 || moved / 1000 / hours <= MAX_SPEED_KMH;
+    const noise = Math.max(15, (accuracy ?? 0) * 0.5);
+
+    if (prev && reliable && plausible && moved >= noise && moved < 5000) {
       await prisma.mission.update({ where: { id: mission.id }, data: { distanceKm: { increment: moved / 1000 } } });
     }
 
-    lastStored.set(mission.id, { lat: latitude, lng: longitude, at: now });
+    if (!prev || (reliable && plausible)) lastStored.set(mission.id, { lat: latitude, lng: longitude, at: now });
   }
 
   const user = await prisma.user.update({
@@ -311,6 +334,8 @@ export async function fieldSummary() {
 
 export interface SurveyInput {
   beneficiaryId: number;
+  /** ISO : moment où l'agent a ouvert la fiche d'enquête */
+  startedAt?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   altitude?: number | null;
@@ -385,7 +410,16 @@ export async function createSurvey(userId: number, body: SurveyInput) {
     notes: body.notes ? String(body.notes).slice(0, 1000) : null,
   };
 
-  const survey = await prisma.survey.create({ data });
+  // Début : envoyé par l'application (ouverture de la fiche), accepté seulement s'il est cohérent ; fin = maintenant
+  const endedAt = new Date();
+  let startedAt: Date | null = null;
+
+  if (body.startedAt) {
+    const parsed = new Date(body.startedAt);
+    if (!Number.isNaN(parsed.getTime()) && parsed.getTime() <= endedAt.getTime() && parsed.getTime() >= mission.startedAt.getTime()) startedAt = parsed;
+  }
+
+  const survey = await surveyCode.createWith(null, (code) => prisma.survey.create({ data: { ...data, code, startedAt, endedAt } }));
 
   // Le dossier du bénéficiaire reprend les données relevées sur place
   await db.beneficiary.update({

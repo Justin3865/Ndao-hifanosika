@@ -6,7 +6,7 @@ import { getStoredRole } from "@/lib/access";
 import { confirmDialog, toast } from "@/lib/toast";
 
 /** Remet les matricules des projets ou des bénéficiaires en ordre (0001, 0002, …) — ADMIN. */
-export function RenumberEntityButton({ endpoint }: { endpoint: "/projects" | "/beneficiaries" }) {
+export function RenumberEntityButton({ endpoint }: { endpoint: "/projects" | "/beneficiaries" | "/tracking/missions" }) {
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
 

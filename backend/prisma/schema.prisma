@@ -120,6 +120,9 @@ model User {
   /// Matricule du stagiaire (N° d'inscription, ex. NH-2026-STG-0001) : fixe, repris comme N° de ses certificats de stage
   matricule String? @unique
 
+  /// Matricule du coordinateur / agent de terrain (NH-AAAA-AGT-0001), attribué à sa première mission
+  agentMatricule String? @unique
+
   /// Niveau libre d'un tuteur ajouté avec « Autre » (ex. « Doctorat », « Expert »)
   tutorLevel String?
 
@@ -331,6 +334,15 @@ model Beneficiary {
 
   /// Matricule automatique NH-AAAA-BEN-0001 (modifiable, unique)
   matricule String? @unique
+
+  /// Données d'enquête du ménage (formulaire commun avec l'enquête de mission)
+  outOfSchoolChildren Int?
+  mealsPerDay         Int?
+  healthIssues        Boolean?
+  waterAccess         Boolean?
+  electricityAccess   Boolean?
+  housingType         String?
+  notes               String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -911,6 +923,8 @@ model EvaluationCampaign {
 
 /// Mission terrain : démarrée et terminée PAR L'AGENT (elle survit aux changements de page)
 model Mission {
+  /// Matricule automatique NH-AAAA-MIS-0001 (unique)
+  code String? @unique
   id         Int       @id @default(autoincrement())
   agentId    Int
   startedAt  DateTime  @default(now())
@@ -945,6 +959,8 @@ model MissionPoint {
 
 /// Enquête ménage réalisée par un agent PENDANT une mission (jeu de données d'entraînement du modèle)
 model Survey {
+  /// Matricule automatique NH-AAAA-ENQ-0001 (unique)
+  code                String?  @unique
   id                  Int      @id @default(autoincrement())
   beneficiaryId       Int
   agentId             Int
@@ -964,6 +980,9 @@ model Survey {
   housingType         String?
   vulnerable          Boolean  @default(false)
   notes               String?
+  /// Début / fin de l'enquête (détection d'anomalies : durée, hors mission…)
+  startedAt           DateTime?
+  endedAt             DateTime?
   createdAt           DateTime @default(now())
 
   beneficiary Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
@@ -1377,4 +1396,103 @@ model BeneficiaryProject {
   @@id([beneficiaryId, projectId])
   @@index([projectId])
   @@map("beneficiaries_projects")
+}
+
+/// Sélection des bénéficiaires : critères d'éligibilité d'un projet. Le quota est Project.beneficiaryTarget.
+model EnrollmentRule {
+  projectId         Int      @id
+  enabled           Boolean  @default(true)
+  /// true : les candidats retenus deviennent bénéficiaires automatiquement
+  autoEnroll        Boolean  @default(true)
+  /// score IA de départ (0-100) : on retient d'abord les ménages ayant au moins ce score
+  topScore          Int      @default(70)
+  /// score IA plancher (0-100) : tant que le quota n'est pas atteint, le seuil descend par paliers de 5 jusqu'à ce plancher (baissable ensuite à la main, de 5 en 5)
+  minScore          Int      @default(50)
+  /// FEMALE | MALE | null (tous)
+  gender            String?
+  ageMin            Int?
+  ageMax            Int?
+  maxMonthlyIncome  Float?
+  minHouseholdSize  Int?
+  minChildrenUnder5 Int?
+  requireDisability Boolean  @default(false)
+  requireVulnerable Boolean  @default(false)
+  localityContains  String?
+  updatedById       Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("enrollment_rules")
+}
+
+/// Ménage enquêté pendant une mission qui n'est pas (encore) bénéficiaire.
+/// PENDING | WAITLIST | NOT_ELIGIBLE | ENROLLED (ENROLLED = devenu bénéficiaire, voir beneficiaryId)
+model EnrollmentCandidate {
+  id                  Int       @id @default(autoincrement())
+  /// Matricule de l'ENQUÊTE NH-AAAA-ENQ-0001 (le matricule bénéficiaire NH-AAAA-BEN-xxxxxxx n'est attribué qu'à la sélection)
+  code                String?   @unique
+  firstName           String
+  lastName            String
+  gender              Gender?
+  age                 Int?
+  phone               String?
+  locality            String?
+  adminCommune        String?
+  adminFokontany      String?
+  addressDetail       String?
+  email               String?
+  birthDate           DateTime?
+  birthPlace          String?
+  cinNumber           String?
+  cinIssuedAt         DateTime?
+  cinIssuedPlace      String?
+  cinDuplicata        Boolean   @default(false)
+  adminProvince       String?
+  adminRegion         String?
+  adminDistrict       String?
+  zoneUnits           String?
+  disabilityTypes     String?
+  latitude            Float?
+  longitude           Float?
+  altitude            Float?
+  householdSize       Int?
+  monthlyIncome       Float?
+  childrenUnder5      Int?
+  outOfSchoolChildren Int?
+  mealsPerDay         Int?
+  hasDisability       Boolean   @default(false)
+  healthIssues        Boolean?
+  waterAccess         Boolean?
+  electricityAccess   Boolean?
+  housingType         String?
+  vulnerable          Boolean   @default(false)
+  notes               String?
+  agentId             Int
+  /// Matricule (NH-AAAA-AGT-0001) de l'agent qui a réalisé l'enquête, figé à la saisie
+  agentMatricule      String?
+  missionId           Int?
+  startedAt           DateTime?
+  endedAt             DateTime?
+  /// Projet visé par l'agent (facultatif : sinon tous les projets avec critères sont envisagés)
+  projectId           Int?
+  status              String    @default("PENDING")
+  score               Float?
+  scoreMethod         String?
+  scoredAt            DateTime?
+  /// { at, projectId, reasons[], score } : justification de la dernière décision
+  decision            Json?
+  waitlistProjectId   Int?
+  waitlistRank        Int?
+  enrolledProjectId   Int?
+  beneficiaryId       Int?
+  enrolledAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status])
+  @@index([agentId])
+  @@index([projectId])
+  @@index([enrolledProjectId])
+  @@index([missionId])
+  @@map("enrollment_candidates")
 }

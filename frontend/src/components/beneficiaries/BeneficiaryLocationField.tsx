@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { MapPin } from "lucide-react";
 import api from "@/lib/axios";
 import { GeoPicker } from "@/components/maps/GeoPicker";
+import { MAPS_ENABLED, loadGoogleMaps } from "@/components/maps/GoogleMap";
 import { BeneficiaryZoneInfo, ZoneHierarchyField } from "@/components/zones/ZoneHierarchyField";
 import { LEVEL_COLORS } from "@/components/zones/ZoneMap";
 
@@ -31,6 +32,29 @@ const LEVEL_FIELDS = [
   { key: "adminCommune", label: "Commune", color: LEVEL_COLORS.COMMUNE },
   { key: "adminFokontany", label: "Fokontany", color: LEVEL_COLORS.FOKONTANY },
 ] as const;
+
+/** Adresse lisible d'un point (géocodage inverse Google) ; "" si indisponible. */
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  if (!MAPS_ENABLED) return "";
+
+  try {
+    await loadGoogleMaps();
+  } catch {
+    return "";
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = (window as any).google;
+  if (!g?.maps?.Geocoder) return "";
+
+  return new Promise((resolve) => {
+    new g.maps.Geocoder().geocode({ location: { lat, lng } }, (results: Array<{ types?: string[]; formatted_address?: string }> | null, status: string) => {
+      if (status !== "OK" || !results?.length) return resolve("");
+      const best = results.find((r) => !r.types?.includes("plus_code")) ?? results[0];
+      resolve(String(best.formatted_address ?? "").slice(0, 280));
+    });
+  });
+}
 
 /** Adresse complète lisible : adresse exacte, fokontany, commune, district, région, province. */
 export function fullAddressOf(b: {
@@ -73,10 +97,34 @@ export function BeneficiaryLocationField({
   geo: { lat: string; lng: string; alt: string };
 }) {
   const elevationCall = useRef(0);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  const autoAddress = useRef("");
 
   const lat = Number(values[geo.lat]);
   const lng = Number(values[geo.lng]);
   const hasPoint = String(values[geo.lat] ?? "") !== "" && String(values[geo.lng] ?? "") !== "" && Number.isFinite(lat) && Number.isFinite(lng);
+
+  // L'adresse exacte se remplit seule d'après la position (carte, GPS ou coordonnées) : jamais obligatoire, toujours modifiable.
+  // Elle n'est remplacée que si elle est vide ou si c'est encore l'adresse proposée automatiquement.
+  useEffect(() => {
+    if (!hasPoint) return;
+
+    const timer = window.setTimeout(async () => {
+      const found = await reverseGeocode(lat, lng);
+      if (!found) return;
+
+      const current = String(valuesRef.current.addressDetail ?? "").trim();
+
+      if (current === "" || current === autoAddress.current) {
+        autoAddress.current = found;
+        setMany({ addressDetail: found });
+      }
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPoint, lat, lng]);
 
   const onSelection = (info: BeneficiaryZoneInfo) => {
     const patch: Values = {
@@ -149,7 +197,7 @@ export function BeneficiaryLocationField({
       </div>
 
       <label className="block text-sm font-medium text-gray-700">
-        Adresse exacte du bénéficiaire : lot, zanabohitra, etc.
+        Adresse exacte du bénéficiaire : lot, zanabohitra, etc. <span className="font-normal text-gray-500">(facultatif — remplie d&apos;après la position, modifiable)</span>
         <div className="mt-1 overflow-hidden rounded-xl border border-gray-300 bg-white focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-100">
           {address && (
             <div className="flex items-start gap-2 border-b border-gray-200 px-3 py-2 text-xs font-normal text-gray-600">

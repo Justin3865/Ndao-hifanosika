@@ -48,11 +48,14 @@ const ACCESS_RULES: AccessRule[] = [
   { pattern: /^\/certificates\/create\/?$/, roles: ["ADMIN", "DIRECTION", "RH"] },
   { pattern: /^\/certificates(\/|$)/, roles: ALL_ROLES },
 
-  // Mission terrain (partage de position de l'agent) : tout le personnel sauf stagiaires
+  // Mission terrain (partage de position de l'agent) : coordinateurs de projet + ADMIN / DIRECTION (cahier des charges §4)
   {
     pattern: /^\/mission(\/|$)/,
-    roles: ["ADMIN", "DIRECTION", "DSI", "DAF", "RH", "COMMUNICATION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"],
+    roles: ["ADMIN", "DIRECTION", "COORDINATOR"],
   },
+
+  // Enquêtes de mission, quotas et sélection automatique des bénéficiaires (miroir de /api/enrollment)
+  { pattern: /^\/enrollment(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
 
   // Chatbot + carte des ménages vulnérables : données personnelles
   { pattern: /^\/ai\/models(\/|$)/, roles: ["ADMIN", "DIRECTION", "DSI", "COORDINATOR"] },

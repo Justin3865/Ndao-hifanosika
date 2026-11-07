@@ -19,14 +19,20 @@ export function EntityMatriculeField({
   isEdit,
   value,
   onChange,
+  placeholder,
+  help,
 }: {
-  /** "/projects" ou "/beneficiaries" */
+  /** "/projects", "/beneficiaries" ou "/enrollment" (matricule d'enquête) */
   endpoint: string;
   label: string;
   required?: boolean;
   isEdit: boolean;
   value: string;
   onChange: (next: string) => void;
+  /** Exemple affiché quand le champ est vide (par défaut NH-2026-PRJ-0001) */
+  placeholder?: string;
+  /** Texte d'aide sous le champ */
+  help?: string;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -59,12 +65,12 @@ export function EntityMatriculeField({
       {required ? " *" : ""}
       <input
         className={inputClass}
-        placeholder={loading ? "Chargement..." : "NH-2026-PRJ-0001"}
+        placeholder={loading ? "Chargement..." : placeholder ?? "NH-2026-PRJ-0001"}
         value={value}
         onChange={(e) => onChange(e.target.value.toUpperCase())}
       />
       <span className="block text-xs font-normal text-gray-500">
-        Proposé automatiquement ; modifiable. Il identifie l&apos;enregistrement de façon unique.
+        {help ?? "Proposé automatiquement ; modifiable. Il identifie l'enregistrement de façon unique."}
       </span>
     </label>
   );

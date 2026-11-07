@@ -23,6 +23,7 @@ export type FieldType =
   | "newperson"
   | "matricule"
   | "entitymatricule"
+  | "geopoint"
   | "partners"
   | "participants"
   | "projects";
