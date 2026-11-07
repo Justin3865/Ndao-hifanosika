@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ArrowRight, CalendarDays, ClipboardCheck, GraduationCap, ListChecks, MapPinned, Search, TimerReset } from "lucide-react";
 import { fmtDate, fmtPct } from "@/lib/monitoring";
 import {
@@ -11,9 +11,28 @@ import {
   type InternshipMonitoring,
   type InternshipStatus,
 } from "@/lib/internshipMonitoring";
+import { Modal } from "@/components/ui/Modal";
 import { EmptyState, GapBadge, Kpi, Pill, SeProgress, trendTone } from "./parts";
 
 type Filter = "ALL" | InternshipStatus;
+
+type Detail = { title: string; description?: string; items: InternshipMonitoring[]; extra: (i: InternshipMonitoring) => string };
+
+// Petit lien cliquable placé dans l'indice d'une tuile (n'active pas la tuile parente)
+function HintLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="underline decoration-dotted underline-offset-2 hover:text-blue-700 hover:decoration-solid"
+    >
+      {children}
+    </button>
+  );
+}
 
 export function InternshipCard({ i }: { i: InternshipMonitoring }) {
   const critical = i.alerts.filter((a) => a.level === "critical").length;
@@ -89,6 +108,13 @@ export default function InternshipsSection({ list, error }: { list: InternshipMo
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<Filter>("ALL");
   const s = useMemo(() => summarizeInternships(list), [list]);
+  const [detail, setDetail] = useState<Detail | null>(null);
+
+  // Listes ouvertes par les tuiles (mêmes règles que `summarizeInternships`)
+  const show = (title: string, items: InternshipMonitoring[], extra: (i: InternshipMonitoring) => string, description?: string) =>
+    setDetail({ title, items, extra, description });
+  const isLate = (i: InternshipMonitoring) => i.trend === "LATE" || i.trend === "CRITICAL";
+  const progressText = (i: InternshipMonitoring) => `Avancement ${fmtPct(i.actualProgress)}`;
 
   const visible = useMemo(
     () =>
@@ -130,12 +156,71 @@ export default function InternshipsSection({ list, error }: { list: InternshipMo
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
-            <Kpi label="Stagiaires" value={s.total} hint={`${s.inProgress} en cours · ${s.completed} terminés`} icon={GraduationCap} />
-            <Kpi label="Avancement moyen" value={fmtPct(s.avgProgress)} hint={`${s.late} en retard`} icon={TimerReset} tone="bg-amber-50 text-amber-700" progress={s.avgProgress} />
-            <Kpi label="Tâches" value={`${s.tasksDone}/${s.tasksTotal}`} hint={`${s.tasksOverdue} en retard · ${s.tasksBlocked} bloquée(s)`} icon={ListChecks} tone="bg-sky-50 text-sky-700" />
-            <Kpi label="Présence moyenne" value={fmtPct(s.avgPresence)} hint={`${s.gpsCheckins} check-in GPS`} icon={MapPinned} tone="bg-emerald-50 text-emerald-700" progress={s.avgPresence} />
-            <Kpi label="Évaluations" value={s.evaluations} icon={ClipboardCheck} tone="bg-violet-50 text-violet-700" />
-            <Kpi label="Rapports manquants" value={s.reportsMissing} hint={`${s.alerts} alerte(s) stagiaires`} icon={ClipboardCheck} tone="bg-rose-50 text-rose-700" />
+            <Kpi
+              label="Stagiaires"
+              value={s.total}
+              hint={`${s.inProgress} en cours · ${s.completed} terminés`}
+              hintNode={
+                <>
+                  <HintLink onClick={() => show("Stagiaires en cours", list.filter((i) => i.status === "IN_PROGRESS"), progressText)}>{s.inProgress} en cours</HintLink>
+                  {" · "}
+                  <HintLink onClick={() => show("Stagiaires terminés", list.filter((i) => i.status === "COMPLETED"), progressText)}>{s.completed} terminés</HintLink>
+                </>
+              }
+              onClick={() => show("Tous les stagiaires", list, (i) => INTERNSHIP_STATUS_LABEL[i.status])}
+              icon={GraduationCap}
+            />
+            <Kpi
+              label="Avancement moyen"
+              value={fmtPct(s.avgProgress)}
+              hint={`${s.late} en retard`}
+              hintNode={<HintLink onClick={() => show("Stagiaires en retard", list.filter(isLate), progressText, "Avancement réel inférieur au prévu.")}>{s.late} en retard</HintLink>}
+              onClick={() => show("Avancement par stagiaire", list.filter((i) => i.status !== "CANCELLED"), (i) => `Prévu ${fmtPct(i.plannedProgress)} · Réel ${fmtPct(i.actualProgress)}`)}
+              icon={TimerReset}
+              tone="bg-amber-50 text-amber-700"
+              progress={s.avgProgress}
+            />
+            <Kpi
+              label="Tâches"
+              value={`${s.tasksDone}/${s.tasksTotal}`}
+              hint={`${s.tasksOverdue} en retard · ${s.tasksBlocked} bloquée(s)`}
+              hintNode={
+                <>
+                  <HintLink onClick={() => show("Stagiaires avec des tâches en retard", list.filter((i) => i.tasks.overdue > 0), (i) => `${i.tasks.overdue} tâche(s) en retard sur ${i.tasks.total}`)}>{s.tasksOverdue} en retard</HintLink>
+                  {" · "}
+                  <HintLink onClick={() => show("Stagiaires avec des tâches bloquées", list.filter((i) => i.tasks.blocked > 0), (i) => `${i.tasks.blocked} tâche(s) bloquée(s) sur ${i.tasks.total}`)}>{s.tasksBlocked} bloquée(s)</HintLink>
+                </>
+              }
+              onClick={() => show("Tâches par stagiaire", list.filter((i) => i.tasks.total > 0), (i) => `${i.tasks.completed}/${i.tasks.total} terminée(s)`)}
+              icon={ListChecks}
+              tone="bg-sky-50 text-sky-700"
+            />
+            <Kpi
+              label="Présence moyenne"
+              value={fmtPct(s.avgPresence)}
+              hint={`${s.gpsCheckins} check-in GPS`}
+              hintNode={<HintLink onClick={() => show("Check-in GPS par stagiaire", list.filter((i) => i.presence.gpsCheckins > 0), (i) => `${i.presence.gpsCheckins} check-in GPS`)}>{s.gpsCheckins} check-in GPS</HintLink>}
+              onClick={() => show("Présence par stagiaire", list, (i) => `Présence ${fmtPct(i.presence.rate)} · ${i.presence.presentDays}/${i.presence.workingDays} jour(s)`)}
+              icon={MapPinned}
+              tone="bg-emerald-50 text-emerald-700"
+              progress={s.avgPresence}
+            />
+            <Kpi
+              label="Évaluations"
+              value={s.evaluations}
+              onClick={() => show("Évaluations par stagiaire", list.filter((i) => i.evaluations.count > 0), (i) => `${i.evaluations.count} évaluation(s)${i.evaluations.averageOn20 !== null ? ` · moyenne ${i.evaluations.averageOn20}/20` : ""}`)}
+              icon={ClipboardCheck}
+              tone="bg-violet-50 text-violet-700"
+            />
+            <Kpi
+              label="Rapports manquants"
+              value={s.reportsMissing}
+              hint={`${s.alerts} alerte(s) stagiaires`}
+              hintNode={<HintLink onClick={() => show("Stagiaires avec des alertes", list.filter((i) => i.alerts.length > 0), (i) => `${i.alerts.length} alerte(s)`)}>{s.alerts} alerte(s) stagiaires</HintLink>}
+              onClick={() => show("Rapports manquants par stagiaire", list.filter((i) => i.reports.missing > 0), (i) => `${i.reports.missing} rapport(s) manquant(s)`)}
+              icon={ClipboardCheck}
+              tone="bg-rose-50 text-rose-700"
+            />
           </div>
 
           {visible.length === 0 ? (
@@ -147,6 +232,33 @@ export default function InternshipsSection({ list, error }: { list: InternshipMo
           )}
         </>
       )}
+
+      <Modal isOpen={detail !== null} onClose={() => setDetail(null)} size="lg" title={detail?.title} description={detail?.description}>
+        {detail && detail.items.length === 0 && <p className="py-6 text-center text-sm text-slate-500">Aucun stagiaire.</p>}
+        {detail && detail.items.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {detail.items.map((i) => (
+              <li key={i.id}>
+                <Link
+                  href={`/suivi-evaluation/stagiaires/${i.id}`}
+                  onClick={() => setDetail(null)}
+                  className="flex items-center justify-between gap-3 py-3 hover:bg-slate-50"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-slate-900">{fullName(i.student)}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {i.theme ? `Thème : ${i.theme}` : i.title}
+                      {i.project ? ` · ${i.project.code}` : ""}
+                    </p>
+                    <p className="text-xs text-slate-500">{detail.extra(i)}</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-slate-600">{INTERNSHIP_STATUS_LABEL[i.status]}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
     </section>
   );
 }

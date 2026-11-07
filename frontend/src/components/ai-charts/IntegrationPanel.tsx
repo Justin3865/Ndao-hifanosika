@@ -5,6 +5,7 @@ import { ArrowRight, GraduationCap, Link2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/axios";
 import { errorMessage } from "@/lib/crud";
+import { useLiveRefresh } from "@/lib/useLiveRefresh";
 import { IntegrationDashboardBlock, IntegrationOverview, fetchIntegrationOverview, refreshIntegration } from "@/lib/integration";
 import { BarChart, ChartCard, Donut, GroupedBars, Legend, PALETTE, SEVERITY_COLOR } from "./charts";
 
@@ -16,7 +17,23 @@ const SEVERITY_STYLE: Record<string, string> = {
   MEDIUM: "bg-amber-100 text-amber-700",
   LOW: "bg-green-100 text-green-700",
 };
+const fmtNote = (v: number) => String(Math.round(v * 10) / 10);
+const LEVEL_LEGEND = [
+  { label: "Insuffisant (< 10)", color: SEVERITY_COLOR.HIGH },
+  { label: "Moyen (10 à 14)", color: SEVERITY_COLOR.MEDIUM },
+  { label: "Bon (≥ 14)", color: SEVERITY_COLOR.LOW },
+];
 const SEVERITY_LABEL: Record<string, string> = { HIGH: "Critique", MEDIUM: "Moyenne", LOW: "Faible" };
+
+// Page ouverte en cliquant sur une étape du flux (reconnue par son libellé ; sans correspondance, l'étape reste non cliquable)
+const FLOW_LINKS: Array<[RegExp, string]> = [
+  [/^Stagiaire/i, "/suivi-evaluation#stagiaires"],
+  [/^Stage/i, "/internships"],
+  [/^Activités/i, "/activities"],
+  [/^Suivi/i, "/suivi-evaluation"],
+  [/^Tout ce qui/i, "/ai/summary"],
+];
+const flowHref = (label: string) => FLOW_LINKS.find(([re]) => re.test(label))?.[1];
 
 /**
  * « Données reliées » : montre comment stagiaires, projets, Suivi & Évaluation et Évaluation finale
@@ -51,24 +68,21 @@ export function IntegrationPanel() {
     void load();
   }, [load]);
 
-  // Rafraîchit quand une analyse temps réel se termine (déclenchée par un nouvel avancement)
-  useEffect(() => {
-    const id = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(id);
-  }, [load]);
+  // Recalcul automatique : dès qu'une nouvelle donnée arrive (analyse temps réel du serveur), au retour sur la page et toutes les 15 s
+  useLiveRefresh(() => void load(), 15_000);
 
   if (loading) return <p className="text-sm text-gray-500">Calcul des données reliées...</p>;
   if (error) return <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>;
   if (!overview) return null;
 
   const t = overview.totals;
-  const kpis: Array<[string, string, string?]> = [
-    ["Stagiaires", String(t.internPersons), t.internRows > t.internPersons ? `${t.internRows} stages enregistrés` : `${t.internsDone} stage(s) terminé(s)`],
-    ["Stagiaires notés", `${t.internsEvaluated}/${t.internPersons}`, `moyenne ${fmt20(t.avgInternScore)}`],
-    ["Projets notés", `${t.projectsEvaluated}/${t.projects}`, `moyenne ${fmt20(t.avgProjectScore)}`],
-    ["Avancement S&E", fmtPct(t.avgActual), `prévu ${fmtPct(t.avgPlanned)}`],
-    ["Stagiaires à risque", String(t.internsAtRisk), `${t.weakInterns} sous 10/20`],
-    ["Projets en retard", String(t.lateProjects), "écart ≤ −20 pts (S&E)"],
+  const kpis: Array<[string, string, string | undefined, string]> = [
+    ["Stagiaires", String(t.internPersons), t.internRows > t.internPersons ? `${t.internRows} stages enregistrés` : `${t.internsDone} stage(s) terminé(s)`, "/suivi-evaluation#stagiaires"],
+    ["Stagiaires notés", `${t.internsEvaluated}/${t.internPersons}`, `moyenne ${fmt20(t.avgInternScore)}`, "/suivi-evaluation#stagiaires"],
+    ["Projets notés", `${t.projectsEvaluated}/${t.projects}`, `moyenne ${fmt20(t.avgProjectScore)}`, "/evaluation-finale"],
+    ["Avancement S&E", fmtPct(t.avgActual), `prévu ${fmtPct(t.avgPlanned)}`, "/suivi-evaluation"],
+    ["Stagiaires à risque", String(t.internsAtRisk), `${t.weakInterns} sous 10/20`, "/suivi-evaluation#stagiaires"],
+    ["Projets en retard", String(t.lateProjects), "écart ≤ −20 pts (S&E)", "/suivi-evaluation"],
   ];
 
   return (
@@ -95,39 +109,74 @@ export function IntegrationPanel() {
       </div>
 
       <div className="flex flex-wrap items-stretch gap-2">
-        {overview.flow.map((step, index) => (
-          <div key={step.to} className="flex items-center gap-2">
-            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm" title={step.route}>
+        {overview.flow.map((step, index) => {
+          const href = flowHref(step.from);
+          const box = (
+            <>
               <p className="font-semibold text-gray-900">{step.from}</p>
               <p className="text-gray-500">{step.via}</p>
+            </>
+          );
+
+          return (
+            <div key={step.to} className="flex items-center gap-2">
+              {href ? (
+                <Link href={href} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm transition hover:border-blue-400 hover:shadow-md" title={step.route}>
+                  {box}
+                </Link>
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm" title={step.route}>
+                  {box}
+                </div>
+              )}
+              {index < overview.flow.length - 1 && <ArrowRight className="h-4 w-4 shrink-0 text-gray-400" />}
             </div>
-            {index < overview.flow.length - 1 && <ArrowRight className="h-4 w-4 shrink-0 text-gray-400" />}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {kpis.map(([label, value, hint]) => (
-          <div key={label} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        {kpis.map(([label, value, hint, href]) => (
+          <Link key={label} href={href} title={`Ouvrir : ${label}`} className="block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-400 hover:shadow-md">
             <p className="text-xs uppercase text-gray-500">{label}</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
             {hint && <p className="text-xs text-gray-500">{hint}</p>}
-          </div>
+          </Link>
         ))}
       </div>
 
       {block && (
         <div className="grid gap-5 lg:grid-cols-2">
           <ChartCard title="Évaluation finale des projets" subtitle="Note /20 (les plus faibles d'abord)">
-            <BarChart data={block.finalByProject.map((p) => ({ label: p.label, value: p.value, color: SEVERITY_COLOR[p.level] }))} height={220} max={20} format={(v) => `${v}`} />
+            <BarChart
+              data={block.finalByProject.map((p) => ({ label: p.name || p.label, value: p.value, color: SEVERITY_COLOR[p.level] }))}
+              height={320}
+              max={20}
+              format={fmtNote}
+              labelsInside
+              valueLabels
+              yLabel="Note /20"
+              xLabel="Projets (du plus faible au plus fort)"
+            />
+            <Legend items={LEVEL_LEGEND} />
           </ChartCard>
 
           <ChartCard title="Notes des stagiaires" subtitle="Note /20, une barre par stagiaire">
-            <BarChart data={block.internScores.map((i) => ({ label: i.label.split(" ")[0], value: i.value, color: SEVERITY_COLOR[i.level] }))} height={220} max={20} format={(v) => `${v}`} />
+            <BarChart
+              data={block.internScores.map((i) => ({ label: i.label, value: i.value, color: SEVERITY_COLOR[i.level] }))}
+              height={320}
+              max={20}
+              format={fmtNote}
+              labelsInside
+              valueLabels
+              yLabel="Note /20"
+              xLabel="Stagiaires"
+            />
+            <Legend items={LEVEL_LEGEND} />
           </ChartCard>
 
           <ChartCard title="Répartition des notes de stage" subtitle="Nombre de stagiaires par tranche de 2 points">
-            <BarChart data={block.internScoreHistogram} color={PALETTE.purple} height={200} histogram />
+            <BarChart data={block.internScoreHistogram} color={PALETTE.purple} height={260} histogram valueLabels integerTicks yLabel="Nombre de stagiaires" xLabel="Tranche de note (/20)" />
           </ChartCard>
 
           <ChartCard title="Risque des stagiaires" subtitle="Retards, présence, note">
@@ -149,6 +198,11 @@ export function IntegrationPanel() {
                 ]}
                 max={100}
                 format={(v) => `${Math.round(v)}`}
+                height={380}
+                labelsInside
+                valueLabels
+                yLabel="Avancement (%)"
+                xLabel="Projets actifs"
               />
               <Legend items={[{ label: "Prévu", color: PALETTE.slate }, { label: "Réel", color: PALETTE.blue }]} />
             </ChartCard>

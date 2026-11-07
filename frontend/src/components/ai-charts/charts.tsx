@@ -27,6 +27,20 @@ export const SEVERITY_COLOR: Record<string, string> = {
   UNKNOWN: PALETTE.slate,
 };
 
+/** Couleur de texte lisible (sombre ou blanche) selon la teinte du fond. */
+const textOn = (hex: string) => {
+  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
+  if (Number.isNaN(n)) return "#ffffff";
+  const luma = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return luma > 150 ? "#0f172a" : "#ffffff";
+};
+
+/** Tronque un libellé pour qu'il tienne dans `px` pixels à la taille de police `fs`. */
+const fit = (s: string, px: number, fs: number) => {
+  const max = Math.max(2, Math.floor(px / (fs * 0.58)));
+  return s.length > max ? `${s.slice(0, Math.max(1, max - 1))}…` : s;
+};
+
 export function ChartCard({ title, subtitle, children, right }: { title: string; subtitle?: string; children: ReactNode; right?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -160,21 +174,33 @@ interface BarChartProps {
   histogram?: boolean;
   format?: (v: number) => string;
   max?: number;
+  /** Écrit le libellé de chaque barre À L'INTÉRIEUR de la barre (à la verticale) au lieu de l'axe du bas */
+  labelsInside?: boolean;
+  /** Affiche la valeur au-dessus de chaque barre */
+  valueLabels?: boolean;
+  /** Graduations entières (effectifs) */
+  integerTicks?: boolean;
+  /** Largeur logique du dessin (560 par défaut). Une valeur plus petite agrandit les textes dans une carte étroite. */
+  width?: number;
+  /** Nombre maximal d'étiquettes affichées sous l'axe X (les autres sont sautées) */
+  maxXLabels?: number;
 }
 
-export function BarChart({ data, color = PALETTE.blue, color2 = PALETTE.red, height = 240, yLabel, xLabel, histogram, format = (v) => String(Math.round(v * 100) / 100), max }: BarChartProps) {
-  const W = 560;
+export function BarChart({ data, color = PALETTE.blue, color2 = PALETTE.red, height = 240, yLabel, xLabel, histogram, format = (v) => String(Math.round(v * 100) / 100), max, labelsInside, valueLabels, integerTicks, width = 560, maxXLabels = 12 }: BarChartProps) {
+  const W = width;
   const H = height;
-  const m = { l: 40, r: 10, t: 14, b: xLabel ? 44 : 34 };
+  const m = { l: yLabel ? 54 : 40, r: 10, t: valueLabels ? 20 : 14, b: labelsInside ? (xLabel ? 38 : 18) : xLabel ? 44 : 34 };
 
   if (data.length === 0 || data.every((d) => !d.value && !d.value2)) return <Empty />;
 
-  const top = max ?? Math.max(1, ...data.map((d) => d.value + (d.value2 ?? 0)));
+  const rawTop = max ?? Math.max(1, ...data.map((d) => d.value + (d.value2 ?? 0)));
+  const top = integerTicks ? Math.max(1, Math.ceil(rawTop)) : rawTop;
   const slot = (W - m.l - m.r) / data.length;
   const gap = histogram ? 1 : Math.min(14, slot * 0.25);
   const sy = (v: number) => H - m.b - (v / top) * (H - m.t - m.b);
-  const ticks = Array.from({ length: 5 }, (_, i) => (top * i) / 4);
-  const skip = Math.ceil(data.length / 12);
+  const step = Math.ceil(top / 4);
+  const ticks = integerTicks ? Array.from({ length: Math.floor(top / step) + 1 }, (_, i) => i * step) : Array.from({ length: 5 }, (_, i) => (top * i) / 4);
+  const skip = Math.ceil(data.length / Math.max(1, maxXLabels));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
@@ -194,32 +220,60 @@ export function BarChart({ data, color = PALETTE.blue, color2 = PALETTE.red, hei
           <g key={`${d.label}-${i}`}>
             <rect x={x} y={sy(d.value)} width={w} height={Math.max(0, h1)} rx={histogram ? 0 : 3} fill={d.color ?? color}><title>{`${d.label} : ${format(d.value)}`}</title></rect>
             {d.value2 ? <rect x={x} y={sy(d.value) - h2} width={w} height={h2} rx={histogram ? 0 : 3} fill={color2}><title>{`${d.label} : ${format(d.value2)}`}</title></rect> : null}
-            {i % skip === 0 && (
-              <text x={x + w / 2} y={H - m.b + 14} textAnchor="middle" fontSize={10} className="fill-gray-500">{d.label.length > 12 ? `${d.label.slice(0, 11)}…` : d.label}</text>
+            {valueLabels && d.value > 0 && (
+              <text x={x + w / 2} y={sy(d.value + (d.value2 ?? 0)) - 4} textAnchor="middle" fontSize={10} fontWeight={600} className="fill-gray-700">{format(d.value + (d.value2 ?? 0))}</text>
+            )}
+            {labelsInside ? (
+              (() => {
+                const fs = Math.max(8, Math.min(11, w * 0.55));
+                const fits = h1 >= 30 && w >= 12;
+                const room = fits ? h1 - 12 : sy(d.value) - m.t - (valueLabels ? 18 : 8);
+                if (!fits && room < 18) return null;
+                return (
+                  <text
+                    transform={`translate(${x + w / 2 + fs * 0.35} ${fits ? H - m.b - 6 : sy(d.value) - (valueLabels ? 18 : 6)}) rotate(-90)`}
+                    textAnchor="start"
+                    fontSize={fs}
+                    fontWeight={600}
+                    fill={fits ? textOn(d.color ?? color) : undefined}
+                    className={fits ? undefined : "fill-slate-700 dark:fill-slate-200"}
+                  >
+                    {fit(d.label, room, fs)}
+                  </text>
+                );
+              })()
+            ) : (
+              i % skip === 0 && <text x={x + w / 2} y={H - m.b + 14} textAnchor="middle" fontSize={10} className="fill-gray-500">{d.label.length > 12 ? `${d.label.slice(0, 11)}…` : d.label}</text>
             )}
           </g>
         );
       })}
       {xLabel && <text x={(W + m.l) / 2} y={H - 4} textAnchor="middle" fontSize={11} className="fill-gray-500">{xLabel}</text>}
-      {yLabel && <text transform={`translate(11 ${H / 2}) rotate(-90)`} textAnchor="middle" fontSize={11} className="fill-gray-500">{yLabel}</text>}
+      {yLabel && <text transform={`translate(12 ${H / 2}) rotate(-90)`} textAnchor="middle" fontSize={11} className="fill-gray-500">{yLabel}</text>}
     </svg>
   );
 }
 
 /** Barres groupées : plusieurs séries par catégorie (comparaison des méthodes). */
-export function GroupedBars({ categories, series, height = 260, format = (v) => String(Math.round(v * 100) / 100), max = 1, highlight }: {
+export function GroupedBars({ categories, series, height = 260, format = (v) => String(Math.round(v * 100) / 100), max = 1, highlight, labelsInside, valueLabels, yLabel, xLabel }: {
   categories: string[];
   series: Array<{ name: string; color: string; values: number[] }>;
   height?: number;
   format?: (v: number) => string;
   max?: number;
   highlight?: string;
+  /** Écrit le nom de chaque catégorie à l'intérieur de sa barre (à la verticale) au lieu de l'axe du bas */
+  labelsInside?: boolean;
+  /** Affiche la valeur au-dessus de chaque barre */
+  valueLabels?: boolean;
+  yLabel?: string;
+  xLabel?: string;
 }) {
   const W = 560;
   const H = height;
-  const m = { l: 40, r: 10, t: 14, b: 36 };
+  const m = { l: yLabel ? 54 : 40, r: 10, t: valueLabels ? 20 : 14, b: labelsInside ? (xLabel ? 38 : 18) : xLabel ? 50 : 36 };
   const slot = (W - m.l - m.r) / categories.length;
-  const bar = Math.min(26, (slot * 0.8) / series.length);
+  const bar = Math.min(labelsInside ? 34 : 26, (slot * 0.8) / series.length);
   const sy = (v: number) => H - m.b - (v / max) * (H - m.t - m.b);
 
   if (categories.length === 0) return <Empty />;
@@ -242,10 +296,40 @@ export function GroupedBars({ categories, series, height = 260, format = (v) => 
                 <title>{`${s.name} — ${c} : ${format(s.values[ci] ?? 0)}`}</title>
               </rect>
             ))}
-            <text x={m.l + ci * slot + slot / 2} y={H - m.b + 14} textAnchor="middle" fontSize={10} className="fill-gray-500">{c}</text>
+            {valueLabels && series.map((s, si) => (
+              <text key={`v-${s.name}`} x={start + si * bar + (bar - 2) / 2} y={sy(s.values[ci] ?? 0) - 4} textAnchor="middle" fontSize={10} fontWeight={600} className="fill-gray-700">{format(s.values[ci] ?? 0)}</text>
+            ))}
+            {labelsInside ? (
+              (() => {
+                // le nom est écrit dans la plus haute des barres de la catégorie
+                const vals = series.map((s) => s.values[ci] ?? 0);
+                const si = vals.indexOf(Math.max(...vals));
+                const h = Math.max(0, H - m.b - sy(vals[si]));
+                const fs = Math.max(8, Math.min(11, (bar - 2) * 0.55));
+                const fits = h >= 30 && bar >= 14;
+                const room = fits ? h - 12 : sy(vals[si]) - m.t - (valueLabels ? 18 : 8);
+                if (!fits && room < 18) return null;
+                return (
+                  <text
+                    transform={`translate(${start + si * bar + (bar - 2) / 2 + fs * 0.35} ${fits ? H - m.b - 6 : sy(vals[si]) - (valueLabels ? 18 : 6)}) rotate(-90)`}
+                    textAnchor="start"
+                    fontSize={fs}
+                    fontWeight={600}
+                    fill={fits ? textOn(series[si].color) : undefined}
+                    className={fits ? undefined : "fill-slate-700 dark:fill-slate-200"}
+                  >
+                    {fit(c, room, fs)}
+                  </text>
+                );
+              })()
+            ) : (
+              <text x={m.l + ci * slot + slot / 2} y={H - m.b + 14} textAnchor="middle" fontSize={10} className="fill-gray-500">{c}</text>
+            )}
           </g>
         );
       })}
+      {xLabel && <text x={(W + m.l) / 2} y={H - 4} textAnchor="middle" fontSize={11} className="fill-gray-500">{xLabel}</text>}
+      {yLabel && <text transform={`translate(12 ${H / 2}) rotate(-90)`} textAnchor="middle" fontSize={11} className="fill-gray-500">{yLabel}</text>}
     </svg>
   );
 }

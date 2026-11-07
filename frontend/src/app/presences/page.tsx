@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, Loader2, Save, Trash2 } from "lucide-react";
 
 import { AppLayout } from "@/components/layout";
+import MyPresence from "@/components/presence/MyPresence";
+import TeamPresence from "@/components/presence/TeamPresence";
 import { getStoredRole } from "@/lib/access";
 import api from "@/lib/axios";
 import { LookupItem, errorMessage, fetchLookup, fmtDate } from "@/lib/crud";
@@ -84,6 +86,8 @@ export default function PresencesPage() {
   const [journal, setJournal] = useState<LogEntry[]>([]);
   const today = clock?.today ?? localToday();
 
+  const sessionsAllowed = ["ADMIN", "DIRECTION", "COORDINATOR"].includes(role);
+  const teamAllowed = ["ADMIN", "DIRECTION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"].includes(role);
   const canRole = ATTENDANCE_EDIT_ROLES.includes(role);
   // Règles serveur (jour / heure) : actives seulement si l'API les fournit (/attendance/state) ; sinon comportement d'origine
   const serverRules = clock !== null;
@@ -190,7 +194,17 @@ export default function PresencesPage() {
     <AppLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Présences aux séances</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Présences</h1>
+          <p className="text-sm text-gray-500">Pointage du jour avec preuve GPS, tâches faites, et présences aux séances.</p>
+        </div>
+
+        {role && <MyPresence />}
+        {teamAllowed && <TeamPresence />}
+
+        {sessionsAllowed && (
+        <>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Présences aux séances</h2>
           <p className="text-sm text-gray-500">
             Pointez les bénéficiaires présents à chaque séance. Le taux de présence aide à repérer tôt les risques de décrochage.
           </p>
@@ -363,6 +377,8 @@ export default function PresencesPage() {
             </table>
           </div>
         </div>
+        </>
+        )}
       </div>
     </AppLayout>
   );

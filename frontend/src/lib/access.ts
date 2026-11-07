@@ -109,8 +109,8 @@ const ACCESS_RULES: AccessRule[] = [
   { pattern: /^\/parcours(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
   // Affectation des coordinateurs aux projets (miroir de /api/project-coordinators)
   { pattern: /^\/coordinateurs(\/|$)/, roles: ["ADMIN", "DIRECTION"] },
-  // Présences aux séances (miroir de /api/attendance) ; le pointage est limité à ADMIN / COORDINATOR côté API
-  { pattern: /^\/presences(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
+  // Présences : séances (miroir de /api/attendance, ADMIN / DIRECTION / COORDINATOR) + pointage GPS journalier (/api/presence, tous les rôles ci-dessous)
+  { pattern: /^\/presences(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS, ...STAGIAIRES] },
   // Consentement des tuteurs légaux des mineurs (miroir de /api/consents)
   { pattern: /^\/consentements(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
   // Objectifs individuels : chacun voit les siens ; les gestionnaires (ADMIN/RH/DIRECTION) voient ceux des autres

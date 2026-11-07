@@ -149,7 +149,7 @@ export function DropoutCharts() {
 
         {(charts.data?.dropout.byProject.length ?? 0) > 0 && (
           <ChartCard title="Risque moyen par projet" subtitle="Moyenne des scores de risque (0–100)">
-            <BarChart data={(charts.data?.dropout.byProject ?? []).map((p) => ({ label: p.project, value: p.average }))} color={PALETTE.amber} max={100} />
+            <BarChart data={(charts.data?.dropout.byProject ?? []).map((p) => ({ label: p.project, value: p.average }))} color={PALETTE.blue} max={100} height={320} labelsInside xLabel="Projets" yLabel="Risque moyen (0–100)" />
           </ChartCard>
         )}
       </State>
@@ -208,6 +208,8 @@ export function VulnerabilityCharts() {
 
 export function HubCharts() {
   const { data, loading, error } = useInsight<Charts>("/ai/charts");
+  // Cartes étroites (3 par ligne) : dessin de 330 px de large pour que les textes restent lisibles
+  const hub = { width: 330, height: 250, histogram: true, integerTicks: true, valueLabels: true, maxXLabels: 5 } as const;
 
   return (
     <section className="space-y-5">
@@ -215,14 +217,15 @@ export function HubCharts() {
       <State loading={loading} error={error}>
         {data && (
           <div className="grid gap-5 lg:grid-cols-3">
-            <ChartCard title="Scores de performance" subtitle="Projets par tranche">
-              <BarChart data={binsToBars(data.performance.histogram)} color={PALETTE.teal} height={200} histogram />
+            <ChartCard title="Scores de performance" subtitle="Nombre de projets par tranche de score (0–100)">
+              <BarChart data={binsToBars(data.performance.histogram)} color={PALETTE.teal} xLabel="Score de performance" yLabel="Projets" {...hub} />
             </ChartCard>
-            <ChartCard title="Risque d'abandon" subtitle="Bénéficiaires par tranche">
-              <BarChart data={binsToBars(data.dropout.histogram)} color={PALETTE.red} height={200} histogram />
+            <ChartCard title="Risque d'abandon" subtitle="Nombre de bénéficiaires par tranche de risque (0–100)">
+              <BarChart data={binsToBars(data.dropout.histogram)} color={PALETTE.red} xLabel="Score de risque" yLabel="Bénéficiaires" {...hub} />
             </ChartCard>
-            <ChartCard title="Vulnérabilité" subtitle="Ménages par tranche">
-              <BarChart data={binsToBars(data.vulnerability.histogramOthers, data.vulnerability.histogramFlagged)} color={PALETTE.blue} color2={PALETTE.red} height={200} histogram />
+            <ChartCard title="Vulnérabilité" subtitle="Nombre de ménages par tranche de score (0–100)">
+              <BarChart data={binsToBars(data.vulnerability.histogramOthers, data.vulnerability.histogramFlagged)} color={PALETTE.blue} color2={PALETTE.red} xLabel="Score de vulnérabilité" yLabel="Ménages" {...hub} />
+              <Legend items={[{ label: "Non signalés", color: PALETTE.blue }, { label: "Déjà signalés vulnérables", color: PALETTE.red }]} />
             </ChartCard>
           </div>
         )}

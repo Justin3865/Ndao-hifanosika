@@ -1496,3 +1496,72 @@ model EnrollmentCandidate {
   @@index([missionId])
   @@map("enrollment_candidates")
 }
+
+/// Pointage journalier GPS (stagiaires, coordinateurs, direction…) : arrivée vérifiée + départ avec les tâches faites ce jour-là
+model DailyPresence {
+  id           Int     @id @default(autoincrement())
+  userId       Int
+  /// Jour local YYYY-MM-DD (heure de Madagascar)
+  day          String
+  /// SIEGE (au siège de l'ONG) | TERRAIN (en mission / sur le terrain)
+  mode         String  @default("SIEGE")
+  internshipId Int?
+  projectId    Int?
+  /// Mission « présence » (ou mission en cours) rattachée : alimente le calcul de présence du suivi & évaluation
+  missionId    Int?
+
+  checkInAt          DateTime
+  inLatitude         Float
+  inLongitude        Float
+  inAltitude         Float?
+  inAccuracy         Float?
+  inZoneId           Int?
+  inDistanceM        Float?
+  inExpectedAltitude Float?
+
+  checkOutAt   DateTime?
+  outLatitude  Float?
+  outLongitude Float?
+  outAltitude  Float?
+  outAccuracy  Float?
+  outDistanceM Float?
+
+  /// OK | SUSPECT
+  status    String   @default("OK")
+  /// Codes d'anomalie (OUT_OF_ZONE, ALTITUDE_MISMATCH, LEFT_SITE…)
+  flags     Json?
+  tasksDone Int      @default(0)
+  summary   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks DailyPresenceTask[]
+
+  @@unique([userId, day])
+  @@index([day])
+  @@index([internshipId])
+  @@index([projectId])
+  @@map("daily_presences")
+}
+
+/// Tâches déclarées à la fin de la journée (alimentent InternshipTask : avancement, rapport)
+model DailyPresenceTask {
+  id               Int      @id @default(autoincrement())
+  presenceId       Int
+  internshipTaskId Int?
+  /// Activité du projet mise à jour (tâche d'un membre qui n'est pas stagiaire) : alimente l'avancement du projet
+  activityId       Int?
+  title            String
+  note             String?  @db.Text
+  /// Avancement (%) de la tâche en fin de journée
+  progress         Int?
+  completed        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  presence DailyPresence @relation(fields: [presenceId], references: [id], onDelete: Cascade)
+
+  @@index([presenceId])
+  @@index([internshipTaskId])
+  @@index([activityId])
+  @@map("daily_presence_tasks")
+}

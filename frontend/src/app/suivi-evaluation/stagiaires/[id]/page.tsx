@@ -55,6 +55,7 @@ export default function InternshipMonitoringPage() {
   const [data, setData] = useState<InternshipMonitoring | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -67,6 +68,9 @@ export default function InternshipMonitoringPage() {
   }, [id]);
 
   const grid = useMemo(() => presenceGrid(data?.presenceDays ?? []), [data]);
+
+  // Clic sur une tuile : fait défiler la page jusqu'à la section correspondante
+  const goTo = (anchor: string) => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const back = (
     <Link href="/suivi-evaluation#stagiaires" className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">
@@ -135,18 +139,18 @@ export default function InternshipMonitoringPage() {
         </header>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Kpi label="Tâches" value={t.total} hint={`${t.completed} terminées · ${t.inProgress} en cours`} icon={ListChecks} tone="bg-sky-50 text-sky-700" progress={c.tasks} />
-          <Kpi label="En retard / bloquées" value={`${t.overdue} / ${t.blocked}`} hint="tâches" icon={XCircle} tone="bg-red-50 text-red-700" />
-          <Kpi label="Rapports" value={data.reports.total} hint={`${data.reports.missing} manquant(s)`} icon={FileCheck2} tone="bg-indigo-50 text-indigo-700" progress={c.reports} />
-          <Kpi label="Évaluations" value={data.evaluations.count} hint={data.evaluations.averageOn20 === null ? "Aucune note" : `Moyenne ${data.evaluations.averageOn20.toFixed(1)}/20`} icon={Star} tone="bg-violet-50 text-violet-700" progress={c.evaluations} />
-          <Kpi label="Présence" value={fmtPct(c.presence)} hint={`${data.presence.presentDays}/${data.presence.workingDays} jours · ${data.presence.gpsCheckins} GPS`} icon={MapPinned} tone="bg-emerald-50 text-emerald-700" progress={c.presence} />
+          <Kpi label="Tâches" value={t.total} hint={`${t.completed} terminées · ${t.inProgress} en cours`} onClick={() => goTo("se-taches")} icon={ListChecks} tone="bg-sky-50 text-sky-700" progress={c.tasks} />
+          <Kpi label="En retard / bloquées" value={`${t.overdue} / ${t.blocked}`} hint="tâches" onClick={() => goTo("se-taches")} icon={XCircle} tone="bg-red-50 text-red-700" />
+          <Kpi label="Rapports" value={data.reports.total} hint={`${data.reports.missing} manquant(s)`} onClick={() => goTo("se-taches")} icon={FileCheck2} tone="bg-indigo-50 text-indigo-700" progress={c.reports} />
+          <Kpi label="Évaluations" value={data.evaluations.count} hint={data.evaluations.averageOn20 === null ? "Aucune note" : `Moyenne ${data.evaluations.averageOn20.toFixed(1)}/20`} onClick={() => goTo("se-evaluations")} icon={Star} tone="bg-violet-50 text-violet-700" progress={c.evaluations} />
+          <Kpi label="Présence" value={fmtPct(c.presence)} hint={`${data.presence.presentDays}/${data.presence.workingDays} jours · ${data.presence.gpsCheckins} GPS`} onClick={() => goTo("se-presence")} icon={MapPinned} tone="bg-emerald-50 text-emerald-700" progress={c.presence} />
         </div>
 
         <div className="grid gap-5 lg:grid-cols-3">
           <div className="space-y-5 lg:col-span-2">
             <AlertsPanel alerts={internshipAlertsToSe([data])} />
 
-            <Section title="Tâches" subtitle="Avancement, échéances, rapport et preuve">
+            <Section id="se-taches" title="Tâches" subtitle="Avancement, échéances, rapport et preuve">
               {!data.taskList?.length ? (
                 <EmptyState>Aucune tâche assignée.</EmptyState>
               ) : (
@@ -180,7 +184,7 @@ export default function InternshipMonitoringPage() {
               )}
             </Section>
 
-            <Section title="Évaluations" subtitle="Notes sur 20 par critère">
+            <Section id="se-evaluations" title="Évaluations" subtitle="Notes sur 20 par critère">
               {!data.evaluationList?.length ? (
                 <EmptyState>Aucune évaluation enregistrée.</EmptyState>
               ) : (
@@ -218,20 +222,43 @@ export default function InternshipMonitoringPage() {
               </div>
             </Section>
 
-            <Section title="Présence GPS — 28 derniers jours" subtitle="Un jour est « présent » si une mission GPS a été lancée">
+            <Section id="se-presence" title="Présence GPS — 28 derniers jours" subtitle="Un jour est « présent » si une mission GPS a été lancée">
               <div className="grid grid-cols-7 gap-1.5">
                 {grid.map((d) => (
-                  <div
+                  <button
+                    type="button"
                     key={d.key}
+                    onClick={() => setSelectedDay((cur) => (cur === d.key ? null : d.key))}
+                    aria-pressed={selectedDay === d.key}
                     title={`${fmtDate(d.key)} — ${d.state === "present" ? "présent" : d.state === "absent" ? "absent" : "week-end"}`}
-                    className={`flex aspect-square items-center justify-center rounded-md text-[10px] font-semibold ${
+                    className={`flex aspect-square items-center justify-center rounded-md text-[10px] font-semibold transition hover:ring-2 hover:ring-blue-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                      selectedDay === d.key ? "ring-2 ring-blue-600" : ""
+                    } ${
                       d.state === "present" ? "bg-emerald-500 text-white" : d.state === "absent" ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400"
                     }`}
                   >
                     {d.state === "present" ? <CheckCircle2 className="h-3.5 w-3.5" /> : new Date(d.key).getUTCDate()}
-                  </div>
+                  </button>
                 ))}
               </div>
+              {selectedDay && (() => {
+                const d = grid.find((x) => x.key === selectedDay);
+                if (!d) return null;
+                const label = new Date(`${d.key}T00:00:00Z`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+                return (
+                  <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div>
+                      <p className="font-semibold capitalize text-slate-900">{label}</p>
+                      <p className={d.state === "present" ? "text-emerald-700" : d.state === "absent" ? "text-red-600" : "text-slate-500"}>
+                        {d.state === "present" ? "Présent : une mission GPS a été lancée ce jour." : d.state === "absent" ? "Absent : aucune mission GPS lancée ce jour ouvré." : "Week-end : jour non compté."}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setSelectedDay(null)} className="shrink-0 text-xs font-medium text-slate-500 hover:text-slate-800">
+                      Fermer
+                    </button>
+                  </div>
+                );
+              })()}
               <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Présent</span>
                 <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-red-100" /> Absent</span>

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { Modal } from "@/components/ui/Modal";
 import {
   Activity,
   BarChart3,
@@ -46,6 +48,24 @@ import { GapBadge, Kpi, Section, SeProgress, trendTone } from "@/components/moni
 
 type StatusFilter = "ALL" | ProjectStatus;
 
+type KpiDetail = { title: string; description?: string; items: ProjectMonitoring[]; extra: (m: ProjectMonitoring) => string };
+
+// Petit lien cliquable placé dans l'indice d'une tuile (n'active pas la tuile parente)
+function HintLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="underline decoration-dotted underline-offset-2 hover:text-blue-700 hover:decoration-solid"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function SuiviEvaluationPage() {
   const [projects, setProjects] = useState<RawProject[]>([]);
   const [objectives, setObjectives] = useState<Record<number, ObjectiveNode[]>>({});
@@ -56,6 +76,7 @@ export default function SuiviEvaluationPage() {
   const [internshipsError, setInternshipsError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("ALL");
+  const [detail, setDetail] = useState<KpiDetail | null>(null);
 
   useEffect(() => {
     setWeights(loadWeights());
@@ -120,6 +141,12 @@ export default function SuiviEvaluationPage() {
     return [...summary.alerts, ...internshipAlertsToSe(internships)].sort((a, b) => rank[a.level] - rank[b.level]);
   }, [summary.alerts, internships]);
 
+  // Listes ouvertes par les tuiles (mêmes règles que `summarize`)
+  const showProjects = (title: string, items: ProjectMonitoring[], extra: (m: ProjectMonitoring) => string, description?: string) =>
+    setDetail({ title, items, extra, description });
+  const progressText = (m: ProjectMonitoring) => `Prévu ${fmtPct(m.plannedProgress)} · Réel ${fmtPct(m.actualProgress)}`;
+  const isLate = (m: ProjectMonitoring) => m.trend === "LATE" || m.trend === "CRITICAL";
+
   const trend = summary.gap === null ? "UNKNOWN" : summary.gap >= 5 ? "AHEAD" : summary.gap > -10 ? "ON_TRACK" : summary.gap > -20 ? "LATE" : "CRITICAL";
 
   return (
@@ -160,12 +187,73 @@ export default function SuiviEvaluationPage() {
           <>
             {/* Vue globale */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
-              <Kpi label="Projets" value={summary.projects} hint={`${summary.active} en cours · ${summary.completed} terminés`} icon={Briefcase} />
-              <Kpi label="En retard" value={summary.late} hint={`${summary.atRisk} à risque élevé`} icon={TimerReset} tone="bg-amber-50 text-amber-700" />
-              <Kpi label="Bénéficiaires" value={summary.beneficiaries} hint={summary.beneficiaryTarget ? `Cible : ${summary.beneficiaryTarget}` : undefined} icon={Heart} tone="bg-rose-50 text-rose-700" />
-              <Kpi label="Activités" value={`${summary.activitiesDone}/${summary.activities}`} hint={`${summary.activitiesBlockedOrLate} en retard`} icon={Activity} tone="bg-sky-50 text-sky-700" />
-              <Kpi label="Évaluations" value={summary.evaluations} icon={ClipboardList} tone="bg-emerald-50 text-emerald-700" />
-              <Kpi label="Budget prévu" value={fmtMoney(summary.budgetPlanned)} hint={summary.budgetSpent !== null ? `Dépensé : ${fmtMoney(summary.budgetSpent)}` : "Dépenses non renseignées"} icon={Wallet} tone="bg-violet-50 text-violet-700" />
+              <Kpi
+                label="Projets"
+                value={summary.projects}
+                hint={`${summary.active} en cours · ${summary.completed} terminés`}
+                hintNode={
+                  <>
+                    <HintLink onClick={() => showProjects("Projets en cours", monitored.filter((m) => m.project.status === "ACTIVE"), progressText)}>
+                      {summary.active} en cours
+                    </HintLink>
+                    {" · "}
+                    <HintLink onClick={() => showProjects("Projets terminés", monitored.filter((m) => m.project.status === "COMPLETED"), progressText)}>
+                      {summary.completed} terminés
+                    </HintLink>
+                  </>
+                }
+                onClick={() => showProjects("Tous les projets", monitored, (m) => PROJECT_STATUS_LABEL[m.project.status])}
+                icon={Briefcase}
+              />
+              <Kpi
+                label="En retard"
+                value={summary.late}
+                hint={`${summary.atRisk} à risque élevé`}
+                hintNode={
+                  <HintLink onClick={() => showProjects("Projets à risque élevé", monitored.filter((m) => analyse(m).riskLevel === "Élevé"), (m) => `Risque ${analyse(m).riskLevel} · ${progressText(m)}`)}>
+                    {summary.atRisk} à risque élevé
+                  </HintLink>
+                }
+                onClick={() => showProjects("Projets en retard", monitored.filter(isLate), progressText, "Avancement réel inférieur au prévu.")}
+                icon={TimerReset}
+                tone="bg-amber-50 text-amber-700"
+              />
+              <Kpi
+                label="Bénéficiaires"
+                value={summary.beneficiaries}
+                hint={summary.beneficiaryTarget ? `Cible : ${summary.beneficiaryTarget}` : undefined}
+                onClick={() => showProjects("Bénéficiaires par projet", monitored.filter((m) => m.beneficiaries.total > 0), (m) => `${m.beneficiaries.total}${m.beneficiaries.target ? ` / ${m.beneficiaries.target}` : ""} bénéficiaire(s)`)}
+                icon={Heart}
+                tone="bg-rose-50 text-rose-700"
+              />
+              <Kpi
+                label="Activités"
+                value={`${summary.activitiesDone}/${summary.activities}`}
+                hint={`${summary.activitiesBlockedOrLate} en retard`}
+                hintNode={
+                  <HintLink onClick={() => showProjects("Projets avec des activités en retard", monitored.filter((m) => m.counts.activitiesLate > 0), (m) => `${m.counts.activitiesLate} activité(s) en retard sur ${m.counts.activities}`)}>
+                    {summary.activitiesBlockedOrLate} en retard
+                  </HintLink>
+                }
+                onClick={() => showProjects("Activités par projet", monitored.filter((m) => m.counts.activities > 0), (m) => `${m.counts.activitiesDone}/${m.counts.activities} terminée(s)`)}
+                icon={Activity}
+                tone="bg-sky-50 text-sky-700"
+              />
+              <Kpi
+                label="Évaluations"
+                value={summary.evaluations}
+                onClick={() => showProjects("Évaluations par projet", monitored.filter((m) => m.counts.evaluations > 0), (m) => `${m.counts.evaluations} évaluation(s)`)}
+                icon={ClipboardList}
+                tone="bg-emerald-50 text-emerald-700"
+              />
+              <Kpi
+                label="Budget prévu"
+                value={fmtMoney(summary.budgetPlanned)}
+                hint={summary.budgetSpent !== null ? `Dépensé : ${fmtMoney(summary.budgetSpent)}` : "Dépenses non renseignées"}
+                onClick={() => showProjects("Budget par projet", monitored.filter((m) => m.budget.planned !== null), (m) => `Prévu ${fmtMoney(m.budget.planned)} · Dépensé ${fmtMoney(m.budget.spent)}`)}
+                icon={Wallet}
+                tone="bg-violet-50 text-violet-700"
+              />
             </div>
 
             {/* Avancement global prévu / réel / écart */}
@@ -244,6 +332,30 @@ export default function SuiviEvaluationPage() {
 
         {!loading && <InternshipsSection list={internships} error={internshipsError} />}
       </div>
+
+      <Modal isOpen={detail !== null} onClose={() => setDetail(null)} size="lg" title={detail?.title} description={detail?.description}>
+        {detail && detail.items.length === 0 && <p className="py-6 text-center text-sm text-slate-500">Aucun projet.</p>}
+        {detail && detail.items.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {detail.items.map((m) => (
+              <li key={m.project.id}>
+                <Link
+                  href={`/suivi-evaluation/${m.project.id}`}
+                  onClick={() => setDetail(null)}
+                  className="flex items-center justify-between gap-3 py-3 hover:bg-slate-50"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-500">{m.project.code}</p>
+                    <p className="truncate font-semibold text-slate-900">{m.project.name}</p>
+                    <p className="text-xs text-slate-500">{detail.extra(m)}</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-slate-600">{PROJECT_STATUS_LABEL[m.project.status]}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
     </AppLayout>
   );
 }

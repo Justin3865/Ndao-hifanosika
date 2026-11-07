@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -95,6 +95,8 @@ export function Kpi({
   icon: Icon,
   tone = "text-blue-700 bg-blue-50",
   progress,
+  onClick,
+  hintNode,
 }: {
   label: string;
   value: ReactNode;
@@ -102,14 +104,36 @@ export function Kpi({
   icon?: LucideIcon;
   tone?: string;
   progress?: number | null;
+  /** Optionnel : rend toute la tuile cliquable */
+  onClick?: () => void;
+  /** Optionnel : remplace `hint` par un contenu riche (ex. morceaux cliquables) */
+  hintNode?: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div
+      className={cn(
+        "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm",
+        onClick && "cursor-pointer transition hover:border-blue-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      )}
+      {...(onClick
+        ? {
+            role: "button",
+            tabIndex: 0,
+            onClick,
+            onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+              if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onClick();
+              }
+            },
+          }
+        : {})}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
           <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
-          {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+          {hintNode ? <p className="mt-0.5 text-xs text-slate-500">{hintNode}</p> : hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
         </div>
         {Icon && (
           <span className={cn("rounded-xl p-2", tone)}>
@@ -132,15 +156,18 @@ export function Section({
   action,
   children,
   className,
+  id,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Optionnel : ancre pour y faire défiler la page */
+  id?: string;
 }) {
   return (
-    <section className={cn("rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5", className)}>
+    <section id={id} className={cn("scroll-mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5", className)}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-base font-bold text-slate-900">{title}</h2>

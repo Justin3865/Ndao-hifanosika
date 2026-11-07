@@ -30,12 +30,40 @@ const LABELS: Record<string, string> = {
   completedInternships: "Stages terminés",
 };
 
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+// Page de détail ouverte en cliquant sur chaque carte (les clés absentes restent non cliquables)
+const HREFS: Record<string, string> = {
+  projects: "/projects",
+  activeProjects: "/projects",
+  completedProjects: "/projects",
+  beneficiaries: "/beneficiaries",
+  users: "/users",
+  activeUsers: "/users",
+  evaluations: "/evaluations",
+  internships: "/internships",
+  completedInternships: "/internships",
+  activities: "/activities",
+};
+
+function Stat({ label, value, href }: { label: string; value: string | number; href?: string }) {
+  const body = (
+    <>
       <p className="text-sm text-gray-500">{label}</p>
       <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-    </div>
+    </>
+  );
+
+  if (!href) {
+    return <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">{body}</div>;
+  }
+
+  return (
+    <Link
+      href={href}
+      title={`Ouvrir : ${label}`}
+      className="block rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+    >
+      {body}
+    </Link>
   );
 }
 
@@ -84,7 +112,7 @@ export default function ReportsPage() {
             <h2 className="text-lg font-semibold text-gray-900">Vue d&apos;ensemble</h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
               {(Object.entries({ ...dashboard.totals, ...dashboard.status }) as [string, number][]).map(([key, value]) => (
-                <Stat key={key} label={LABELS[key] ?? key} value={value} />
+                <Stat key={key} label={LABELS[key] ?? key} value={value} href={HREFS[key]} />
               ))}
             </div>
           </section>
@@ -94,14 +122,15 @@ export default function ReportsPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-semibold text-gray-900">Évaluations</h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-              <Stat label="Total" value={evaluation.total} />
+              <Stat label="Total" value={evaluation.total} href="/evaluations" />
               <Stat
                 label="Score moyen"
                 value={evaluation.averageScore !== null && evaluation.averageScore !== undefined ? evaluation.averageScore.toFixed(1) : "—"}
+                href="/evaluations"
               />
-              <Stat label="Brouillons" value={evaluation.byStatus?.draft ?? 0} />
-              <Stat label="Soumises" value={evaluation.byStatus?.submitted ?? 0} />
-              <Stat label="Validées" value={evaluation.byStatus?.validated ?? 0} />
+              <Stat label="Brouillons" value={evaluation.byStatus?.draft ?? 0} href="/evaluations" />
+              <Stat label="Soumises" value={evaluation.byStatus?.submitted ?? 0} href="/evaluations" />
+              <Stat label="Validées" value={evaluation.byStatus?.validated ?? 0} href="/evaluations" />
             </div>
           </section>
         )}

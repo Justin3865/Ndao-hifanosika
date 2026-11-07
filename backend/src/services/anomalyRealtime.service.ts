@@ -48,6 +48,9 @@ const WATCHED = [
   "/api/users",
   "/api/vulnerability",
   "/api/elevation",
+  // Nouvelles enquêtes de mission et sélection des bénéficiaires : elles changent les chiffres et les analyses
+  "/api/tracking/surveys",
+  "/api/enrollment",
 ];
 
 let timer: ReturnType<typeof setTimeout> | undefined;

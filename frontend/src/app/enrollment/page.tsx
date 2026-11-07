@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowDownCircle, CheckCircle2, ChevronDown, ChevronUp, C
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import RuleEditor from "@/components/enrollment/RuleEditor";
+import { Modal } from "@/components/ui/Modal";
 import { errorMessage } from "@/lib/crud";
 import { getStoredRole } from "@/lib/access";
 import { toast } from "@/lib/toast";
@@ -41,6 +42,39 @@ export default function EnrollmentPage() {
   const [running, setRunning] = useState<number | "all" | null>(null);
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
   const [manualProject, setManualProject] = useState<Record<string, string>>({});
+
+  // Détail des chiffres de la bannière : « enquêtes reçues » (toutes) ou « devenues bénéficiaires » (ENROLLED)
+  const [detail, setDetail] = useState<"all" | "enrolled" | null>(null);
+  const [detailRows, setDetailRows] = useState<EnqueteRow[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+
+  useEffect(() => {
+    if (!detail) return;
+
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError("");
+    setDetailRows([]);
+
+    api
+      .get("/enrollment/enquetes", { params: { kind: "CANDIDATE", status: detail === "enrolled" ? "ENROLLED" : "", limit: 300 } })
+      .then((res) => {
+        if (!cancelled) setDetailRows(res.data?.data?.rows ?? []);
+      })
+      .catch((err) => {
+        if (!cancelled) setDetailError(errorMessage(err, "Chargement impossible."));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail]);
+
+  const closeDetail = useCallback(() => setDetail(null), []);
 
   const loadOverview = useCallback(() => {
     api
@@ -174,7 +208,24 @@ export default function EnrollmentPage() {
 
         {overview && (
           <p className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            <b>{overview.totals.surveys}</b> enquête(s) reçue(s) → <b>{overview.totals.enrolled}</b> devenue(s) bénéficiaire(s). Chaque nouvelle enquête relance la sélection automatiquement ; seuls les ménages sélectionnés reçoivent un matricule bénéficiaire. Prochain matricule bénéficiaire :{" "}
+            <button
+              type="button"
+              onClick={() => setDetail("all")}
+              title="Afficher les enquêtes reçues"
+              className="font-semibold underline decoration-dotted underline-offset-2 hover:decoration-solid"
+            >
+              {overview.totals.surveys} enquête(s) reçue(s)
+            </button>{" "}
+            →{" "}
+            <button
+              type="button"
+              onClick={() => setDetail("enrolled")}
+              title="Afficher les ménages devenus bénéficiaires"
+              className="font-semibold underline decoration-dotted underline-offset-2 hover:decoration-solid"
+            >
+              {overview.totals.enrolled} devenue(s) bénéficiaire(s)
+            </button>
+            . Chaque nouvelle enquête relance la sélection automatiquement ; seuls les ménages sélectionnés reçoivent un matricule bénéficiaire. Prochain matricule bénéficiaire :{" "}
             <span className="font-mono">{overview.nextBeneficiaryMatricule}</span>
           </p>
         )}
@@ -496,6 +547,75 @@ export default function EnrollmentPage() {
           </div>
         </section>
       </div>
+
+      <Modal
+        isOpen={detail !== null}
+        onClose={closeDetail}
+        size="xl"
+        title={detail === "enrolled" ? "Ménages devenus bénéficiaires" : "Enquêtes reçues"}
+        description={
+          detail === "enrolled"
+            ? "Ménages issus des enquêtes de mission qui ont été sélectionnés comme bénéficiaires."
+            : "Tous les ménages enquêtés en mission et leur statut dans la sélection."
+        }
+      >
+        {detailLoading && <p className="py-6 text-center text-sm text-gray-500">Chargement…</p>}
+        {detailError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{detailError}</p>}
+        {!detailLoading && !detailError && detailRows.length === 0 && <p className="py-6 text-center text-sm text-gray-500">Aucune enquête.</p>}
+
+        {detailRows.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
+                  <th className="py-2 pr-3">Ménage</th>
+                  <th className="py-2 pr-3">Score IA</th>
+                  <th className="py-2 pr-3">Statut</th>
+                  <th className="py-2 pr-3">Projet</th>
+                  <th className="py-2 pr-3">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailRows.map((r) => (
+                  <tr key={r.key} className="border-b border-gray-100">
+                    <td className="py-3 pr-3">
+                      <p className="font-semibold text-gray-900">{r.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {r.code ?? "—"}
+                        {r.beneficiaryMatricule ? ` · ${r.beneficiaryMatricule}` : ""}
+                        {r.locality ? ` · ${r.locality}` : ""}
+                      </p>
+                      {r.beneficiaryId && (
+                        <a href={`/beneficiaries/${r.beneficiaryId}`} className="text-xs font-medium text-blue-800 hover:underline">
+                          Ouvrir la fiche
+                        </a>
+                      )}
+                    </td>
+                    <td className="py-3 pr-3">
+                      {r.score !== null ? (
+                        <span className="rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ background: scoreColor(r.score) }}>
+                          {r.score}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="py-3 pr-3">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[r.status]}`}>
+                        {r.status === "ENROLLED" && <CheckCircle2 className="h-3.5 w-3.5" />}
+                        {STATUS_LABEL[r.status]}
+                        {r.status === "WAITLIST" && r.waitlistRank ? ` #${r.waitlistRank}` : ""}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-3 text-gray-700">{r.projectName ?? r.targetProjectName ?? "—"}</td>
+                    <td className="py-3 pr-3 text-xs text-gray-600">{fmtDate(r.surveyedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
 
       {editing && (
         <RuleEditor

@@ -648,9 +648,14 @@ export default function AiAnomalyPage() {
                       </p>
                       <p className="mt-1 text-sm text-gray-600">{a.detail}</p>
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1.5">
-                      <LevelBadge level={a.severity} />
-                      {badge && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge.className}`}>{badge.label}</span>}
+                    <div className="flex shrink-0 items-start gap-2">
+                      <Link href={a.link} className={btn}>
+                        <Eye className="h-3.5 w-3.5 text-blue-500" /> Voir
+                      </Link>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <LevelBadge level={a.severity} />
+                        {badge && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge.className}`}>{badge.label}</span>}
+                      </div>
                     </div>
                   </div>
 
@@ -664,11 +669,8 @@ export default function AiAnomalyPage() {
                     </p>
                   )}
 
+                  {a.key && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-                    <Link href={a.link} className={btn}>
-                      <Eye className="h-3.5 w-3.5 text-blue-500" /> Voir
-                    </Link>
-
                     {a.key && !done && action?.status !== "IN_PROGRESS" && (
                       <button type="button" disabled={busyNow} onClick={() => void act(a, "IN_PROGRESS")} className={btn}>
                         <PlayCircle className="h-3.5 w-3.5 text-amber-500" /> Prendre en charge
@@ -708,6 +710,7 @@ export default function AiAnomalyPage() {
 
                     {busyNow && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
                   </div>
+                  )}
                 </div>
               );
             })}

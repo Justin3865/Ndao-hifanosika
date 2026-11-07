@@ -63,11 +63,11 @@ export interface IntegrationDashboardBlock {
     avgPlanned: number | null;
     avgActual: number | null;
   };
-  finalByProject: Array<{ key: string; label: string; value: number; level: string }>;
+  finalByProject: Array<{ key: string; label: string; name?: string; value: number; level: string }>;
   internScores: Array<{ key: string; label: string; value: number; level: string }>;
   internScoreHistogram: Array<{ label: string; value: number }>;
   internRisk: Array<{ key: string; label: string; value: number }>;
-  progressByProject: Array<{ key: string; label: string; planned: number | null; actual: number | null }>;
+  progressByProject: Array<{ key: string; label: string; name?: string; planned: number | null; actual: number | null }>;
 }
 
 export const fetchIntegrationOverview = async () => (await api.get("/integration/overview")).data?.data as IntegrationOverview;

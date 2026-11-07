@@ -31,6 +31,18 @@ const CARDS = [
   { href: "/ai/models", title: "Modèles d'apprentissage", text: "Entraînement, validation croisée et fiabilité.", icon: BrainCircuit, tone: "from-slate-500 to-slate-800" },
 ];
 
+// Page ouverte en cliquant sur une ligne de la synthèse (reconnue par son texte ; sans correspondance, la ligne reste du texte simple)
+const HIGHLIGHT_LINKS: Array<[RegExp, string]> = [
+  [/^Score moyen des évaluations/i, "/evaluations"],
+  [/^Meilleure performance|^Projet le plus fragile/i, "/ai/performance"],
+  [/^Évaluation finale/i, "/evaluation-finale"],
+  [/^Suivi\s*(&|et)\s*Évaluation/i, "/suivi-evaluation"],
+  [/^Stagiaires/i, "/suivi-evaluation#stagiaires"],
+  [/projets?\b.*bénéficiaires/i, "/projects"],
+];
+
+const highlightHref = (line: string) => HIGHLIGHT_LINKS.find(([re]) => re.test(line))?.[1];
+
 export default function AiHubPage() {
   const { data, loading, error } = useInsight<Summary>("/ai/summary");
 
@@ -48,24 +60,37 @@ export default function AiHubPage() {
               <div className="flex items-start gap-4">
                 <div className="rounded-2xl bg-white/15 p-3"><Lightbulb className="h-6 w-6 text-amber-300" /></div>
                 <div>
-                  <h2 className="text-xl font-bold">{data.headline}</h2>
+                  <h2 className="text-xl font-bold">
+                    {data.counters.anomalies > 0 ? (
+                      <Link href="/ai/anomaly" title="Voir les anomalies" className="hover:underline">{data.headline}</Link>
+                    ) : (
+                      data.headline
+                    )}
+                  </h2>
                   <ul className="mt-3 space-y-1 text-sm text-blue-100">
-                    {data.highlights.map((line) => <li key={line}>• {line}</li>)}
+                    {data.highlights.map((line) => {
+                      const href = highlightHref(line);
+                      return (
+                        <li key={line}>
+                          • {href ? <Link href={href} className="underline decoration-dotted underline-offset-2 hover:text-white hover:decoration-solid">{line}</Link> : line}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               </div>
 
               <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
                 {[
-                  ["Projets actifs", data.counters.activeProjects],
-                  ["Anomalies", data.counters.anomalies],
-                  ["Critiques", data.counters.criticalAnomalies],
-                  ["Bénéf. à risque", data.counters.highRiskBeneficiaries],
-                ].map(([label, value]) => (
-                  <div key={label as string} className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
+                  ["Projets actifs", data.counters.activeProjects, "/projects"],
+                  ["Anomalies", data.counters.anomalies, "/ai/anomaly"],
+                  ["Critiques", data.counters.criticalAnomalies, "/ai/anomaly"],
+                  ["Bénéf. à risque", data.counters.highRiskBeneficiaries, "/ai/dropout-risk"],
+                ].map(([label, value, href]) => (
+                  <Link key={label as string} href={href as string} title={`Ouvrir : ${label}`} className="block rounded-2xl bg-white/10 p-4 ring-1 ring-white/15 transition hover:bg-white/20 hover:ring-white/40">
                     <p className="text-2xl font-bold">{value}</p>
                     <p className="text-xs text-blue-200">{label}</p>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </section>

@@ -54,6 +54,7 @@ export default function ProjectMonitoringPage() {
   const [ai, setAi] = useState<AiAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("objectifs");
 
   useEffect(() => {
     if (!id) return;
@@ -117,6 +118,12 @@ export default function ProjectMonitoringPage() {
   const p = m.project;
   const c = m.counts;
 
+  // Clic sur une tuile : ouvre l'onglet correspondant dans « Détail du suivi » et y fait défiler la page
+  const openTab = (tab: string) => {
+    setActiveTab(tab);
+    window.setTimeout(() => document.getElementById("detail-suivi")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+
   return (
     <AppLayout>
       <div className="space-y-5">
@@ -156,11 +163,11 @@ export default function ProjectMonitoringPage() {
 
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Kpi label="Activités" value={`${c.activitiesDone}/${c.activities}`} hint={`${c.activitiesLate} en retard`} icon={Activity} tone="bg-sky-50 text-sky-700" progress={m.components.activities} />
-          <Kpi label="Jalons" value={`${c.milestonesDone}/${c.milestones}`} hint={`${c.milestonesOverdue} dépassé(s)`} icon={Flag} tone="bg-indigo-50 text-indigo-700" progress={m.components.milestones} />
-          <Kpi label="Indicateurs" value={c.indicators} hint={m.components.indicators === null ? "Non définis" : fmtPct(m.components.indicators)} icon={Target} tone="bg-emerald-50 text-emerald-700" progress={m.components.indicators} />
-          <Kpi label="Bénéficiaires" value={`${m.beneficiaries.total}${m.beneficiaries.target ? `/${m.beneficiaries.target}` : ""}`} icon={Heart} tone="bg-rose-50 text-rose-700" progress={m.components.beneficiaries} />
-          <Kpi label="Budget" value={m.budget.executionPct === null ? "—" : fmtPct(m.budget.executionPct)} hint={fmtMoney(m.budget.planned)} icon={Wallet} tone="bg-violet-50 text-violet-700" progress={m.budget.executionPct} />
+          <Kpi label="Activités" value={`${c.activitiesDone}/${c.activities}`} hint={`${c.activitiesLate} en retard`} onClick={() => openTab("activites")} icon={Activity} tone="bg-sky-50 text-sky-700" progress={m.components.activities} />
+          <Kpi label="Jalons" value={`${c.milestonesDone}/${c.milestones}`} hint={`${c.milestonesOverdue} dépassé(s)`} onClick={() => openTab("jalons")} icon={Flag} tone="bg-indigo-50 text-indigo-700" progress={m.components.milestones} />
+          <Kpi label="Indicateurs" value={c.indicators} hint={m.components.indicators === null ? "Non définis" : fmtPct(m.components.indicators)} onClick={() => openTab("objectifs")} icon={Target} tone="bg-emerald-50 text-emerald-700" progress={m.components.indicators} />
+          <Kpi label="Bénéficiaires" value={`${m.beneficiaries.total}${m.beneficiaries.target ? `/${m.beneficiaries.target}` : ""}`} onClick={() => openTab("beneficiaires")} icon={Heart} tone="bg-rose-50 text-rose-700" progress={m.components.beneficiaries} />
+          <Kpi label="Budget" value={m.budget.executionPct === null ? "—" : fmtPct(m.budget.executionPct)} hint={fmtMoney(m.budget.planned)} onClick={() => openTab("budget")} icon={Wallet} tone="bg-violet-50 text-violet-700" progress={m.budget.executionPct} />
         </div>
 
         <div className="grid gap-5 lg:grid-cols-3">
@@ -178,9 +185,12 @@ export default function ProjectMonitoringPage() {
         </div>
 
         {/* Détails */}
+        <div id="detail-suivi" className="scroll-mt-4">
         <Section title="Détail du suivi">
           <Tabs
             defaultTab="objectifs"
+            activeTab={activeTab}
+            onChange={setActiveTab}
             tabs={[
               { id: "objectifs", label: "Objectifs & indicateurs", content: <ObjectivesTab tree={objectives} /> },
               { id: "activites", label: `Activités (${c.activities})`, content: <ActivitiesTab m={m} /> },
@@ -191,6 +201,7 @@ export default function ProjectMonitoringPage() {
             ]}
           />
         </Section>
+        </div>
 
         <p className="flex items-center gap-1 text-xs text-slate-400">
           <ClipboardList className="h-3.5 w-3.5" /> Les chiffres sont recalculés à chaque chargement depuis les données du projet.

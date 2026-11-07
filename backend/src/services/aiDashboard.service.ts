@@ -66,13 +66,13 @@ export interface Dashboard {
       avgActual: number | null;
     };
     /** note finale /20 de chaque projet noté */
-    finalByProject: Array<Slice & { level: string }>;
+    finalByProject: Array<Slice & { level: string; name?: string }>;
     /** note /20 de chaque stagiaire noté */
     internScores: Array<Slice & { level: string }>;
     internScoreHistogram: Array<{ label: string; value: number }>;
     internRisk: Slice[];
     /** prévu / réel par projet actif (courbe d'avancement S&E) */
-    progressByProject: Array<{ key: string; label: string; planned: number | null; actual: number | null }>;
+    progressByProject: Array<{ key: string; label: string; name?: string; planned: number | null; actual: number | null }>;
   };
 }
 
@@ -356,7 +356,7 @@ function integrationBlock(snapshot: IntegrationSnapshot): NonNullable<Dashboard[
     finalByProject: [...scoredProjects]
       .sort((a, b) => (a.finalScore as number) - (b.finalScore as number))
       .slice(0, 20)
-      .map((p) => ({ key: String(p.projectId), label: p.code || p.name, value: p.finalScore as number, level: levelOf20(p.finalScore as number) })),
+      .map((p) => ({ key: String(p.projectId), label: p.code || p.name, name: p.name, value: p.finalScore as number, level: levelOf20(p.finalScore as number) })),
     internScores: [...scoredInterns]
       .sort((a, b) => (a.score as number) - (b.score as number))
       .slice(0, 20)
@@ -370,7 +370,7 @@ function integrationBlock(snapshot: IntegrationSnapshot): NonNullable<Dashboard[
     ],
     progressByProject: snapshot.projects
       .filter((p) => p.status === "ACTIVE")
-      .map((p) => ({ key: String(p.projectId), label: p.code || p.name, planned: p.progress.planned, actual: p.progress.actual }))
+      .map((p) => ({ key: String(p.projectId), label: p.code || p.name, name: p.name, planned: p.progress.planned, actual: p.progress.actual }))
       .slice(0, 20),
   };
 }

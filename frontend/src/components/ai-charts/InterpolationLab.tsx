@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, GraduationCap, FolderKanban, TrendingUp, Trash2 } from "lucide-react";
+import { Activity, ChevronDown, GraduationCap, FolderKanban, TrendingUp, Trash2 } from "lucide-react";
 import { errorMessage } from "@/lib/crud";
 import { CurveKind, CurveMethod, CurvePayload, RemovalImpact, fetchCurve, fetchRemovalImpact } from "@/lib/curves";
 import { ChartCard, Empty, PALETTE } from "./charts";
@@ -16,12 +16,15 @@ type MethodChoice = "both" | CurveMethod;
 
 const COLOR: Record<CurveMethod, string> = { lagrange: PALETTE.purple, hermite: PALETTE.blue };
 const NAME: Record<CurveMethod, string> = { lagrange: "Lagrange", hermite: "Hermite (PCHIP)" };
+// Texte des axes : lisible en thème clair (gris foncé) comme en thème sombre (gris très clair)
+const AXIS_TEXT = "fill-slate-700 dark:fill-slate-200";
+const AXIS_TITLE = "fill-slate-800 dark:fill-slate-100";
 const fmt = (v: number | null | undefined, unit = "") => (v === null || v === undefined ? "—" : `${Math.round(v * 100) / 100}${unit}`);
 
 function CurveSvg({ data, show }: { data: CurvePayload; show: CurveMethod[] }) {
-  const W = 640;
-  const H = 300;
-  const m = { l: 44, r: 16, t: 14, b: 40 };
+  const W = 520;
+  const H = 320;
+  const m = { l: 54, r: 16, t: 28, b: 50 };
 
   const [lo, hi] = data.bounds;
   const [x0, x1] = data.domain;
@@ -31,44 +34,76 @@ function CurveSvg({ data, show }: { data: CurvePayload; show: CurveMethod[] }) {
   const yTicks = Array.from({ length: 5 }, (_, i) => lo + ((hi - lo) * i) / 4);
   const path = (pts: Array<{ x: number; y: number }>) => pts.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
   const [hover, setHover] = useState<number | null>(null);
+  const [hoverMax, setHoverMax] = useState<CurveMethod | null>(null);
 
   const visible = data.curves.filter((c) => show.includes(c.method));
   const node = hover === null ? null : data.nodes[hover];
+  const nodeIsMax = !!node && visible.some((c) => Math.abs(c.optimum.max.x - node.x) < 1e-6 && Math.abs(c.optimum.max.y - node.y) < 1e-6);
 
   return (
     <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={data.title}>
         {yTicks.map((t, i) => (
           <g key={i}>
-            <line x1={m.l} x2={W - m.r} y1={sy(t)} y2={sy(t)} stroke="#94a3b8" strokeOpacity={0.25} />
-            <text x={m.l - 6} y={sy(t) + 4} textAnchor="end" fontSize={10} className="fill-gray-500">{Math.round(t * 10) / 10}</text>
+            <line x1={m.l} x2={W - m.r} y1={sy(t)} y2={sy(t)} stroke="#94a3b8" strokeOpacity={0.45} strokeDasharray={i === 0 ? undefined : "3 4"} />
+            <text x={m.l - 8} y={sy(t) + 4} textAnchor="end" fontSize={12} fontWeight={500} className={AXIS_TEXT}>{Math.round(t * 10) / 10}</text>
           </g>
         ))}
+        <line x1={m.l} x2={m.l} y1={m.t} y2={H - m.b} stroke="#94a3b8" strokeOpacity={0.7} />
+        <line x1={m.l} x2={W - m.r} y1={H - m.b} y2={H - m.b} stroke="#94a3b8" strokeOpacity={0.7} />
         {data.mode === "cohort" &&
           data.nodes.map((n) => (
-            <text key={n.x} x={sx(n.x)} y={H - m.b + 14} textAnchor="middle" fontSize={10} className="fill-gray-500">{n.x}</text>
+            <text key={n.x} x={sx(n.x)} y={H - m.b + 16} textAnchor="middle" fontSize={12} fontWeight={500} className={AXIS_TEXT}>{n.x}</text>
           ))}
-        <text x={(W + m.l) / 2} y={H - 6} textAnchor="middle" fontSize={11} className="fill-gray-500">{data.xLabel}</text>
-        <text transform={`translate(12 ${H / 2}) rotate(-90)`} textAnchor="middle" fontSize={11} className="fill-gray-500">{data.yLabel}</text>
+        <text x={(W + m.l) / 2} y={H - 8} textAnchor="middle" fontSize={12} fontWeight={600} className={AXIS_TITLE}>{data.xLabel}</text>
+        <text transform={`translate(14 ${H / 2}) rotate(-90)`} textAnchor="middle" fontSize={12} fontWeight={600} className={AXIS_TITLE}>{data.yLabel}</text>
 
         {data.reference && data.reference.points.length > 1 && (
-          <path d={path(data.reference.points)} fill="none" stroke={PALETTE.slate} strokeWidth={1.5} strokeDasharray="4 4" />
+          <path d={path(data.reference.points)} fill="none" stroke={PALETTE.slate} strokeWidth={2} strokeDasharray="4 4" />
         )}
 
         {visible.map((c) => (
           <g key={c.method}>
-            <path d={path(c.samples)} fill="none" stroke={COLOR[c.method]} strokeWidth={data.best === c.method ? 3 : 2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={c.method === "lagrange" ? "6 3" : undefined} />
-            {/* optimum (maximum) */}
-            <g>
-              <circle cx={sx(c.optimum.max.x)} cy={sy(c.optimum.max.y)} r={6} fill="none" stroke={COLOR[c.method]} strokeWidth={2} />
-              <text x={sx(c.optimum.max.x)} y={sy(c.optimum.max.y) - 10} textAnchor="middle" fontSize={10} fontWeight={700} fill={COLOR[c.method]}>max {fmt(c.optimum.max.y)}</text>
+            <path d={path(c.samples)} fill="none" stroke={COLOR[c.method]} strokeWidth={data.best === c.method ? 3.5 : 2.5} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={c.method === "lagrange" ? "6 3" : undefined} />
+            {/* optimum (maximum) : invisible, n'apparaît qu'au survol ou au clic sur le sommet */}
+            <g onMouseEnter={() => setHoverMax(c.method)} onMouseLeave={() => setHoverMax(null)} onClick={() => setHoverMax(hoverMax === c.method ? null : c.method)} style={{ cursor: "pointer" }}>
+              <circle cx={sx(c.optimum.max.x)} cy={sy(c.optimum.max.y)} r={12} fill="transparent" />
+              {hoverMax === c.method && (
+                <>
+                  <circle cx={sx(c.optimum.max.x)} cy={sy(c.optimum.max.y)} r={7} fill="none" stroke={COLOR[c.method]} strokeWidth={2.5} />
+                  <text x={Math.min(Math.max(sx(c.optimum.max.x), m.l + 28), W - m.r - 28)} y={sy(c.optimum.max.y) - 12} textAnchor="middle" fontSize={12} fontWeight={700} fill={COLOR[c.method]}>max {fmt(c.optimum.max.y)}</text>
+                </>
+              )}
             </g>
           </g>
         ))}
 
-        {data.nodes.map((n, i) => (
-          <circle key={`${n.x}-${i}`} cx={sx(n.x)} cy={sy(n.y)} r={hover === i ? 6 : 4.5} fill={PALETTE.red} stroke="#fff" strokeWidth={1.5} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }} />
-        ))}
+        {/* repères au survol : projection du point sur l'abscisse et l'ordonnée + valeur */}
+        {node && (
+          <g pointerEvents="none">
+            <line x1={m.l} x2={sx(node.x)} y1={sy(node.y)} y2={sy(node.y)} stroke={PALETTE.red} strokeWidth={1.5} strokeDasharray="4 3" />
+            <line x1={sx(node.x)} x2={sx(node.x)} y1={sy(node.y)} y2={H - m.b} stroke={PALETTE.red} strokeWidth={1.5} strokeDasharray="4 3" />
+            <circle cx={m.l} cy={sy(node.y)} r={3.5} fill={PALETTE.red} />
+            <circle cx={sx(node.x)} cy={H - m.b} r={3.5} fill={PALETTE.red} />
+            <g transform={`translate(${Math.min(Math.max(sx(node.x), m.l + 30), W - m.r - 30)} ${sy(node.y) > m.t + 40 ? sy(node.y) - 24 : sy(node.y) + 30})`}>
+              <rect x={-30} y={-14} width={60} height={22} rx={6} fill="#0f172a" fillOpacity={0.92} stroke={PALETTE.red} strokeWidth={1.5} />
+              <text x={0} y={2} textAnchor="middle" fontSize={12} fontWeight={700} fill="#ffffff">{nodeIsMax ? "max " : ""}{fmt(node.y)}</text>
+            </g>
+          </g>
+        )}
+
+        {/* points réels : carré rouge (■) ; la valeur n'apparaît qu'au survol */}
+        {data.nodes.map((n, i) => {
+          const cx = sx(n.x);
+          const cy = sy(n.y);
+          const k = hover === i ? 1.35 : 1;
+          return (
+            <g key={`${n.x}-${i}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => setHover(hover === i ? null : i)} style={{ cursor: "pointer" }}>
+              <circle cx={cx} cy={cy} r={14} fill="transparent" />
+              <rect x={cx - 6.5 * k} y={cy - 6.5 * k} width={13 * k} height={13 * k} rx={1.5} fill={PALETTE.red} stroke="#fff" strokeWidth={1.5} />
+            </g>
+          );
+        })}
       </svg>
       {node && (
         <div className="pointer-events-none absolute right-2 top-2 rounded-lg border border-gray-200 bg-white/95 px-3 py-1.5 text-xs shadow">
@@ -149,6 +184,7 @@ function Panel({ kind }: { kind: CurveKind }) {
   const [choices, setChoices] = useState<CurvePayload["choices"]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showList, setShowList] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -219,11 +255,45 @@ function Panel({ kind }: { kind: CurveKind }) {
         </>
       ) : (
         <>
-          <p className="mb-1 text-sm font-semibold text-gray-800">{data.title}</p>
+          <button
+            type="button"
+            onClick={() => setShowList((v) => !v)}
+            aria-expanded={showList}
+            title="Cliquez pour voir la liste des notes"
+            className="mb-1 flex w-full items-center gap-1.5 text-left text-sm font-semibold text-gray-800 hover:text-blue-600"
+          >
+            <span className="underline decoration-dotted underline-offset-4">{data.title}</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showList ? "rotate-180" : ""}`} />
+          </button>
+          {showList && (
+            <div className="mb-2 overflow-hidden rounded-xl border border-gray-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="px-3 py-1.5 font-semibold">N°</th>
+                    <th className="px-3 py-1.5 font-semibold">{data.mode === "cohort" ? (isIntern ? "Stagiaire" : "Projet") : "Point"}</th>
+                    <th className="px-3 py-1.5 text-right font-semibold">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...data.nodes].sort((a, b) => a.x - b.x).map((n, i) => (
+                    <tr key={`${n.x}-${i}`} className="border-t border-gray-100">
+                      <td className="px-3 py-1.5 text-gray-500">{data.mode === "cohort" ? n.x : i + 1}</td>
+                      <td className="px-3 py-1.5 font-medium text-gray-900">{n.label || `Point ${n.x}`}</td>
+                      <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{fmt(n.y, data.unit === "%" ? " %" : "/20")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="border-t border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-500">
+                {data.n} point(s) noté(s) affiché(s). Les éléments sans note ne sont pas dans la courbe.
+              </p>
+            </div>
+          )}
           <CurveSvg data={data} show={show} />
 
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-            <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: PALETTE.red }} /> Points réels ({data.n})</span>
+            <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5" style={{ background: PALETTE.red }} /> Points réels ({data.n}) — survolez ■ pour voir la valeur</span>
             {show.map((m) => (
               <span key={m} className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-5" style={{ background: COLOR[m] }} /> {NAME[m]}{data.best === m ? " ★" : ""}</span>
             ))}

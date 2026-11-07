@@ -4,8 +4,9 @@ import Link from "next/link";
 import { ReactNode, useEffect, useState } from "react";
 import api from "@/lib/axios";
 import { errorMessage } from "@/lib/crud";
+import { useLiveRefresh } from "@/lib/useLiveRefresh";
 
-export function useInsight<T>(path: string) {
+export function useInsight<T>(path: string, opts?: { refreshMs?: number }) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -21,6 +22,22 @@ export function useInsight<T>(path: string) {
       .catch((err) => setError(errorMessage(err, "Analyse indisponible.")))
       .finally(() => setLoading(false));
   }, [path]);
+
+  // Optionnel : recalcul automatique en arrière-plan (sans écran de chargement ; une erreur ponctuelle garde les données affichées)
+  useLiveRefresh(
+    () => {
+      api
+        .get(path)
+        .then((res) => {
+          setData(res.data?.data ?? null);
+          setRaw(res.data ?? null);
+          setError("");
+        })
+        .catch(() => undefined);
+    },
+    opts?.refreshMs ?? 15_000,
+    opts?.refreshMs !== undefined
+  );
 
   return { data, loading, error, raw };
 }
