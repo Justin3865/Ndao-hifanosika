@@ -4,7 +4,7 @@ WORKDIR /srv
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY main.py train_report.py compare_baseline.py ./
+COPY main.py dropout.py train_report.py compare_baseline.py compare_live.py ./
 RUN useradd -m appuser && chown -R appuser /srv
 USER appuser
 EXPOSE 8001

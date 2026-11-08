@@ -5,6 +5,7 @@ from . import config  # noqa: F401  (charge DATABASE_URL / AI_SERVICE_KEY depuis
 from . import db
 from .routes_insights import router as insights_router
 from .routes_monitoring import router as monitoring_router
+from .routes_aliases import router as aliases_router
 
 app = FastAPI(
     title="Ndao Hifanosika AI Service",
@@ -16,6 +17,8 @@ app = FastAPI(
 app.include_router(insights_router)
 # Suivi & Évaluation : avancement, risque, prévision, anomalies par projet
 app.include_router(monitoring_router)
+# Alias §9.2 (/ai/...) et scores individuels (risque d'abandon, performance)
+app.include_router(aliases_router)
 
 
 class HealthResponse(BaseModel):
@@ -54,3 +57,7 @@ def summarize(record: NumericRecord):
         "mean": sum(values) / len(values),
         "note": "Statistiques descriptives uniquement; aucun modèle prédictif entraîné n'est encore configuré.",
     }
+
+
+# Alias §9.2 : même fonction et même réponse que /health
+app.add_api_route("/ai/health", health, methods=["GET"], response_model=HealthResponse, tags=["health"])

@@ -16,7 +16,9 @@
     "check": "npm run test && npm run test:unit && npm run typecheck",
     "migrate:deploy": "prisma migrate deploy",
     "test:unit": "tsc -p tsconfig.test.json && node --test .test-build/test/*.test.js",
-    "perf": "node tests-http/perf.mjs"
+    "perf": "node tests-http/perf.mjs",
+    "migrate:check": "node scripts/check-migrations.cjs",
+    "migrate:new": "node scripts/new-migration.cjs"
   },
   "keywords": [
     "ndao-hifanosika",
