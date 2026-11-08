@@ -61,6 +61,8 @@ import { emailLimit } from "./middlewares/emailLimit.middleware";
 import { scopeOverlayRouter } from "./routes/scopeOverlay.routes";
 import { mlDropoutRouter } from "./routes/mlDropout.routes";
 import { enrollmentRouter } from "./routes/enrollment.routes";
+import { projectLinksRouter } from "./routes/projectLinks.routes";
+import { personEvaluationsRouter } from "./routes/personEvaluations.routes";
 
 const app = express();
 
@@ -162,6 +164,8 @@ app.use("/api/public/tracking", publicTrackingRouter);
 app.use("/api/vulnerability", vulnerabilityRouter);
 app.use("/api/service", serviceRouter);
 app.use("/api/service", mlDropoutRouter); // [lot-protection-perimetre]
+app.use("/api", projectLinksRouter); // [lot2-n-n-membre]
+app.use("/api/person-evaluations", personEvaluationsRouter); // [lot1-evaluations]
 
 app.use((_req, res) => {
   res.status(404).json({

@@ -10,7 +10,12 @@ interface LogoProps {
   print?: boolean;
 }
 
-/** Logo de l'ONG (public/logos/ndao-hifanosika.png) avec repli textuel. */
+/**
+ * Logo de l'ONG avec repli textuel.
+ * - Écran (sidebar, en-têtes) : logo complet recadré (public/logos/logo-full.png), qui contient déjà
+ *   le nom « ndao hifanosika ». Affiché en rond (rounded-full) à l'écran.
+ * - Impression (print) : logo complet d'origine (public/logos/ndao-hifanosika.png), inchangé.
+ */
 export function Logo({ size = 40, withText = true, light = false, print = false }: LogoProps) {
   const [failed, setFailed] = useState(false);
 
@@ -26,12 +31,12 @@ export function Logo({ size = 40, withText = true, light = false, print = false 
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src="/logos/ndao-hifanosika.png"
+          src={print ? "/logos/ndao-hifanosika.png" : "/logos/logo-full.png"}
           alt="Ndao Hifanosika"
           width={size}
           height={size}
           onError={() => setFailed(true)}
-          className={print ? "rounded-xl object-contain p-1" : "rounded-xl bg-white object-contain p-1"}
+          className={print ? "rounded-xl object-contain p-1" : "rounded-full object-contain p-1.5"}
           style={
             print
               ? {
@@ -41,7 +46,13 @@ export function Logo({ size = 40, withText = true, light = false, print = false 
                   border: "2px solid #0F6BA0",
                   boxSizing: "border-box",
                 }
-              : { width: size, height: size }
+              : {
+                  width: size,
+                  height: size,
+                  // Fond blanc fixe : le logo reste lisible en mode clair ET sombre
+                  backgroundColor: "#ffffff",
+                  boxSizing: "border-box",
+                }
           }
         />
       )}

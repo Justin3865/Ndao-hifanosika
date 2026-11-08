@@ -82,13 +82,13 @@ export async function listDocuments(req: AuthenticatedRequest, res: Response): P
     }
     const readable = internships.filter((i) => canReadDocs(req.user!.role, req.user!.id, i));
     const byId = new Map(readable.map((i) => [i.id, i]));
-    const rows = await db.internshipDocument.findMany({
+    const rows: Array<{ id: number; internshipId: number; kind: string; name: string; mime: string; size: number; note: string | null; uploadedById: number | null; createdAt: Date }> = await db.internshipDocument.findMany({
       where: { internshipId: { in: readable.map((i) => i.id) } },
       select: { id: true, internshipId: true, kind: true, name: true, mime: true, size: true, note: true, uploadedById: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });
     const uploaderIds = [...new Set(rows.map((r) => r.uploadedById).filter((v): v is number => typeof v === "number"))];
-    const uploaders = uploaderIds.length
+    const uploaders: Array<{ id: number; firstName: string; lastName: string }> = uploaderIds.length
       ? await db.user.findMany({ where: { id: { in: uploaderIds } }, select: { id: true, firstName: true, lastName: true } })
       : [];
     const uploaderName = new Map(uploaders.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));

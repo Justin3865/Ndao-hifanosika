@@ -173,8 +173,13 @@ export function initSocket(server: HttpServer): Server {
       const userId: number = socket.data.userId;
 
       socket.on("mission:status", async (ack?: (r: { ok: boolean; active: boolean; missionId?: number; startedAt?: Date }) => void) => {
-        const mission = await getActiveMission(userId);
-        ack?.({ ok: true, active: !!mission, missionId: mission?.id, startedAt: mission?.startedAt });
+        try {
+          const mission = await getActiveMission(userId);
+          ack?.({ ok: true, active: !!mission, missionId: mission?.id, startedAt: mission?.startedAt });
+        } catch (error) {
+          logger.error("Erreur mission:status", error);
+          ack?.({ ok: false, active: false });
+        }
       });
 
       socket.on("mission:start", async (ack?: (r: { ok: boolean; missionId?: number }) => void) => {

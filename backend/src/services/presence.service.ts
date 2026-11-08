@@ -490,6 +490,10 @@ export async function checkOut(user: Viewer, body: any) {
       select: { id: true, title: true, progress: true, status: true, actualStartDate: true, actualEndDate: true },
     });
     if (found.length !== actIds.length) throw new PresenceError(400, "Une des activités ne fait pas partie du projet de la journée.");
+
+    // Même règle que la mise à jour manuelle de l'avancement : une activité annulée ne reçoit plus d'avancement
+    const cancelled = found.find((x) => x.status === "CANCELLED");
+    if (cancelled) throw new PresenceError(400, `L'activité « ${cancelled.title} » est annulée : son avancement ne peut plus être mis à jour.`, "ACTIVITY_CANCELLED");
     activities.push(...found);
   }
   const activityOf = new Map(activities.map((a) => [a.id, a]));

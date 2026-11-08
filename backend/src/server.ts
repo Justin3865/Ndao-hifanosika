@@ -19,6 +19,15 @@ import { startAttendanceScheduler } from "./services/attendance.service";
 import { startPresenceScheduler } from "./services/presence.service";
 import { startQueue } from "./utils/jobQueue";
 
+// Empêche un crash du serveur (donc des ERR_CONNECTION_REFUSED) sur une erreur non gérée
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandledRejection", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.error("uncaughtException", error);
+});
+
 async function startServer() {
   try {
     await connectDatabase();
@@ -57,6 +66,10 @@ async function startServer() {
         logger.success("Serveur arrêté proprement");
         process.exit(0);
       });
+
+      // Ferme les connexions encore ouvertes (socket.io, keep-alive) pour un arrêt rapide
+      server.closeAllConnections?.();
+      setTimeout(() => process.exit(0), 3000).unref();
     };
 
     process.on("SIGINT", () => {

@@ -126,6 +126,13 @@ model User {
   /// Niveau libre d'un tuteur ajouté avec « Autre » (ex. « Doctorat », « Expert »)
   tutorLevel String?
 
+  /// LOT 2 · fiche membre : poste, type d'engagement (SALARIE | BENEVOLE | STAGIAIRE) et période
+  projectMemberships ProjectMember[]
+  jobTitle        String?
+  engagementType  String?
+  engagementStart DateTime?
+  engagementEnd   DateTime?
+
   role         UserRole   @default(STAGIAIRE_L3)
   status       UserStatus @default(PENDING)
   departmentId Int?
@@ -196,6 +203,7 @@ model Department {
 }
 
 model Project {
+  projectMembers ProjectMember[]
   id                Int           @id @default(autoincrement())
   name              String
   code              String        @unique
@@ -405,6 +413,9 @@ model Internship {
   departmentId Int?
   /// Durée prévue (mois) pour le calcul de la présence : L3 = 2, M2 = 6, autre = saisie libre. NULL = ancien calcul.
   durationMonths Int?
+  /// LOT 1 · tuteur académique (le tuteur entreprise reste supervisorId / supervisorName)
+  academicSupervisorName  String?
+  academicSupervisorEmail String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -905,6 +916,10 @@ model EvaluationGrid {
   createdById Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  /// LOT 1 · projet (nullable), barème et type de cible (MEMBER | STAGIAIRE | BENEFICIARY)
+  projectId   Int?
+  maxScore    Float    @default(20)
+  targetType  String?
 }
 
 model EvaluationCampaign {
@@ -919,6 +934,9 @@ model EvaluationCampaign {
   createdById Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  /// LOT 1 · MONTHLY | QUARTERLY | END_OF_MISSION et type de cible
+  periodicity String?
+  targetType  String?
 }
 
 /// Mission terrain : démarrée et terminée PAR L'AGENT (elle survit aux changements de page)
@@ -1391,6 +1409,8 @@ model BeneficiaryProject {
   /// ACTIVE | COMPLETED | DROPPED_OUT
   status        String   @default("ACTIVE")
   joinedAt      DateTime @default(now())
+  /// LOT 2 · date de sortie du projet (null = toujours rattaché)
+  exitedAt      DateTime?
   createdAt     DateTime @default(now())
 
   @@id([beneficiaryId, projectId])
@@ -1564,4 +1584,69 @@ model DailyPresenceTask {
   @@index([internshipTaskId])
   @@index([activityId])
   @@map("daily_presence_tasks")
+}
+
+/// LOT 2 · Rattachement N-N membre (salarié, bénévole, stagiaire…) ↔ projet (§5.2, §5.3)
+model ProjectMember {
+  id           Int       @id @default(autoincrement())
+  projectId    Int
+  userId       Int
+  projectRole  String?
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+  assignedById Int?
+  createdAt    DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+/// LOT 1 · Évaluation polymorphe d'une personne (membre, stagiaire, bénéficiaire) — §8 « evaluations »
+model PersonEvaluation {
+  id            Int       @id @default(autoincrement())
+  targetType    String
+  targetId      Int
+  evaluatorId   Int?
+  /// SELF | SUPERVISOR | TUTOR_ENTERPRISE | TUTOR_ACADEMIC | HR
+  evaluatorRole String    @default("SUPERVISOR")
+  gridId        Int?
+  campaignId    Int?
+  projectId     Int?
+  period        String?
+  /// DRAFT | SUBMITTED | VALIDATED
+  status        String    @default("DRAFT")
+  /// note globale sur 100
+  totalScore    Float?
+  comment       String?
+  submittedAt   DateTime?
+  validatedById Int?
+  validatedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  scores PersonEvaluationScore[]
+
+  @@index([targetType, targetId, createdAt])
+  @@index([campaignId])
+  @@index([evaluatorId])
+  @@map("person_evaluations")
+}
+
+model PersonEvaluationScore {
+  id           Int     @id @default(autoincrement())
+  evaluationId Int
+  criterion    String
+  score        Float
+  maxScore     Float   @default(20)
+  weight       Float   @default(1)
+  comment      String?
+
+  evaluation PersonEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluationId, criterion])
+  @@map("person_evaluation_scores")
 }

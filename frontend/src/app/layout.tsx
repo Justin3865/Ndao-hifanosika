@@ -1,5 +1,4 @@
-
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import "./globals.css";
 import { SettingsProvider } from "@/components/providers/settings-provider";
@@ -35,6 +34,12 @@ export const metadata: Metadata = {
 
   creator: "Ndao Hifanosika",
 
+  // Favicon + icône Apple : on utilise le logo existant dans public/logos/
+  icons: {
+    icon: "/logos/ndao-hifanosika.png",
+    apple: "/logos/ndao-hifanosika.png",
+  },
+
   openGraph: {
     title: "Ndao Hifanosika - Plateforme de Suivi & Évaluation",
     description:
@@ -44,41 +49,24 @@ export const metadata: Metadata = {
   },
 };
 
+// themeColor doit être dans `viewport` (Next.js 14+), plus dans `metadata`
+export const viewport: Viewport = {
+  themeColor: "#7c3aed",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="fr"
-      data-scroll-behavior="smooth"
-      suppressHydrationWarning
-    >
-      <head>
-        <link
-          rel="icon"
-          href="/favicon.ico"
-          sizes="any"
-        />
-
-        <link
-          rel="apple-touch-icon"
-          href="/apple-touch-icon.png"
-        />
-
-        <meta
-          name="theme-color"
-          content="#7c3aed"
-        />
-      </head>
-
+    <html lang="fr" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <SettingsProvider>
           <I18nProvider>
-          <AutoTranslate />
-          {/* Monté à la racine : la mission GPS continue quand on change de page */}
-          <MissionProvider>{children}</MissionProvider>
+            <AutoTranslate />
+            {/* Monté à la racine : la mission GPS continue quand on change de page */}
+            <MissionProvider>{children}</MissionProvider>
           </I18nProvider>
         </SettingsProvider>
       </body>

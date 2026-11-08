@@ -19,7 +19,7 @@ import httpx
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import Body, FastAPI, Header, HTTPException
+from fastapi import Body, FastAPI, Header, HTTPException, Response
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import SGDClassifier
@@ -65,6 +65,12 @@ def candidates() -> dict:
 @app.get("/health")
 def health():
     return {"status": "ok", "trained": state["model"] is not None}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    # Le navigateur demande ce fichier tout seul : on répond « pas de contenu » (plus de 404 dans les logs)
+    return Response(status_code=204)
 
 
 @app.post("/train")
