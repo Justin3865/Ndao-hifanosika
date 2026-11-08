@@ -47,7 +47,7 @@ export default function TeamPresence() {
           <p className="text-xs text-gray-500">Arrivée vérifiée (position, altitude), départ et tâches du jour. Les tâches alimentent le Suivi &amp; Évaluation.</p>
         </div>
         <label className="text-sm">
-          <span className="mb-1 block font-medium text-gray-700">Jour</span>
+          <span className="sr-only">Jour</span>
           <input type="date" value={day} max={localToday()} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm" />
         </label>
       </div>

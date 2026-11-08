@@ -85,6 +85,13 @@ export default function PresencesPage() {
   // Journal serveur (date, heure, minutes, secondes) des enregistrements et suppressions, par séance
   const [journal, setJournal] = useState<LogEntry[]>([]);
   const today = clock?.today ?? localToday();
+  const dayLabel = (() => {
+    const [y, m, d] = today.slice(0, 10).split("-").map(Number);
+    const date = y && m && d ? new Date(y, m - 1, d) : new Date();
+
+    // Même format que « Jour » (Présences GPS de l'équipe) et « Date d'aujourd'hui » : 08/11/2026
+    return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  })();
 
   const sessionsAllowed = ["ADMIN", "DIRECTION", "COORDINATOR"].includes(role);
   const teamAllowed = ["ADMIN", "DIRECTION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"].includes(role);
@@ -193,9 +200,18 @@ export default function PresencesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Présences</h1>
-          <p className="text-sm text-gray-500">Pointage du jour avec preuve GPS, tâches faites, et présences aux séances.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Présences</h1>
+            <p className="text-sm text-gray-500">Pointage du jour avec preuve GPS, tâches faites, et présences aux séances.</p>
+          </div>
+
+          {/* Date du jour (celle du serveur si disponible) : en lecture seule */}
+          <label className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm">
+            <CalendarDays className="h-4 w-4 shrink-0 text-blue-700" />
+            <span className="sr-only">Date du jour</span>
+            <input readOnly tabIndex={-1} aria-label="Date du jour (non modifiable)" value={dayLabel} className="w-28 cursor-default bg-transparent font-semibold text-gray-900 outline-none" />
+          </label>
         </div>
 
         {role && <MyPresence />}

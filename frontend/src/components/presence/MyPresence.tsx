@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Crosshair, Eye, EyeOff, Loader2, LogIn, LogOut, MapPin, Plus, ShieldAlert, Trash2 } from "lucide-react";
 
 import api from "@/lib/axios";
@@ -56,6 +56,10 @@ export default function MyPresence() {
   const [pos, setPos] = useState<Pos | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState("");
+  // Altitude du terrain (estimation) : utilisée seulement pour l'AFFICHAGE quand le GPS de l'appareil ne fournit pas d'altitude
+  const [terrainAlt, setTerrainAlt] = useState<number | null>(null);
+  const [altLoading, setAltLoading] = useState(false);
+  const altCall = useRef(0);
   const [showMap, setShowMap] = useState(true);
   const [mode, setMode] = useState<PresenceMode>("SIEGE");
   const [projects, setProjects] = useState<LookupItem[]>([]);
@@ -93,6 +97,29 @@ export default function MyPresence() {
     void load();
     void locate();
   }, [load, locate]);
+
+  // Les ordinateurs (position par Wi‑Fi / IP) ne renvoient pas d'altitude : on la déduit du terrain à cette position
+  useEffect(() => {
+    const call = ++altCall.current;
+    setTerrainAlt(null);
+
+    if (!pos || pos.altitude != null) {
+      setAltLoading(false);
+      return;
+    }
+
+    setAltLoading(true);
+    api
+      .get("/elevation", { params: { lat: pos.latitude, lng: pos.longitude } })
+      .then((res) => {
+        const value = res.data?.data?.elevation;
+        if (call === altCall.current && typeof value === "number" && Number.isFinite(value)) setTerrainAlt(Math.round(value));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (call === altCall.current) setAltLoading(false);
+      });
+  }, [pos]);
 
   useEffect(() => {
     if (state && !state.isStagiaire && !projects.length) fetchLookup("projects").then(setProjects).catch(() => setProjects([]));
@@ -240,7 +267,12 @@ export default function MyPresence() {
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-gray-600">Altitude (m)</span>
-            <input readOnly value={pos?.altitude != null ? String(Math.round(pos.altitude)) : ""} placeholder={pos ? "non fournie" : "—"} className={inputClass} />
+            <input
+              readOnly
+              value={pos?.altitude != null ? String(Math.round(pos.altitude)) : terrainAlt !== null ? String(terrainAlt) : ""}
+              placeholder={!pos ? "—" : altLoading ? "calcul…" : "indisponible"}
+              className={inputClass}
+            />
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-gray-600">Précision (± m)</span>
