@@ -17,6 +17,7 @@ import {
 import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { StatusBadge } from "@/components/crud/StatusBadge";
+import { DepartmentDashboard } from "@/components/dashboard/DepartmentDashboard";
 import { GoogleMap, MapMarker, MAPS_ENABLED } from "@/components/maps/GoogleMap";
 import { getStoredRole } from "@/lib/access";
 import { fmtDate } from "@/lib/crud";
@@ -77,6 +78,8 @@ interface InternshipRow {
 }
 
 const REPORT_ROLES = ["ADMIN", "DIRECTION", "DAF", "RH", "COMMUNICATION", "COORDINATOR"];
+// Rôles qui reçoivent le tableau de bord par département (miroir de GET /api/dashboard/department)
+const DEPARTMENT_ROLES = ["ADMIN", "DIRECTION", "RH", "DAF", "COMMUNICATION", "COORDINATOR"];
 const ZONE_ROLES = ["ADMIN", "DIRECTION", "DAF", "COMMUNICATION", "COORDINATOR"];
 const TRACKING_ROLES = ["ADMIN", "DIRECTION", "COORDINATOR"];
 const INTERNSHIP_ROLES = ["ADMIN", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2", "STAGIAIRE_L3", "STAGIAIRE_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_M1"];
@@ -336,6 +339,9 @@ export default function DashboardPage() {
             ))}
           </section>
         )}
+
+        {/* ---------- Tableau de bord par département (RH / DAF / Communication / Direction) ---------- */}
+        {ready && DEPARTMENT_ROLES.includes(role) && <DepartmentDashboard role={role} />}
 
         {/* ---------- Carte unique : siège, zones d'intervention, terrain + répartition ---------- */}
         <section className="grid gap-4 xl:grid-cols-[1fr_340px]">

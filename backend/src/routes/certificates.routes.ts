@@ -8,7 +8,7 @@ import { authenticate } from "../middlewares/auth.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import { db } from "../utils/db";
 import { getReqUser } from "../utils/dataScope";
-import { sendEmail } from "../utils/mailer";
+import { isEmailConfigured, sendEmail, sendEmailDetailed } from "../utils/mailer";
 import { notifyUsers } from "../utils/notify";
 import { isSameName } from "../utils/names";
 import { getOrAssignMatricule } from "../utils/matricule";
@@ -1077,6 +1077,72 @@ router.post("/", authorizeRoles(...ISSUERS), async (req: Request, res: Response)
     res.status(201).json({ success: true, data: row, profileUpdated });
   } catch (error) {
     logger.error("Erreur délivrance certificat", error);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
+
+/**
+ * Envoi du certificat (PDF A4 + PDF A3, deux fichiers séparés) à l'e-mail du titulaire lu dans la base.
+ * Les PDF sont générés par le navigateur (même rendu que « Télécharger PDF ») puis transmis ici en base64.
+ * Réponse : { sent: true } ou { sent: false, reason: NO_EMAIL | MAIL_NOT_CONFIGURED | SEND_FAILED } — jamais d'erreur HTTP
+ * pour ces cas, afin que l'écran puisse afficher le signal et proposer le téléchargement.
+ */
+router.post("/:id/send-email", authorizeRoles(...ISSUERS), async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    const row = Number.isInteger(id) && id > 0 ? await db.certificate.findUnique({ where: { id } }) : null;
+
+    if (!row) return res.status(404).json({ success: false, message: "Certificat introuvable" });
+    if (row.revokedAt) return res.status(400).json({ success: false, message: "Ce certificat est révoqué" });
+
+    const email = String(row.holderEmail ?? "").trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.json({ success: true, sent: false, reason: "NO_EMAIL" });
+    }
+
+    const decode = (value: unknown): Buffer | null => {
+      if (typeof value !== "string" || !value) return null;
+      const raw = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value;
+      const buffer = Buffer.from(raw, "base64");
+      return buffer.length > 100 && buffer.subarray(0, 4).toString("latin1") === "%PDF" ? buffer : null;
+    };
+
+    const a4 = decode(req.body?.pdfA4);
+    const a3 = decode(req.body?.pdfA3);
+
+    if (!a4 || !a3) {
+      return res.status(400).json({ success: false, message: "Les deux PDF (A4 et A3) sont obligatoires" });
+    }
+
+    if (!isEmailConfigured()) {
+      logger.warn(`Certificat ${row.code} : e-mail non configuré (SMTP_USER/SMTP_PASS ou RESEND_API_KEY) — envoi impossible`);
+      return res.json({ success: true, sent: false, reason: "MAIL_NOT_CONFIGURED", email });
+    }
+
+    const base = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+    const safeCode = String(row.code).replace(/[^A-Za-z0-9_-]/g, "_");
+
+    const result = await sendEmailDetailed(
+      email,
+      `Votre certificat (PDF A4 et A3) — Ndao Hifanosika`,
+      `Bonjour ${row.holderName},\n\nVotre certificat « ${row.title} » a été délivré. Code : ${row.code}\n` +
+        `Vous le trouverez en pièces jointes, en deux formats : A4 et A3.\n` +
+        `Vérification : ${base}/verification/${row.code}\n\n— Ndao Hifanosika`,
+      [
+        { filename: `certificat-${safeCode}-A4.pdf`, content: a4, contentType: "application/pdf" },
+        { filename: `certificat-${safeCode}-A3.pdf`, content: a3, contentType: "application/pdf" },
+      ],
+    );
+
+    if (!result.ok) {
+      logger.error(`Certificat ${row.code} : envoi à ${email} échoué — ${result.error}`);
+      return res.json({ success: true, sent: false, reason: "SEND_FAILED", email, detail: result.error ?? null });
+    }
+
+    res.json({ success: true, sent: true, email });
+  } catch (error) {
+    logger.error("Erreur envoi certificat par e-mail", error);
     res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });

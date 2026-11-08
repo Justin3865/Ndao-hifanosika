@@ -1,4 +1,5 @@
 import api, { ApiResponse } from "./api";
+import { clearOfflineCache } from "@/lib/offline";
 
 // ============================================================
 // TYPES
@@ -450,6 +451,8 @@ class AuthService {
   private clearAuthentication(): void {
     this.clearTokens();
     this.clearUser();
+    // Mode hors ligne : aucune copie de données ne doit rester pour l'utilisateur suivant
+    clearOfflineCache();
   }
 
   // ==========================================================

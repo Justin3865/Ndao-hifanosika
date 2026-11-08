@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Download, FileText, Loader2, Printer, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, FileText, Loader2, Mail, Printer, X } from "lucide-react";
 import api from "@/lib/axios";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ORG, orgContactLine } from "@/lib/org";
@@ -22,6 +22,8 @@ interface Certificate {
   startDate?: string | null;
   endDate?: string | null;
   createdAt: string;
+  /** E-mail du titulaire (lu dans la base de données) : le certificat y est envoyé à la délivrance */
+  holderEmail?: string | null;
   revokedAt?: string | null;
   expiresAt?: string | null;
   holderBirthDate?: string | null;
@@ -146,6 +148,78 @@ async function downloadCertificatePdf(node: HTMLElement, format: PdfFormat, file
   pdf.save(fileName);
 }
 
+/** État de l'envoi automatique du certificat par e-mail (à la délivrance) */
+type MailState = "idle" | "sending" | "sent" | "no_email" | "not_configured" | "failed";
+
+/** Attend que les images (logo, cachet, signature, partenaires) et les polices soient chargées avant la capture. */
+async function waitForCertificateAssets(node: HTMLElement) {
+  try {
+    await (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready;
+  } catch {
+    /* ignoré */
+  }
+
+  const images = Array.from(node.querySelectorAll("img"));
+
+  await Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) return resolve();
+          img.addEventListener("load", () => resolve(), { once: true });
+          img.addEventListener("error", () => resolve(), { once: true });
+          window.setTimeout(resolve, 4000);
+        }),
+    ),
+  );
+
+  await new Promise((resolve) => window.setTimeout(resolve, 150));
+}
+
+/**
+ * Génère les DEUX PDF (A4 et A3, deux fichiers séparés) du certificat, en base64, pour l'envoi par e-mail.
+ * Une seule capture, mêmes dimensions et mêmes marges que « Télécharger PDF » ; JPEG pour garder des pièces jointes légères.
+ */
+async function buildCertificatePdfsBase64(node: HTMLElement): Promise<{ pdfA4: string; pdfA3: string }> {
+  const [{ toJpeg }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")]);
+
+  const dataUrl = await toJpeg(node, {
+    // Le certificat n'utilise que des polices système : on n'embarque pas les polices web, ce qui évite de lire
+    // les feuilles de style externes (SecurityError « Cannot access rules » : CSS d'un autre domaine / extension)
+    skipFonts: true,
+    pixelRatio: 3,
+    quality: 0.95,
+    backgroundColor: "#ffffff",
+    cacheBust: true,
+    style: { boxShadow: "none", margin: "0" },
+  });
+
+  const ratio = node.offsetWidth / node.offsetHeight;
+  const margin = 8;
+
+  const build = (format: PdfFormat) => {
+    const page = PDF_FORMATS[format];
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: format.toLowerCase() });
+    const maxWidth = page.width - margin * 2;
+    const maxHeight = page.height - margin * 2;
+
+    let width = maxWidth;
+    let height = width / ratio;
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * ratio;
+    }
+
+    pdf.addImage(dataUrl, "JPEG", (page.width - width) / 2, (page.height - height) / 2, width, height, undefined, "FAST");
+
+    // « data:application/pdf;filename=generated.pdf;base64,XXXX » → on ne garde que le base64
+    const uri = pdf.output("datauristring");
+    return uri.slice(uri.indexOf(",") + 1);
+  };
+
+  return { pdfA4: build("A4"), pdfA3: build("A3") };
+}
+
 /** Cachet officiel : déposez l'image (PNG fond transparent) dans frontend/public/images/cachet.png. */
 function Cachet() {
   const [missing, setMissing] = useState(false);
@@ -210,9 +284,18 @@ export default function CertificatePage() {
   const [format, setFormat] = useState<PdfFormat>("A4");
   const [downloading, setDownloading] = useState(false);
   const [pdfError, setPdfError] = useState("");
+  /** Arrivée depuis « Délivrer le certificat » (?deliver=1) : envoi automatique par e-mail */
+  const [deliver, setDeliver] = useState(false);
+  const [mailState, setMailState] = useState<MailState>("idle");
+  const [mailTo, setMailTo] = useState("");
+  const [mailError, setMailError] = useState("");
+  const [quickDownload, setQuickDownload] = useState<PdfFormat | null>(null);
+  const deliverStarted = useRef(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
+
+    if (new URLSearchParams(window.location.search).get("deliver") === "1") setDeliver(true);
 
     api
       .get(`/certificates/${params.id}`)
@@ -255,6 +338,75 @@ export default function CertificatePage() {
     setShowFormat(false);
     window.setTimeout(() => window.print(), 150);
   };
+
+  /** Génère les PDF A4 + A3 et les envoie à l'e-mail du titulaire (lu dans la base de données) */
+  const sendByEmail = async () => {
+    const node = document.getElementById("certificate-sheet");
+    if (!node || !item) return;
+
+    setMailState("sending");
+    setMailError("");
+
+    try {
+      await waitForCertificateAssets(node);
+      const pdfs = await buildCertificatePdfsBase64(node);
+      const res = await api.post(`/certificates/${item.id}/send-email`, pdfs, { timeout: 120000 });
+      const data = res.data ?? {};
+
+      setMailTo(String(data.email ?? item.holderEmail ?? ""));
+
+      if (data.sent) setMailState("sent");
+      else if (data.reason === "NO_EMAIL") setMailState("no_email");
+      else if (data.reason === "MAIL_NOT_CONFIGURED") setMailState("not_configured");
+      else {
+        setMailError(data.detail ? String(data.detail) : "");
+        setMailState("failed");
+      }
+    } catch (err) {
+      console.error("Erreur envoi e-mail certificat:", err);
+      setMailError(errorMessage(err, "L'envoi par e-mail a échoué."));
+      setMailState("failed");
+    }
+  };
+
+  /** Téléchargement direct (bandeau de délivrance) : même PDF que « Télécharger PDF » */
+  const quickDownloadPdf = async (fmt: PdfFormat) => {
+    const node = document.getElementById("certificate-sheet");
+    if (!node || !item) return;
+
+    setQuickDownload(fmt);
+    setPdfError("");
+
+    try {
+      await waitForCertificateAssets(node);
+      await downloadCertificatePdf(node, fmt, `certificat-${item.code}-${fmt}.pdf`);
+    } catch (err) {
+      console.error("Erreur PDF:", err);
+      setPdfError("Impossible de générer le PDF. Vérifiez que « jspdf » et « html-to-image » sont installés (npm install).");
+    } finally {
+      setQuickDownload(null);
+    }
+  };
+
+  // Juste après la délivrance : envoi automatique à l'e-mail du titulaire (une seule fois), ou signal s'il n'en a pas
+  useEffect(() => {
+    if (!deliver || !item || deliverStarted.current) return;
+    deliverStarted.current = true;
+
+    // L'adresse est retirée de l'URL : un rafraîchissement de la page ne renvoie pas l'e-mail
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+
+    if (item.revokedAt) return;
+
+    if (!item.holderEmail?.trim()) {
+      setMailState("no_email");
+      return;
+    }
+
+    setMailTo(item.holderEmail.trim());
+    void sendByEmail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliver, item]);
 
   const handleDownload = async () => {
     const node = document.getElementById("certificate-sheet");
@@ -316,6 +468,86 @@ export default function CertificatePage() {
             </button>
           </div>
         </div>
+
+
+        {/* Délivrance : état de l'envoi automatique par e-mail (A4 + A3) */}
+        {item && mailState !== "idle" && (
+          <div className="mx-auto mb-4 max-w-4xl print:hidden" role="status" aria-live="polite">
+            {mailState === "sending" && (
+              <div className="flex items-center gap-3 rounded-2xl px-5 py-3 text-sm font-medium" style={{ backgroundColor: "#1d4ed8", border: "2px solid #bfdbfe", color: "#ffffff" }}>
+                <Loader2 className="h-5 w-5 shrink-0 animate-spin" style={{ color: "#ffffff" }} />
+                <span>
+                  Envoi du certificat en PDF (A4 et A3) à <strong>{mailTo}</strong>…
+                </span>
+              </div>
+            )}
+
+            {mailState === "sent" && (
+              <div className="flex items-center gap-3 rounded-2xl px-5 py-3 text-sm font-medium" style={{ backgroundColor: "#1d4ed8", border: "2px solid #bfdbfe", color: "#ffffff" }}>
+                <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color: "#ffffff" }} />
+                <span>
+                  Certificat envoyé par e-mail à <strong>{mailTo}</strong> : un fichier PDF A4 et un fichier PDF A3 en pièces jointes.
+                </span>
+              </div>
+            )}
+
+            {(mailState === "no_email" || mailState === "not_configured" || mailState === "failed") && (
+              <div className="rounded-2xl px-5 py-4 text-sm font-medium" style={{ backgroundColor: "#1d4ed8", border: "2px solid #bfdbfe", color: "#ffffff" }}>
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: "#ffffff" }} />
+                  <div className="space-y-1">
+                    {mailState === "no_email" && (
+                      <>
+                        <p className="font-semibold">Aucune adresse e-mail dans la base de données pour {item.holderName}.</p>
+                        <p>Le certificat n&apos;a pas pu être envoyé automatiquement. Téléchargez-le ici et remettez-le à la personne.</p>
+                      </>
+                    )}
+                    {mailState === "not_configured" && (
+                      <>
+                        <p className="font-semibold">L&apos;envoi d&apos;e-mail n&apos;est pas configuré sur le serveur.</p>
+                        <p>Le certificat n&apos;a pas été envoyé à {mailTo || "l'adresse du titulaire"}. Téléchargez-le ici (voir SMTP_USER / SMTP_PASS).</p>
+                      </>
+                    )}
+                    {mailState === "failed" && (
+                      <>
+                        <p className="font-semibold">L&apos;envoi à {mailTo || "l'adresse du titulaire"} a échoué.</p>
+                        <p>{mailError || "Réessayez, ou téléchargez le certificat ici."}</p>
+                      </>
+                    )}
+                    {pdfError && <p className="font-bold" style={{ color: "#fecaca" }}>{pdfError}</p>}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 pl-8">
+                  {(Object.keys(PDF_FORMATS) as PdfFormat[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => void quickDownloadPdf(key)}
+                      disabled={quickDownload !== null}
+                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-80 disabled:opacity-60"
+                      style={{ backgroundColor: "#ffffff", border: "2px solid #ffffff", color: "#1d4ed8" }}
+                    >
+                      {quickDownload === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      Télécharger {key}
+                    </button>
+                  ))}
+
+                  {mailState === "failed" && (
+                    <button
+                      type="button"
+                      onClick={() => void sendByEmail()}
+                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition hover:opacity-80"
+                      style={{ backgroundColor: "#ffffff", border: "2px solid #ffffff", color: "#1d4ed8" }}
+                    >
+                      <Mail className="h-4 w-4" /> Réessayer l&apos;envoi
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="text-center text-red-600">{error}</p>}
 

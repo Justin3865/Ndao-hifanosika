@@ -6,6 +6,7 @@ from . import db
 from .routes_insights import router as insights_router
 from .routes_monitoring import router as monitoring_router
 from .routes_aliases import router as aliases_router
+from .routes_anomalies import router as anomalies_router
 
 app = FastAPI(
     title="Ndao Hifanosika AI Service",
@@ -19,6 +20,8 @@ app.include_router(insights_router)
 app.include_router(monitoring_router)
 # Alias §9.2 (/ai/...) et scores individuels (risque d'abandon, performance)
 app.include_router(aliases_router)
+# POST /v1/anomalies (Isolation Forest) : route appelée par le backend (detectWithAiService)
+app.include_router(anomalies_router)
 
 
 class HealthResponse(BaseModel):

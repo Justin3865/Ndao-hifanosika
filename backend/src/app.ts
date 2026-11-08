@@ -20,6 +20,7 @@ import elevationRoutes from "./routes/elevation.routes";
 import internshipsRoutes from "./routes/internships.routes";
 import internshipOffersRoutes from "./routes/internshipOffers.routes";
 import reportsRoutes from "./routes/reports.routes";
+import departmentDashboardRoutes from "./routes/departmentDashboard.routes"; // [dashboard-departement]
 import notificationsRoutes from "./routes/notifications.routes";
 import aiRoutes from "./routes/ai.routes";
 import aiExtraRoutes from "./routes/aiExtra.routes";
@@ -52,6 +53,7 @@ import retentionRoutes from "./routes/retention.routes";
 import projectCoordinatorsRoutes from "./routes/projectCoordinators.routes";
 import metricsRoutes from "./routes/metrics.routes";
 import narrativeRoutes from "./routes/narrative.routes";
+import aiDropoutRoutes from "./routes/aiDropout.routes";
 import { perfMiddleware } from "./middlewares/perf.middleware";
 import { queueStats } from "./utils/jobQueue";
 import { errorMiddleware } from "./middlewares/error.middleware";
@@ -144,10 +146,12 @@ app.use("/api/elevation", elevationRoutes);
 app.use("/api/internships", internshipsRoutes);
 app.use("/api/internship-offers", internshipOffersRoutes);
 app.use("/api/reports", reportsRoutes);
+app.use("/api/dashboard", departmentDashboardRoutes); // [dashboard-departement]
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/ai", aiExtraRoutes);
 app.use("/api/ai", narrativeRoutes);
+app.use("/api/ai", aiDropoutRoutes); // POST /dropout/train, GET /dropout/report
 app.use("/api/lookups", lookupsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/settings", settingsRoutes);

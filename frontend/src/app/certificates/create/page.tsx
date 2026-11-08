@@ -766,7 +766,7 @@ export default function CreateCertificatePage() {
       const updated: string[] = res.data?.profileUpdated ?? [];
       if (updated.length > 0) toast.info(`Base de données complétée : ${updated.join(", ")}.`);
 
-      router.push(`/certificates/${res.data.data.id}`);
+      router.push(`/certificates/${res.data.data.id}?deliver=1`);
     } catch (err) {
       setError(errorMessage(err, "Délivrance impossible."));
     } finally {

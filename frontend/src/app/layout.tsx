@@ -5,6 +5,7 @@ import { SettingsProvider } from "@/components/providers/settings-provider";
 import { MissionProvider } from "@/components/mission/MissionProvider";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { AutoTranslate } from "@/components/i18n/AutoTranslate";
+import { OfflineSupport } from "@/components/offline/OfflineSupport";
 
 export const metadata: Metadata = {
   title: {
@@ -33,6 +34,9 @@ export const metadata: Metadata = {
   ],
 
   creator: "Ndao Hifanosika",
+
+  // PWA : installable + mode hors ligne (public/manifest.webmanifest, public/sw.js)
+  manifest: "/manifest.webmanifest",
 
   // Favicon + icône Apple : on utilise le logo existant dans public/logos/
   icons: {
@@ -69,6 +73,7 @@ export default function RootLayout({
             <MissionProvider>{children}</MissionProvider>
           </I18nProvider>
         </SettingsProvider>
+        <OfflineSupport />
       </body>
     </html>
   );

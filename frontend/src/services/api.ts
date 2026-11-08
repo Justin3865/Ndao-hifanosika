@@ -3,6 +3,7 @@ import axios, {
   AxiosInstance,
   AxiosRequestConfig,
 } from "axios";
+import { isOffline, offlineWriteError } from "@/lib/offline";
 
 // ============================================================
 // CONFIGURATION
@@ -145,6 +146,12 @@ class ApiService {
 
     this.client.interceptors.request.use(
       (config) => {
+        // Hors ligne : lecture seule (voir lib/offline.ts) : on refuse l'écriture avec un message clair.
+        const offlineMethod = (config.method ?? "get").toLowerCase();
+        if (isOffline() && offlineMethod !== "get" && offlineMethod !== "head" && !String(config.url ?? "").includes("/auth/logout")) {
+          throw offlineWriteError();
+        }
+
         const token = this.getToken();
 
         if (token) {

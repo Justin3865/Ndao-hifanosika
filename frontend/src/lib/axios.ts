@@ -7,6 +7,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 import { authService } from "@/services/auth.service";
+import { isOffline, offlineWriteError } from "@/lib/offline";
 
 // ============================================================
 // CONFIGURATION
@@ -61,6 +62,13 @@ const axiosInstance: AxiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // Hors ligne : lecture seule. Une écriture mise en attente puis rejouée plus tard violerait les règles
+    // métier (ex. pointage du jour 08h–17h, heure serveur) ; on refuse donc avec un message clair.
+    const method = (config.method ?? "get").toLowerCase();
+    if (isOffline() && method !== "get" && method !== "head" && !String(config.url ?? "").includes("/auth/logout")) {
+      throw offlineWriteError();
+    }
+
     if (typeof window !== "undefined") {
       const accessToken = localStorage.getItem("accessToken");
 
