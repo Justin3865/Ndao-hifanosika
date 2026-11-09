@@ -122,6 +122,7 @@ async function downloadCertificatePdf(node: HTMLElement, format: PdfFormat, file
 
   // Capture nette du certificat (sans l'ombre de l'écran)
   const dataUrl = await toPng(node, {
+    skipFonts: true, // évite le SecurityError « Cannot access rules » (feuilles de style externes)
     pixelRatio: 3,
     backgroundColor: "#ffffff",
     cacheBust: true,
@@ -764,14 +765,15 @@ export default function CertificatePage() {
                       {/* Date + heure : minutes et secondes comprises */}
                       <div className="text-center text-xs">
                         <p>Fait à {ORG.city}, le <strong>{formatIssued(item.createdAt).date}</strong></p>
-                        <p className="mt-0.5 text-[11px] text-gray-500">
+                        {/* Heure alignée à droite : les secondes tombent sous le dernier chiffre de la date (« 6 » de 2026) */}
+                        <p className="mt-0.5 text-right text-[11px] text-gray-500">
                           à <strong className="font-mono text-gray-700">{formatIssued(item.createdAt).time}</strong>
                         </p>
                       </div>
                       <div className="flex items-center gap-5">
                         {/* Cachet réduit à 144 px, décalé à droite de 56 px et remonté de 22 px :
                             son bord inférieur est aligné sur la ligne « Ndao Hifanosika ». */}
-                        <div className="relative -my-6 translate-x-14 -translate-y-[22px]">
+                        <div className="relative -my-6 translate-x-[calc(3.5rem+0.5cm)] -translate-y-[22px]">
                           <Cachet />
                         </div>
                         <div className="text-center text-xs">
@@ -779,7 +781,7 @@ export default function CertificatePage() {
                           <div className="flex h-16 w-48 items-end justify-center border-b border-gray-400 pb-0.5">
                             <Signature />
                           </div>
-                          <p className="mt-1 font-semibold text-gray-800">La Direction</p>
+                          <p className="mt-1 font-semibold text-gray-800">Le responsable</p>
                           <p className="text-gray-500">{ORG.name}</p>
                         </div>
                       </div>

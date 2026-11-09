@@ -263,7 +263,7 @@ const defaultReports: Report[] = [
       "Au premier semestre 2026, les différents programmes de Ndao Hifanosika ont enregistré une progression globale satisfaisante. Les bénéficiaires actifs représentent 68 personnes et le taux de réussite consolidé atteint 81 %.",
 
     observations:
-      "La Direction recommande de renforcer le suivi des bénéficiaires présentant des signes de décrochage et de maintenir les campagnes d'évaluation périodiques des équipes.",
+      "Le responsable de renforcer le suivi des bénéficiaires présentant des signes de décrochage et de maintenir les campagnes d'évaluation périodiques des équipes.",
 
     createdAt: "2026-07-05T08:00:00.000Z",
     updatedAt: "2026-07-06T08:00:00.000Z",
