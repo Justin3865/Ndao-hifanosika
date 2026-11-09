@@ -6,6 +6,7 @@ Deux modes de données :
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -41,6 +42,10 @@ class InsightsRequest(BaseModel):
 
 def check_key(key: str | None) -> None:
     expected = service_key()
+    # AI_REQUIRE_KEY=1 (à activer en production) : sans clé configurée, le service REFUSE tout au lieu
+    # de répondre à n'importe qui. Sans cette variable, le comportement historique est conservé.
+    if not expected and os.getenv("AI_REQUIRE_KEY", "").strip().lower() in {"1", "true", "yes", "on"}:
+        raise HTTPException(status_code=503, detail="AI_SERVICE_KEY n'est pas configurée sur le service IA.")
     if expected and key != expected:
         raise HTTPException(status_code=401, detail="Clé de service invalide.")
 

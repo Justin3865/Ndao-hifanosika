@@ -1,8 +1,9 @@
 import { logger } from "../config/logger";
+import { isEmailConfigured, sendEmail as sendMail } from "../utils/mailer";
 
 /**
- * Envoi réel des messages : e-mail (Resend) et SMS (Twilio).
- * Variables .env : RESEND_API_KEY, RESET_EMAIL_FROM,
+ * Envoi réel des messages : e-mail (Gmail SMTP ou Resend, via utils/mailer) et SMS (Twilio).
+ * Variables .env : SMTP_USER, SMTP_PASS (ou RESEND_API_KEY, RESET_EMAIL_FROM),
  *                  TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM
  */
 
@@ -19,15 +20,9 @@ export function normalizePhone(raw: string): string | null {
 export const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 export async function sendEmail(to: string, subject: string, text: string): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESET_EMAIL_FROM;
-  if (!apiKey || !from) throw new Error("EMAIL_NOT_CONFIGURED");
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [to], subject, text }),
-  });
-  if (!response.ok) throw new Error(`EMAIL_HTTP_${response.status}`);
+  if (!isEmailConfigured()) throw new Error("EMAIL_NOT_CONFIGURED");
+  const ok = await sendMail(to, subject, text);
+  if (!ok) throw new Error("EMAIL_SEND_FAILED");
 }
 
 export async function sendSms(to: string, body: string): Promise<void> {
@@ -55,7 +50,7 @@ export async function deliverToUser(
   message: string,
 ): Promise<void> {
   const tasks: Promise<void>[] = [];
-  if (user.email && process.env.RESEND_API_KEY) {
+  if (user.email && isEmailConfigured()) {
     tasks.push(sendEmail(user.email, `${title} — Ndao Hifanosika`, message));
   }
   if (user.phone && process.env.TWILIO_ACCOUNT_SID) {

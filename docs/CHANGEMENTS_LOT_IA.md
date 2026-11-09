@@ -17,3 +17,19 @@
 - `npm run typecheck` / `npm run build` du backend avec les vraies dépendances ; test HTTP réel de `POST /v1/anomalies` et de `/api/ai/dropout/*` (FastAPI, PostgreSQL absents ici).
 - Le modèle d'abandon ne sera « retenu » qu'avec de vraies données (≥ 30 parcours clos) : sur le jeu fictif de la démonstration le verdict est « non concluant », ce qui est le comportement attendu de la règle de décision.
 - Le synthèse LLM reste inactive sans `LLM_API_KEY` et `LLM_MODEL`.
+
+---
+# Lot 2 — anomalies, vérification avant la note, bouton d'entraînement, chatbot (ajouts uniquement)
+
+| Ajout | Fichiers |
+|---|---|
+| Bouton « Entraîner le modèle d'abandon » (Analyses IA › Modèles) | `srcf/src/components/ai-charts/DropoutTrainCard.tsx` + 2 lignes dans `app/ai/models/page.tsx` |
+| 25 nouveaux types d'anomalies (stagiaires, bénéficiaires, projets/activités, jours non ouvrables) | `srcb/src/utils/extraAnomalyRules.ts`, `services/anomalyCatalogExtra.ts`, `services/extraAnomalies.service.ts` ; catalogue : 1 import + 4 lignes ; `insights.service.ts` : `runAnalysis` enveloppe l'ancienne (renommée `runAnalysisCore`) |
+| Porte « anomalies → note » (routes + décisions + recommandation) | `routes/noteAnomalies.routes.ts`, `services/noteAnomaly.service.ts`, `services/noteDecisions.ts`, 2 lignes dans `app.ts` |
+| Page « Anomalies & note » | `srcf/src/app/note-anomalies/page.tsx`, 1 règle dans `lib/access.ts`, 1 entrée dans `Sidebar.tsx` |
+| Chatbot | `services/anomalyChat.service.ts`, 3 lignes dans `ml/chatbot.ts`, 1 ligne dans `ml.controller.ts` |
+| Tests | `srcb/test/extra-anomaly-rules.test.ts` (10 tests), `tsconfig.test.json` |
+| Docs / env | `docs/ANOMALIES_ET_NOTE.md`, 3 variables optionnelles dans `deploy/.env.prod.example` |
+
+Vérifié : 10 tests des règles (jours fériés 2026, présence un jour férié, GPS, bénéficiaires, projets, pénalité) réussis ; aucune erreur de type dans les fichiers ajoutés
+(vérification partielle : dépendances npm absentes). Non vérifié : exécution réelle contre PostgreSQL, navigateur, service IA et chatbot en conditions réelles.

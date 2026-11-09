@@ -282,8 +282,34 @@ model Milestone {
   updatedAt   DateTime  @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverables MilestoneDeliverable[]
 
   @@index([projectId])
+}
+
+/// LOT 3 · livrables attendus par jalon (cahier §5.2). Statuts : PLANNED | DELIVERED | VALIDATED | REJECTED
+model MilestoneDeliverable {
+  id            Int       @id @default(autoincrement())
+  milestoneId   Int
+  title         String
+  description   String?
+  dueDate       DateTime?
+  status        String    @default("PLANNED")
+  fileUrl       String?
+  deliveredAt   DateTime?
+  deliveredById Int?
+  validatedAt   DateTime?
+  validatedById Int?
+  reviewComment String?
+  createdById   Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  @@index([milestoneId])
+  @@index([status])
+  @@map("milestone_deliverables")
 }
 
 model Beneficiary {

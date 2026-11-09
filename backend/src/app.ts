@@ -21,6 +21,9 @@ import internshipsRoutes from "./routes/internships.routes";
 import internshipOffersRoutes from "./routes/internshipOffers.routes";
 import reportsRoutes from "./routes/reports.routes";
 import departmentDashboardRoutes from "./routes/departmentDashboard.routes"; // [dashboard-departement]
+import { httpsGuard } from "./middlewares/httpsGuard.middleware"; // [lot-c-securite]
+import { globalRateLimit } from "./middlewares/globalRateLimit.middleware"; // [lot-c-securite]
+import { readTrustProxy } from "./utils/securityConfig"; // [lot-c-securite]
 import notificationsRoutes from "./routes/notifications.routes";
 import aiRoutes from "./routes/ai.routes";
 import aiExtraRoutes from "./routes/aiExtra.routes";
@@ -54,6 +57,10 @@ import projectCoordinatorsRoutes from "./routes/projectCoordinators.routes";
 import metricsRoutes from "./routes/metrics.routes";
 import narrativeRoutes from "./routes/narrative.routes";
 import aiDropoutRoutes from "./routes/aiDropout.routes";
+import noteAnomaliesRoutes from "./routes/noteAnomalies.routes";
+import kpiRoutes from "./routes/kpi.routes";
+import milestoneDeliverablesRoutes from "./routes/milestoneDeliverables.routes";
+import performanceDropRoutes from "./routes/performanceDrop.routes";
 import { perfMiddleware } from "./middlewares/perf.middleware";
 import { queueStats } from "./utils/jobQueue";
 import { errorMiddleware } from "./middlewares/error.middleware";
@@ -68,6 +75,13 @@ import { personEvaluationsRouter } from "./routes/personEvaluations.routes";
 
 const app = express();
 
+// [lot-c-securite] Derrière un proxy TLS : TRUST_PROXY=1 (sans effet si la variable est absente)
+const trustProxy = readTrustProxy(process.env);
+if (trustProxy !== undefined) app.set("trust proxy", trustProxy);
+
+// [lot-c-securite] HTTPS obligatoire si FORCE_HTTPS=1 (sans effet sinon)
+app.use(httpsGuard);
+
 app.use(
   cors({
     origin: env.CORS_ORIGIN.split(",").map((value) => value.trim()),
@@ -76,6 +90,25 @@ app.use(
 );
 
 app.use(helmet());
+
+// [lot-c-securite] Connectivité limitée (§6) : compression gzip des réponses (ETag déjà fourni par Express).
+// Chargée seulement si le paquet « compression » est installé : sans lui, le serveur fonctionne comme avant.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const compression = require("compression") as (options?: Record<string, unknown>) => express.RequestHandler;
+  app.use(
+    compression({
+      threshold: 1024,
+      filter: (req: express.Request, res: express.Response) =>
+        String(res.getHeader("Content-Type") ?? "").includes("text/event-stream") ? false : req.headers["x-no-compression"] ? false : true,
+    }),
+  );
+} catch {
+  /* paquet absent : npm install compression */
+}
+
+// [lot-c-securite] Limitation globale du débit par IP (réglable, voir utils/securityConfig.ts)
+app.use(globalRateLimit);
 
 // Mesure des temps de réponse (cible < 500 ms hors IA)
 app.use(perfMiddleware);
@@ -152,6 +185,10 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/ai", aiExtraRoutes);
 app.use("/api/ai", narrativeRoutes);
 app.use("/api/ai", aiDropoutRoutes); // POST /dropout/train, GET /dropout/report
+app.use("/api/note-anomalies", noteAnomaliesRoutes); // anomalies de présence -> vérification -> note
+app.use("/api/kpi", kpiRoutes); // indicateurs §13 (lecture seule)
+app.use("/api/milestone-deliverables", milestoneDeliverablesRoutes); // livrables par jalon (§5.2)
+app.use("/api/performance-drop", performanceDropRoutes); // alerte RH performance en baisse (§5.3)
 app.use("/api/lookups", lookupsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/settings", settingsRoutes);

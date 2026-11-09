@@ -40,7 +40,7 @@ test("le dictionnaire existant fait foi : toute phrase qu'il contient est tradui
 test("aucune faute de frappe connue, aucune traduction identique au français", () => {
   assert.ok(!Object.values(PHRASES_MG).includes("Hhamarinina"));
   // Identiques à dessein : noms propres, emprunts, abréviations de mois.
-  const SAME_ON_PURPOSE = new Set(["Fokontany", "Jan", "Mar", "Licence 3", "Master 2", "Logo", "Malagasy", "ONG Ndao Hifanosika", "Stage", "Stagiaire"]);
+  const SAME_ON_PURPOSE = new Set(["Fokontany", "Jan", "Mar", "Licence 3", "Master 2", "Logo", "Malagasy", "ONG Ndao Hifanosika", "Stage", "Stagiaire", "Mémoire"]);
   for (const [k, v] of Object.entries(PHRASES_MG)) {
     if (SAME_ON_PURPOSE.has(k)) continue;
     assert.notEqual(normalizeKey(k), normalizeKey(v), `identique : ${k}`);

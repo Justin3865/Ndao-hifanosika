@@ -36,6 +36,7 @@ router.get("/", authorizeRoles("ADMIN", "DSI"), async (req: Request, res: Respon
         id: row.id,
         action: row.action,
         entity: row.entity,
+        entityId: row.entityId,
         details: row.details,
         ipAddress: row.ipAddress,
         createdAt: row.createdAt,

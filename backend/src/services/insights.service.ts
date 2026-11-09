@@ -1,3 +1,4 @@
+import { extraAnomaliesSafe } from "./extraAnomalies.service";
 import { prisma } from "../config/database";
 import { fetchLive } from "./pyLive.service";
 import { analyzeWithPython } from "./pyservices.service";
@@ -419,7 +420,7 @@ function mergeAnomalies(base: AnomalyRow[], extra: AnomalyRow[]): AnomalyRow[] {
  * Le pont ajoute : score de performance combiné, anomalies « stagiaire / S&E / évaluation finale » et synthèse enrichie.
  * S'il échoue, le résultat de base est renvoyé tel quel (aucune régression).
  */
-export async function runAnalysis(data: Data): Promise<Analysis> {
+async function runAnalysisCore(data: Data): Promise<Analysis> {
   const analysis = await runBaseAnalysis(data);
   const snapshot = await getIntegrationSafe();
   if (!snapshot) return analysis;
@@ -434,6 +435,33 @@ export async function runAnalysis(data: Data): Promise<Analysis> {
     performance: overlayPerformance(analysis.performance, snapshot),
     summary: overlaySummary(analysis.summary, snapshot, added),
   };
+}
+
+/**
+ * AJOUT : analyse complète + anomalies complémentaires (présences un jour non ouvrable, stagiaires, bénéficiaires,
+ * projets). Si ce complément échoue, le résultat de runAnalysisCore est renvoyé tel quel (aucune régression).
+ */
+export async function runAnalysis(data: Data): Promise<Analysis> {
+  const core = await runAnalysisCore(data);
+
+  try {
+    const extra = await extraAnomaliesSafe();
+    if (!extra.length) return core;
+
+    const anomalies = mergeAnomalies(core.anomalies, extra);
+    const summary = {
+      ...core.summary,
+      counters: {
+        ...core.summary.counters,
+        anomalies: anomalies.length,
+        criticalAnomalies: anomalies.filter((row) => row.severity === "HIGH").length,
+      },
+    };
+
+    return { ...core, anomalies, summary };
+  } catch {
+    return core;
+  }
 }
 
 /** Service Python (lecture directe de la base, puis données envoyées) ; calcul local si indisponible. */

@@ -31,6 +31,15 @@ const DEFAULT_USER_PASSWORD = "password";
 // ============================================================
 
 async function main() {
+  // Garde-fou : le seed SUPPRIME toutes les données puis crée des comptes aux mots de passe connus
+  // (« admin » / « password »). Il ne doit jamais tourner sur une base de production par erreur.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_SEED_IN_PRODUCTION !== "1") {
+    throw new Error(
+      "Seed refusé : NODE_ENV=production. Il efface toutes les données et crée des comptes de démonstration. " +
+        "Utilisez prisma/create-admin.ts, ou définissez ALLOW_SEED_IN_PRODUCTION=1 si c'est volontaire.",
+    );
+  }
+
   console.log("🌱 Début du seed...\n");
 
   // ============================================================

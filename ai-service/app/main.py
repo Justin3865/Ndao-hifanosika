@@ -1,9 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from pydantic import BaseModel, Field
 
 from . import config  # noqa: F401  (charge DATABASE_URL / AI_SERVICE_KEY depuis backend/.env si besoin)
 from . import db
-from .routes_insights import router as insights_router
+from .routes_insights import check_key, router as insights_router
 from .routes_monitoring import router as monitoring_router
 from .routes_aliases import router as aliases_router
 from .routes_anomalies import router as anomalies_router
@@ -51,7 +51,8 @@ def health():
 
 
 @app.post("/v1/summary", tags=["analysis"])
-def summarize(record: NumericRecord):
+def summarize(record: NumericRecord, x_service_key: str | None = Header(default=None)):
+    check_key(x_service_key)
     values = record.values
     return {
         "count": len(values),

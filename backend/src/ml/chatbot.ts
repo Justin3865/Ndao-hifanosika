@@ -1,5 +1,6 @@
 import { prisma } from "../config/database";
 import { db } from "../utils/db";
+import { answerAnomalyQuestion } from "../services/anomalyChat.service";
 import { haversineKm, normalizeText } from "./geo";
 import { ScoredHousehold, listModels, scoreHouseholds, trainVulnerabilityModels } from "./vulnerability";
 
@@ -70,11 +71,15 @@ function nearestStaff(h: ScoredHousehold, staff: Staff[]) {
   return ranked[0] ?? null;
 }
 
-export async function answerQuestion(message: string, role?: string): Promise<ChatAnswer> {
+export async function answerQuestion(message: string, role?: string, userId?: number): Promise<ChatAnswer> {
   const raw = message.trim();
   const text = normalizeText(raw);
   const mg = /\b(ny|ao|aiza|firy|izay|mpiasa|tena|marefo|mahantra|ampitaha|fampitahana|haavo|akaiky|halavirana)\b/.test(text);
   const L = (fr: string, malagasy: string) => (mg ? malagasy : fr);
+
+  // AJOUT : questions sur les anomalies / jours non ouvrables / vérification avant la note (null = autre sujet).
+  const anomalyAnswer = await answerAnomalyQuestion(text, mg, role, userId).catch(() => null);
+  if (anomalyAnswer) return anomalyAnswer;
 
   const [households, staff, zones] = await Promise.all([
     scoreHouseholds(),

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { BrainCircuit, Loader2, Play, Trash2 } from "lucide-react";
 import api from "@/lib/axios";
 import { DatasetsLab } from "@/components/ai-charts/DatasetsLab";
+import { DropoutTrainCard } from "@/components/ai-charts/DropoutTrainCard";
 import { ModelsLab } from "@/components/ai-charts/ModelsLab";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader } from "@/components/insights/parts";
@@ -172,6 +173,8 @@ export default function ModelsPage() {
             ))}
           </div>
         </details>
+
+        <DropoutTrainCard />
 
         <DatasetsLab onChanged={() => void load()} />
 

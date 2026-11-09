@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   Bell,
   Award,
@@ -69,6 +70,8 @@ const groups = [
       { href: "/beneficiaries", label: "Bénéficiaires", icon: Heart },
       { href: "/parcours", label: "Parcours", icon: Flag },
       { href: "/presences", label: "Présences", icon: CalendarCheck },
+      { href: "/note-anomalies", label: "Anomalies & note", icon: AlertTriangle },
+      { href: "/milestones/deliverables", label: "Livrables des jalons", icon: Flag },
       { href: "/consentements", label: "Consentements", icon: ShieldCheck },
       { href: "/follow-ups", label: "Suivi post-programme", icon: CalendarClock },
       // « Évaluations » regroupe aussi « Évaluation finale » et « Ordre de mérite » (onglets de la rubrique)

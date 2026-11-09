@@ -11,7 +11,7 @@ import { retentionCutoffs, retentionPolicy } from "../utils/gapRules";
  * (bénéficiaires, projets, évaluations, stages) : uniquement des journaux techniques
  * dont la conservation illimitée n'a pas de justification.
  */
-function targets() {
+export function targets() {
   const policy = retentionPolicy();
   const c = retentionCutoffs(policy);
   return {

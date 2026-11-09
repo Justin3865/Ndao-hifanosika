@@ -749,7 +749,7 @@ export async function forgotPassword(req: Request, res: Response): Promise<Respo
       : "sms";
 
     if (channel === "email" && !isEmailConfigured()) {
-      return res.status(503).json({ success: false, code: "EMAIL_DELIVERY_UNAVAILABLE", message: "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY / RESET_EMAIL_FROM). Contactez l'administrateur." });
+      return res.status(503).json({ success: false, code: "EMAIL_DELIVERY_UNAVAILABLE", message: "L'envoi d'e-mail n'est pas configuré (SMTP_USER / SMTP_PASS). Contactez l'administrateur." });
     }
     if (channel === "sms" && !isSmsConfigured()) {
       return res.status(503).json({ success: false, code: "SMS_DELIVERY_UNAVAILABLE", message: "L'envoi de SMS n'est pas configuré. Contactez l'administrateur." });
@@ -794,7 +794,7 @@ export async function forgotPassword(req: Request, res: Response): Promise<Respo
         success: false,
         code: channel === "email" ? "EMAIL_DELIVERY_UNAVAILABLE" : "SMS_DELIVERY_UNAVAILABLE",
         message: channel === "email"
-          ? "L'e-mail n'a pas pu être envoyé. Vérifiez la configuration Resend ou réessayez plus tard."
+          ? "L'e-mail n'a pas pu être envoyé. Vérifiez la configuration e-mail (SMTP) ou réessayez plus tard."
           : "Le SMS n'a pas pu être envoyé (aucun numéro enregistré ou service indisponible).",
       });
     }

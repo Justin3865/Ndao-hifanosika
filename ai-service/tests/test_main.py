@@ -193,3 +193,24 @@ def test_live_endpoints_answer_503_without_database(monkeypatch):
 
     monkeypatch.setattr(db, "fetch_dataset", unavailable)
     assert client.get("/v1/live/insights").status_code == 503
+
+# ---------------------------------------------------------------------------
+# Lot C : clé de service sur TOUTES les routes d'analyse et mode « clé obligatoire »
+# ---------------------------------------------------------------------------
+def test_summary_requires_key_when_configured(monkeypatch):
+    monkeypatch.setenv("AI_SERVICE_KEY", "secret")
+    body = {"values": [1, 2, 6]}
+    assert client.post("/v1/summary", json=body).status_code == 401
+    assert client.post("/v1/summary", json=body, headers={"x-service-key": "mauvaise"}).status_code == 401
+    assert client.post("/v1/summary", json=body, headers={"x-service-key": "secret"}).status_code == 200
+
+
+def test_require_key_mode_refuses_when_no_key_is_configured(monkeypatch):
+    # AI_SERVICE_KEY absente (fixture autouse) + AI_REQUIRE_KEY=1 : refus au lieu d'ouvrir le service
+    monkeypatch.setenv("AI_REQUIRE_KEY", "1")
+    assert client.post("/v1/summary", json={"values": [1]}).status_code == 503
+
+
+def test_without_require_key_mode_legacy_behaviour_is_unchanged():
+    assert client.post("/v1/summary", json={"values": [1]}).status_code == 200
+    assert client.get("/health").status_code == 200  # /health reste public (sonde d'orchestration)

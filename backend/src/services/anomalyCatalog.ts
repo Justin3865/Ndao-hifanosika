@@ -1,3 +1,4 @@
+import { EXTRA_ANOMALY_TYPES } from "./anomalyCatalogExtra";
 /**
  * Catalogue des types d'anomalies (identique à celui du service Python : GET /v1/anomalies/catalog).
  * Sert à afficher libellés et règles même si le service Python est arrêté.
@@ -330,6 +331,11 @@ export const ANOMALY_CATALOG: AnomalyType[] = [
     "notifiedTo": "Stagiaire + tuteur + responsable du projet"
   }
 ];
+
+// AJOUT : types d'anomalies complémentaires (présences, stagiaires, bénéficiaires, projets) — jamais de doublon de code.
+for (const extra of EXTRA_ANOMALY_TYPES) {
+  if (!ANOMALY_CATALOG.some((type) => type.code === extra.code)) ANOMALY_CATALOG.push(extra);
+}
 
 export const ANOMALY_LABELS: Record<string, string> = Object.fromEntries(
   ANOMALY_CATALOG.map((type) => [type.code, type.label]),

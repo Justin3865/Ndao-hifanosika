@@ -1262,7 +1262,6 @@ const PAIRS: Array<[string, string]> = [
   ["Format non accepté (PDF, Word, PNG ou JPEG).", "Tsy ekena ny endrika (PDF, Word, PNG na JPEG)."],
   ["Fichier trop volumineux (8 Mo maximum).", "Lehibe loatra ny rakitra (8 Mo faratampony)."],
   ["Télécharger", "Hisintona"],
-  ["Supprimer", "Hamafa"],
   // — Lot 20261115 : fisafidianana ny mpahazo tombontsoa avy amin'ny fanadihadiana (BROUILLON : hodinihin'ny olona matoky ny teny malagasy)
   ["Enquêtes & sélection", "Fanadihadiana & fisafidianana"],
   ["Enquêtes & sélection des bénéficiaires", "Fanadihadiana & fisafidianana ny mpahazo tombontsoa"],

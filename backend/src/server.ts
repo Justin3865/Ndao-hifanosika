@@ -18,6 +18,8 @@ import { startFollowUpScheduler } from "./services/followUp.service";
 import { startAttendanceScheduler } from "./services/attendance.service";
 import { startPresenceScheduler } from "./services/presence.service";
 import { startQueue } from "./utils/jobQueue";
+import { startExtraSchedulers } from "./jobs/extraSchedulers";
+import { runStartupSecurityChecks } from "./services/securityStartup.service";
 
 // Empêche un crash du serveur (donc des ERR_CONNECTION_REFUSED) sur une erreur non gérée
 process.on("unhandledRejection", (reason) => {
@@ -31,6 +33,7 @@ process.on("uncaughtException", (error) => {
 async function startServer() {
   try {
     await connectDatabase();
+    runStartupSecurityChecks(); // avertissements de sécurité (production uniquement)
     await startQueue();
 
     const server = http.createServer(app);
@@ -45,6 +48,7 @@ async function startServer() {
     startFollowUpScheduler();
     startAttendanceScheduler();
     startPresenceScheduler();
+    startExtraSchedulers();
 
     server.listen(env.PORT, () => {
       logger.success(

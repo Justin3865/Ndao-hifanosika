@@ -111,6 +111,8 @@ const ACCESS_RULES: AccessRule[] = [
   { pattern: /^\/coordinateurs(\/|$)/, roles: ["ADMIN", "DIRECTION"] },
   // Présences : séances (miroir de /api/attendance, ADMIN / DIRECTION / COORDINATOR) + pointage GPS journalier (/api/presence, tous les rôles ci-dessous)
   { pattern: /^\/presences(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS, ...STAGIAIRES] },
+  // Anomalies de présence -> vérification avant la note (miroir de /api/note-anomalies ; vérifier = ADMIN, DIRECTION, RH, tuteur)
+  { pattern: /^\/note-anomalies(\/|$)/, roles: ["ADMIN", "DIRECTION", "RH", "DSI", ...TUTEURS, ...STAGIAIRES] },
   // Consentement des tuteurs légaux des mineurs (miroir de /api/consents)
   { pattern: /^\/consentements(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR"] },
   // Objectifs individuels : chacun voit les siens ; les gestionnaires (ADMIN/RH/DIRECTION) voient ceux des autres
