@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, Play, Shuffle, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, LineChart as LineIcon, Loader2, Play, Shuffle, Trash2, X } from "lucide-react";
 import api from "@/lib/axios";
 import { getStoredRole } from "@/lib/access";
 import { errorMessage } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
 import { LearningReport } from "@/components/ai-charts/LearningReport";
+import { CurveReport, VulnerabilityCurves } from "@/components/ai-charts/VulnerabilityCurves";
+import { Modal } from "@/components/ui/Modal";
 
 interface Metrics { accuracy: number; precision: number; recall: number; f1: number; auc: number }
 
@@ -108,6 +110,7 @@ export function DatasetsLab({ onChanged }: { onChanged?: () => void } = {}) {
   const [search, setSearch] = useState("");
   const [shown, setShown] = useState(PAGE);
   const [openRow, setOpenRow] = useState<number | null>(null);
+  const [showCurve, setShowCurve] = useState(false);
 
   const loadKind = useCallback(async (k: Kind) => {
     const [latest, hist] = await Promise.all([api.get(`/ai/datasets/${k}/latest`), api.get(`/ai/datasets/${k}/history`)]);
@@ -203,6 +206,24 @@ export function DatasetsLab({ onChanged }: { onChanged?: () => void } = {}) {
     return q ? source.filter((r) => `${r.name} ${r.context}`.toLowerCase().includes(q)) : source;
   }, [report, list, search]);
 
+  // Courbe ROC / histogramme : calculés sur la liste de TEST (jamais vue pendant l'entraînement)
+  const curveReport: CurveReport | null = useMemo(() => {
+    if (!report?.available) return null;
+    const labeled = report.test.filter((r) => r.label !== null);
+    const models = report.methods.map((m) => {
+      const pts = labeled
+        .map((r) => ({ p: (m.key === "ensemble" ? r.ensemble : r.scores[m.key]) / 100, y: r.label as number }))
+        .filter((o) => Number.isFinite(o.p));
+      return {
+        name: m.name.split(" (")[0],
+        kind: m.key,
+        metrics: m.test,
+        predictions: { probs: pts.map((o) => Math.round(o.p * 1000) / 1000), labels: pts.map((o) => o.y) },
+      };
+    });
+    return { sampleSize: report.counts.test, positives: report.counts.testPositives, folds: 0, reliability: report.reliability, models, baseline: report.baselineTest };
+  }, [report]);
+
   if (loading) return <div className="flex items-center gap-2 p-6 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Chargement des jeux de données…</div>;
   if (error) return <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>;
 
@@ -263,6 +284,15 @@ export function DatasetsLab({ onChanged }: { onChanged?: () => void } = {}) {
             <div className="flex flex-wrap items-center gap-3">
               <h3 className="font-semibold text-gray-900">Résultats sur les données de test</h3>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${RELIABILITY_STYLE[report.reliability]}`}>Fiabilité : {report.reliability.toLowerCase()}</span>
+              {curveReport && (
+                <button
+                  type="button"
+                  onClick={() => setShowCurve(true)}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                >
+                  <LineIcon className="h-3.5 w-3.5" /> Voir la courbe
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -420,6 +450,18 @@ export function DatasetsLab({ onChanged }: { onChanged?: () => void } = {}) {
           </div>
         </details>
       )}
+
+      <Modal isOpen={showCurve} onClose={() => setShowCurve(false)} title="Courbe ROC et histogramme" description={`${report?.title ?? "Jeu de données"} — résultats sur les données de test`} size="xl" className="max-w-6xl">
+        {curveReport && (
+          <VulnerabilityCurves
+            report={curveReport}
+            source="test"
+            unit="lignes"
+            posLabel={meta?.positiveText ? `${meta.positiveText}s` : "Positifs"}
+            negLabel={meta?.negativeText ? `${meta.negativeText}s` : "Négatifs"}
+          />
+        )}
+      </Modal>
     </section>
   );
 }

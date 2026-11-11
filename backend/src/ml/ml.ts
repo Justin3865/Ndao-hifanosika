@@ -292,7 +292,19 @@ export function stratifiedFolds(y: number[], k: number, seed = 1): number[][] {
 
 export type Trainer = (X: Matrix, y: number[]) => (x: number[]) => number;
 
+export interface CrossValidationResult {
+  metrics: Metrics;
+  /** Probabilités prédites HORS-PLI (chaque ménage est prédit par un modèle qui ne l'a jamais vu) */
+  probs: number[];
+  labels: number[];
+}
+
 export function crossValidate(X: Matrix, y: number[], k: number, trainer: Trainer): Metrics {
+  return crossValidateDetailed(X, y, k, trainer).metrics;
+}
+
+/** Comme crossValidate, mais renvoie aussi les probabilités hors-pli (pour tracer courbe ROC et histogramme). */
+export function crossValidateDetailed(X: Matrix, y: number[], k: number, trainer: Trainer): CrossValidationResult {
   const folds = stratifiedFolds(y, k);
   const probs: number[] = [];
   const labels: number[] = [];
@@ -320,5 +332,5 @@ export function crossValidate(X: Matrix, y: number[], k: number, trainer: Traine
     void f;
   });
 
-  return computeMetrics(probs, labels);
+  return { metrics: computeMetrics(probs, labels), probs, labels };
 }

@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, recall_score, roc_auc_score
+from sklearn.metrics import average_precision_score, precision_recall_curve, recall_score, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -126,6 +126,16 @@ def _summary(values: list[float]) -> dict[str, float]:
     return {"mean": round(float(a.mean()), 4), "std": round(float(a.std(ddof=1)) if len(a) > 1 else 0.0, 4)}
 
 
+def _pr_points(y: np.ndarray, score: np.ndarray, step: float = 0.05) -> list[list[float]]:
+    """Courbe précision-rappel lissée : précision maximale atteignable pour un rappel >= r (r = 0, 0.05, ..., 1)."""
+    prec, rec, _ = precision_recall_curve(y, score)
+    pts = []
+    for r in np.arange(0.0, 1.0 + 1e-9, step):
+        m = prec[rec >= r - 1e-12]
+        pts.append([round(float(r), 3), round(float(m.max()) if len(m) else 0.0, 4)])
+    return pts
+
+
 def evaluate(df: pd.DataFrame, seed: int = 42, n_splits: int = 5, repeats: int = 3) -> dict[str, Any]:
     """Validation croisée stratifiée répétée : baseline à règles vs régression logistique vs arbre."""
     d = df.dropna(subset=[LABEL]).reset_index(drop=True)
@@ -135,6 +145,7 @@ def evaluate(df: pd.DataFrame, seed: int = 42, n_splits: int = 5, repeats: int =
     names = ["baseline_rules", *candidates(seed).keys()]
     folds: dict[str, dict[str, list[float]]] = {n: {"pr_auc": [], "auc": [], "recall": []} for n in names}
     used = 0
+    oof: dict[str, tuple[list, list]] = {n: ([], []) for n in names}   # prédictions hors-pli (1re répétition) pour la courbe
     for r in range(repeats):
         cv = StratifiedKFold(n_splits=k, shuffle=True, random_state=seed + r)
         for tr, te in cv.split(X, y):
@@ -143,6 +154,8 @@ def evaluate(df: pd.DataFrame, seed: int = 42, n_splits: int = 5, repeats: int =
             used += 1
             yt = y[te]
             base = rule_scores(d.iloc[te])
+            if r == 0:
+                oof["baseline_rules"][0].extend(yt); oof["baseline_rules"][1].extend(base)
             for name, score, pred in [("baseline_rules", base, (base >= RULE_THRESHOLD).astype(int))]:
                 folds[name]["pr_auc"].append(average_precision_score(yt, score))
                 folds[name]["auc"].append(roc_auc_score(yt, score))
@@ -150,13 +163,19 @@ def evaluate(df: pd.DataFrame, seed: int = 42, n_splits: int = 5, repeats: int =
             for name, model in candidates(seed).items():
                 model.fit(X.iloc[tr], y[tr])
                 p = model.predict_proba(X.iloc[te])[:, 1]
+                if r == 0:
+                    oof[name][0].extend(yt); oof[name][1].extend(p)
                 folds[name]["pr_auc"].append(average_precision_score(yt, p))
                 folds[name]["auc"].append(roc_auc_score(yt, p))
                 folds[name]["recall"].append(recall_score(yt, (p >= 0.5).astype(int), zero_division=0))
     if used == 0:
         raise ValueError("Aucun pli exploitable (une seule classe par pli) : trop peu de parcours clos.")
+    yo = np.asarray(oof["baseline_rules"][0], dtype=int)
+    curves = {"prevalence": round(float(yo.mean()), 4) if len(yo) else None,
+              "points": {n: _pr_points(np.asarray(oof[n][0], dtype=int), np.asarray(oof[n][1], dtype=float)) for n in names if len(oof[n][0])}}
     return {"folds_used": used, "n_splits": k, "repeats": repeats,
-            "models": {n: {m: _summary(v) for m, v in mv.items()} for n, mv in folds.items()}}
+            "models": {n: {m: _summary(v) for m, v in mv.items()} for n, mv in folds.items()},
+            "curves": curves}
 
 
 def decide(metrics: dict[str, Any]) -> dict[str, Any]:

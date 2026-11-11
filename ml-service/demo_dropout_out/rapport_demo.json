@@ -1,0 +1,81 @@
+{
+  "model": "ml-logreg-tree-v1",
+  "version": "20261110214728",
+  "trained_at": "2026-11-10T21:47:28.178154+00:00",
+  "data_hash": "f10c246253bde45926786b2f8b91a7c5e523793c1b693ecc104f276a7eb7d24e",
+  "features": [
+    "age",
+    "attendance_rate",
+    "eval_avg",
+    "activities_completed",
+    "missed_activities"
+  ],
+  "stats": {
+    "rows": 300,
+    "dropouts": 166,
+    "completed": 134,
+    "small_sample": false
+  },
+  "metrics": {
+    "folds_used": 15,
+    "n_splits": 5,
+    "repeats": 3,
+    "models": {
+      "baseline_rules": {
+        "pr_auc": {
+          "mean": 0.8517,
+          "std": 0.0377
+        },
+        "auc": {
+          "mean": 0.8301,
+          "std": 0.0398
+        },
+        "recall": {
+          "mean": 0.4699,
+          "std": 0.0569
+        }
+      },
+      "logistic_regression": {
+        "pr_auc": {
+          "mean": 0.8724,
+          "std": 0.0394
+        },
+        "auc": {
+          "mean": 0.8554,
+          "std": 0.0352
+        },
+        "recall": {
+          "mean": 0.733,
+          "std": 0.0629
+        }
+      },
+      "decision_tree": {
+        "pr_auc": {
+          "mean": 0.7609,
+          "std": 0.063
+        },
+        "auc": {
+          "mean": 0.7608,
+          "std": 0.0578
+        },
+        "recall": {
+          "mean": 0.6865,
+          "std": 0.1116
+        }
+      }
+    }
+  },
+  "decision": {
+    "best_model": "logistic_regression",
+    "pr_auc_gap": 0.0207,
+    "sigma": 0.0394,
+    "recall_gap": 0.2631,
+    "conclusive": false,
+    "verdict": "non concluant",
+    "message": "Non concluant : le meilleur modèle (logistic_regression) ne dépasse pas la baseline de façon stable (PR-AUC +0.021 vs σ 0.039, rappel +0.263). Les règles sont conservées."
+  },
+  "warnings": [
+    "Variables mesurées à la date d'export (circularité partielle) ; label saisi par les coordinateurs."
+  ],
+  "SIMULATION": "Données fictives — ne pas citer comme résultat réel."
+}

@@ -56,6 +56,9 @@ export default function ParcoursPage() {
 
   useEffect(() => {
     setRole(getStoredRole());
+    // Lien profond depuis la carte « modèle d'abandon » : /parcours?status=DROPPED_OUT
+    const wanted = new URLSearchParams(window.location.search).get("status");
+    if (wanted && (JOURNEY_STATUSES as string[]).includes(wanted)) setStatus(wanted as JourneyStatus);
     fetchLookup("projects").then(setProjects).catch(() => setProjects([]));
   }, []);
 

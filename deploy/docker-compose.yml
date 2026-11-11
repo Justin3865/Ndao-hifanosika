@@ -1,5 +1,4 @@
-# Ndao Hifanosika — orchestration commune (dev par défaut).
-# Chemins des sources surchargeables : BACKEND_DIR, FRONTEND_DIR, AI_DIR, ML_DIR (défauts : ../srcb, ../srcf, ../IA, ../ML).
+# Ndao Hifanosika — orchestration commune
 name: ndao-hifanosika
 
 x-backend-env: &backend-env

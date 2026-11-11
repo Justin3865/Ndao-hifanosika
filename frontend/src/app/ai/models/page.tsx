@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BrainCircuit, Loader2, Play, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { BrainCircuit, LineChart as LineIcon, Loader2, Play, Trash2 } from "lucide-react";
 import api from "@/lib/axios";
 import { DatasetsLab } from "@/components/ai-charts/DatasetsLab";
 import { DropoutTrainCard } from "@/components/ai-charts/DropoutTrainCard";
 import { ModelsLab } from "@/components/ai-charts/ModelsLab";
+import { VulnerabilityCurves } from "@/components/ai-charts/VulnerabilityCurves";
+import { Modal } from "@/components/ui/Modal";
 import { AppLayout } from "@/components/layout";
 import { InsightHeader } from "@/components/insights/parts";
 import { getStoredRole } from "@/lib/access";
@@ -13,6 +16,7 @@ import { errorMessage, fmtDateTime } from "@/lib/crud";
 import { confirmDialog, toast } from "@/lib/toast";
 
 interface Metrics { accuracy: number; precision: number; recall: number; f1: number; auc: number }
+interface Predictions { probs: number[]; labels: number[] }
 
 interface Report {
   trained: boolean;
@@ -21,8 +25,9 @@ interface Report {
   positives: number;
   reliability: "INSUFFISANTE" | "FAIBLE" | "CORRECTE";
   folds: number;
-  models: Array<{ name: string; kind: string; metrics: Metrics }>;
+  models: Array<{ name: string; kind: string; metrics: Metrics; predictions?: Predictions }>;
   baseline: Metrics;
+  trainedAt?: string;
 }
 
 interface StoredModel { id: number; name: string; kind: string; sampleSize: number; metrics: Metrics; trainedAt: string }
@@ -40,6 +45,11 @@ export default function ModelsPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState(false);
   const [canTrain, setCanTrain] = useState(false);
+  const [showCurve, setShowCurve] = useState(false);
+
+  const best = report?.trained && report.models.length ? report.models.reduce((m, c) => (c.metrics.auc > m.metrics.auc ? c : m)) : null;
+
+  const retained = !!best && best.metrics.auc > (report?.baseline.auc ?? 1);
 
   const load = () =>
     api.get("/ai/models").then((res) => setHistory(res.data?.data ?? [])).catch(() => setHistory([]));
@@ -87,64 +97,63 @@ export default function ModelsPage() {
     }
   };
 
-  const rows = report
-    ? [{ name: "Référence (classe majoritaire)", metrics: report.baseline }, ...report.models.map((m) => ({ name: m.name, metrics: m.metrics }))]
-    : [];
-
   return (
     <AppLayout>
       <div className="space-y-6">
         <InsightHeader title="Modèles d'apprentissage" subtitle="Entraînement et test sur vos données réelles." />
 
-        <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700"><BrainCircuit className="h-6 w-6" /></span>
-          <div className="min-w-0 flex-1 text-sm text-gray-600">Modèles de vulnérabilité des ménages (SGD et réseau de neurones).</div>
-          {canTrain && (
-            <button type="button" onClick={train} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-3 font-semibold text-white hover:bg-blue-900 disabled:opacity-60">
-              {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-              {busy ? "Entraînement..." : "Entraîner maintenant"}
-            </button>
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700"><BrainCircuit className="h-6 w-6" /></span>
+            <div className="min-w-0 flex-1 text-sm text-gray-600">
+              <p className="font-semibold text-gray-900">Modèles de vulnérabilité des ménages</p>
+              Régression logistique (SGD) et réseau de neurones (MLP), comparés à la référence (classe majoritaire).
+            </div>
+            {canTrain && (
+              <button type="button" onClick={train} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-5 py-3 font-semibold text-white hover:bg-blue-900 disabled:opacity-60">
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
+                {busy ? "Entraînement..." : "Entraîner maintenant"}
+              </button>
+            )}
+          </div>
+
+          {report && (
+            <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${retained ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                  {retained ? "Modèle retenu" : report.trained ? "Non concluant" : "Données insuffisantes"}
+                </span>
+                <span>
+                  <Link href="/ai/vulnerability" className="font-medium text-blue-800 underline-offset-2 hover:underline" title="Voir les ménages">{report.sampleSize} ménages</Link>
+                  {" · "}
+                  <Link href="/ai/vulnerability?filter=vulnerables" className="font-medium text-blue-800 underline-offset-2 hover:underline" title="Voir les ménages vulnérables">{report.positives} vulnérables</Link>
+                  {report.trained && <> · validation croisée {report.folds} plis</>}
+                </span>
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${RELIABILITY_STYLE[report.reliability]}`}>Fiabilité : {report.reliability.toLowerCase()}</span>
+                {report.trainedAt && <span className="text-xs text-gray-400">{fmtDateTime(report.trainedAt)}</span>}
+              </div>
+
+              {report.trained && best ? (
+                <p className="mt-2">
+                  {best.name} {best.metrics.auc > report.baseline.auc ? "dépasse" : "ne dépasse pas"} la référence{" "}
+                  <button type="button" onClick={() => setShowCurve(true)} className="font-medium text-blue-800 underline-offset-2 hover:underline" title="Voir la courbe ROC, l'histogramme et le tableau des résultats">
+                    (AUC {best.metrics.auc.toFixed(2)} contre {report.baseline.auc.toFixed(2)}, rappel {pct(best.metrics.recall)})
+                  </button>
+                  {report.reliability === "INSUFFISANTE" ? " : échantillon trop petit pour conclure, à confirmer avec davantage d'enquêtes." : " : utilisable comme aide à la décision."}
+                  <button type="button" onClick={() => setShowCurve(true)} className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-800 underline">
+                    <LineIcon className="h-3.5 w-3.5" /> Voir la courbe
+                  </button>
+                </p>
+              ) : (
+                !report.trained && report.reason && <p className="mt-2">{report.reason}</p>
+              )}
+            </div>
           )}
         </div>
 
-        {report && (
-          <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 className="font-semibold text-gray-900">Dernier entraînement</h2>
-              <span className="text-sm text-gray-500">{report.sampleSize} ménages · {report.positives} vulnérables · validation croisée {report.folds} plis</span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${RELIABILITY_STYLE[report.reliability]}`}>Fiabilité : {report.reliability.toLowerCase()}</span>
-            </div>
-
-            {report.trained && (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-left text-sm">
-                  <thead className="text-xs uppercase text-gray-500">
-                    <tr>{["Modèle", "Exactitude", "Précision", "Rappel", "F1", "AUC"].map((h) => <th key={h} className="py-2 pr-4 font-semibold">{h}</th>)}</tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {rows.map((row) => (
-                      <tr key={row.name}>
-                        <td className="py-2.5 pr-4 font-medium text-gray-900">{row.name}</td>
-                        <td className="pr-4">{pct(row.metrics.accuracy)}</td>
-                        <td className="pr-4">{pct(row.metrics.precision)}</td>
-                        <td className="pr-4">{pct(row.metrics.recall)}</td>
-                        <td className="pr-4">{row.metrics.f1.toFixed(2)}</td>
-                        <td className="pr-4">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-20 overflow-hidden rounded-full bg-gray-100">
-                              <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-400" style={{ width: `${row.metrics.auc * 100}%` }} />
-                            </div>
-                            {row.metrics.auc.toFixed(2)}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        <Modal isOpen={showCurve} onClose={() => setShowCurve(false)} title="Courbe ROC et histogramme" description="Modèles de vulnérabilité des ménages comparés (validation croisée)" size="xl" className="max-w-6xl">
+          {report && report.trained && <VulnerabilityCurves report={{ ...report, baseline: report.baseline }} />}
+        </Modal>
 
         <details className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <summary className="cursor-pointer font-semibold text-gray-900">Historique des entraînements ({history.length})</summary>
