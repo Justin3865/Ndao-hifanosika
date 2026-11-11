@@ -1,6 +1,7 @@
 // src/components/activities/ActivityCard.tsx
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import Link from "next/link";
 import { Calendar, Clock, Users, Building2, Eye, Edit, Trash2, MoreVertical, CheckCircle2, AlertCircle, Activity as ActivityIcon, AlertTriangle, FileText, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
@@ -230,9 +231,9 @@ export function ActivityCard({
             {/* Budget */}
             {budgetIndicatif && (
               <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                <span>💰 Budget: {budgetIndicatif.toLocaleString()} Ar</span>
+                <span>💰 Budget: {maskMoney(`${budgetIndicatif.toLocaleString()} Ar`)}</span>
                 {budgetSpent !== undefined && (
-                  <span>Dépensé: {budgetSpent.toLocaleString()} Ar</span>
+                  <span>Dépensé: {maskMoney(`${budgetSpent.toLocaleString()} Ar`)}</span>
                 )}
               </div>
             )}

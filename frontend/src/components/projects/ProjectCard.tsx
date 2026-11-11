@@ -1,5 +1,7 @@
 "use client";
 
+import { AmountEye } from "@/components/privacy/AmountsToggle";
+import { maskMoney } from "@/lib/privacy";
 import Link from "next/link";
 
 import {
@@ -75,11 +77,11 @@ function formatCurrency(
   value: number,
   currency = "MGA"
 ) {
-  return new Intl.NumberFormat("fr-MG", {
+  return maskMoney(new Intl.NumberFormat("fr-MG", {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(value));
 }
 
 function formatDate(date: string) {
@@ -198,6 +200,7 @@ export default function ProjectCard({
                 project.budget,
                 project.currency
               )}
+              <AmountEye />
             </span>
           </div>
 

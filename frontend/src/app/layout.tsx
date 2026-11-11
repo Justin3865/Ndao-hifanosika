@@ -5,6 +5,7 @@ import { SettingsProvider } from "@/components/providers/settings-provider";
 import { MissionProvider } from "@/components/mission/MissionProvider";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { AutoTranslate } from "@/components/i18n/AutoTranslate";
+import { AmountsBoundary } from "@/components/privacy/AmountsBoundary";
 import { OfflineSupport } from "@/components/offline/OfflineSupport";
 
 export const metadata: Metadata = {
@@ -70,7 +71,7 @@ export default function RootLayout({
           <I18nProvider>
             <AutoTranslate />
             {/* Monté à la racine : la mission GPS continue quand on change de page */}
-            <MissionProvider>{children}</MissionProvider>
+            <MissionProvider><AmountsBoundary>{children}</AmountsBoundary></MissionProvider>
           </I18nProvider>
         </SettingsProvider>
         <OfflineSupport />

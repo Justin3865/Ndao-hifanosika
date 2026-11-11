@@ -1,3 +1,4 @@
+import { maskMoney } from "@/lib/privacy";
 // src/lib/reports.ts
 
 export type ReportType =
@@ -498,9 +499,9 @@ export function formatDate(
 export function formatCurrency(
   value: number
 ): string {
-  return new Intl.NumberFormat(
+  return maskMoney(new Intl.NumberFormat(
     "fr-FR"
-  ).format(value) + " Ar";
+  ).format(value) + " Ar");
 }
 
 export function calculateBudgetRate(

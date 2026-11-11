@@ -1,5 +1,6 @@
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -130,11 +131,11 @@ function formatCurrency(
   value: number,
   currency = "MGA"
 ) {
-  return new Intl.NumberFormat("fr-MG", {
+  return maskMoney(new Intl.NumberFormat("fr-MG", {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(value));
 }
 
 export default function ProjectTable({

@@ -1,5 +1,7 @@
 "use client";
 
+import { AmountEye } from "@/components/privacy/AmountsToggle";
+import { maskMoney } from "@/lib/privacy";
 import {
   TrendingUp,
   TrendingDown,
@@ -31,11 +33,11 @@ function formatCurrency(
   value: number,
   currency: string
 ) {
-  return new Intl.NumberFormat("fr-MG", {
+  return maskMoney(new Intl.NumberFormat("fr-MG", {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(value));
 }
 
 export default function ProjectBudget({
@@ -100,6 +102,7 @@ export default function ProjectBudget({
                 safeTotal,
                 currency
               )}
+              <AmountEye />
             </p>
           </div>
 
@@ -113,6 +116,7 @@ export default function ProjectBudget({
                 safeSpent,
                 currency
               )}
+              <AmountEye />
             </p>
           </div>
 
@@ -126,6 +130,7 @@ export default function ProjectBudget({
                 safeRemaining,
                 currency
               )}
+              <AmountEye />
             </p>
           </div>
         </div>

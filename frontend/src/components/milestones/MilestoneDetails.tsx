@@ -1,6 +1,7 @@
 // src/components/milestones/MilestoneDetails.tsx
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { useState } from "react";
 import {
   Target, Calendar, Building2, FileText, Check, Plus, Trash2,
@@ -193,20 +194,20 @@ export function MilestoneDetails({
                   {milestone.budgetIndicatif && (
                     <div className="flex justify-between text-sm">
                       <span>Budget indicatif</span>
-                      <span className="font-medium">{milestone.budgetIndicatif.toLocaleString()} Ar</span>
+                      <span className="font-medium">{maskMoney(`${milestone.budgetIndicatif.toLocaleString()} Ar`)}</span>
                     </div>
                   )}
                   {milestone.budgetSpent !== undefined && (
                     <div className="flex justify-between text-sm">
                       <span>Dépensé</span>
-                      <span className="font-medium">{milestone.budgetSpent.toLocaleString()} Ar</span>
+                      <span className="font-medium">{maskMoney(`${milestone.budgetSpent.toLocaleString()} Ar`)}</span>
                     </div>
                   )}
                   {milestone.budgetIndicatif && milestone.budgetSpent !== undefined && (
                     <div className="flex justify-between text-sm">
                       <span>Restant</span>
                       <span className="font-medium text-green-600">
-                        {(milestone.budgetIndicatif - milestone.budgetSpent).toLocaleString()} Ar
+                        {maskMoney(`${(milestone.budgetIndicatif - milestone.budgetSpent).toLocaleString()} Ar`)}
                       </span>
                     </div>
                   )}

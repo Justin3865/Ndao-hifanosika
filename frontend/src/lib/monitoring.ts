@@ -1,3 +1,4 @@
+import { maskMoney } from "@/lib/privacy";
 // src/lib/monitoring.ts
 // ============================================================
 // SUIVI & ÉVALUATION — cœur de calcul (fonctions pures)
@@ -892,7 +893,7 @@ export const fmtGap = (n: number | null) =>
 export const fmtMoney = (n: number | null) =>
   n === null
     ? "—"
-    : `${new Intl.NumberFormat("fr-FR").format(Math.round(n))} Ar`;
+    : maskMoney(`${new Intl.NumberFormat("fr-FR").format(Math.round(n))} Ar`);
 
 export const fmtDate = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString("fr-FR") : "—";

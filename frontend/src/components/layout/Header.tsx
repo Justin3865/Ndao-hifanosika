@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LogOut, Menu, User } from "lucide-react";
 import api from "@/lib/axios";
+import { AmountsToggle } from "@/components/privacy/AmountsToggle";
 import { NotificationBell } from "./NotificationBell";
 import { LanguageSwitch } from "@/components/i18n/LanguageSwitch";
 import { closeSocket } from "@/lib/socket";
@@ -146,6 +147,7 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            <AmountsToggle />
             <LanguageSwitch className="hidden sm:inline-flex" />
             <NotificationBell />
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { AmountEye } from "@/components/privacy/AmountsToggle";
+import { maskMoney } from "@/lib/privacy";
 import Link from "next/link";
 
 import {
@@ -204,11 +206,12 @@ export default function ProjectDetails({
               </p>
 
               <p className="text-lg font-bold">
-                {new Intl.NumberFormat("fr-MG", {
+                {maskMoney(new Intl.NumberFormat("fr-MG", {
                   style: "currency",
                   currency: project.currency ?? "MGA",
                   maximumFractionDigits: 0,
-                }).format(project.budget)}
+                }).format(project.budget))}
+                <AmountEye />
               </p>
             </div>
           </CardContent>

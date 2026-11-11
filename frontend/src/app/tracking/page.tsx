@@ -1,5 +1,6 @@
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -65,7 +66,7 @@ function surveyRows(sv: AgentSurvey): Array<[string, string]> {
 
   return [
     ["Taille du ménage", n(sv.householdSize)],
-    ["Revenu mensuel", sv.monthlyIncome !== null ? `${sv.monthlyIncome.toLocaleString("fr-FR")} Ar` : "—"],
+    ["Revenu mensuel", sv.monthlyIncome !== null ? maskMoney(`${sv.monthlyIncome.toLocaleString("fr-FR")} Ar`) : "—"],
     ["Enfants de moins de 5 ans", n(sv.childrenUnder5)],
     ["Enfants non scolarisés", n(sv.outOfSchoolChildren)],
     ["Repas par jour", n(sv.mealsPerDay)],
@@ -630,7 +631,7 @@ export default function TrackingPage() {
                     <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 text-sm">
                       {[
                         ["Taille du ménage", selectedHousehold.lastSurvey.householdSize ?? "—"],
-                        ["Revenu mensuel", selectedHousehold.lastSurvey.monthlyIncome !== null ? `${selectedHousehold.lastSurvey.monthlyIncome.toLocaleString("fr-FR")} Ar` : "—"],
+                        ["Revenu mensuel", selectedHousehold.lastSurvey.monthlyIncome !== null ? maskMoney(`${selectedHousehold.lastSurvey.monthlyIncome.toLocaleString("fr-FR")} Ar`) : "—"],
                         ["Enfants de moins de 5 ans", selectedHousehold.lastSurvey.childrenUnder5 ?? "—"],
                         ["Enfants non scolarisés", selectedHousehold.lastSurvey.outOfSchoolChildren ?? "—"],
                         ["Repas par jour", selectedHousehold.lastSurvey.mealsPerDay ?? "—"],

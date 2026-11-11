@@ -1,5 +1,6 @@
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ArrowDownCircle, CheckCircle2, ChevronDown, ChevronUp, ClipboardList, ListChecks, PlayCircle, Search, Settings2, Target, Users } from "lucide-react";
 import api from "@/lib/axios";
@@ -480,7 +481,7 @@ export default function EnrollmentPage() {
                             <td colSpan={7} className="space-y-3 px-3 py-4 text-sm text-gray-700">
                               <p>
                                 Ménage de {r.householdSize ?? "?"} personne(s) · {r.childrenUnder5 ?? 0} enfant(s) de moins de 5 ans · revenu{" "}
-                                {r.monthlyIncome !== null ? `${r.monthlyIncome.toLocaleString("fr-FR")} Ar/mois` : "non renseigné"}
+                                {r.monthlyIncome !== null ? maskMoney(`${r.monthlyIncome.toLocaleString("fr-FR")} Ar/mois`) : "non renseigné"}
                                 {r.hasDisability ? " · handicap" : ""}
                                 {r.vulnerable ? " · jugé vulnérable par l'agent" : ""}
                                 {r.method ? ` · score ${r.method === "ML" ? "modèle IA" : "heuristique"}` : ""}

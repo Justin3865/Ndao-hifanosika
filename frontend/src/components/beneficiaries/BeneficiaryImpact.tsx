@@ -1,6 +1,7 @@
 // src/components/beneficiaries/BeneficiaryImpact.tsx
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { 
   Award, TrendingUp, TrendingDown, Users, 
   Calendar, Target, BarChart3, CheckCircle2,
@@ -112,7 +113,7 @@ export function BeneficiaryImpact({
     },
     {
       label: "Revenu moyen",
-      value: `${revenuMoyen.toLocaleString()} Ar`,
+      value: maskMoney(`${revenuMoyen.toLocaleString()} Ar`),
       change: trendPercentage + 3,
       icon: DollarSign,
       color: "bg-purple-500",

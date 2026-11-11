@@ -1,6 +1,7 @@
 // src/components/activities/ActivityDetails.tsx
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { useState } from "react";
 import { 
   Calendar, Clock, Users, Building2, FileText, 
@@ -212,20 +213,20 @@ export function ActivityDetails({
                   {activity.budgetIndicatif && (
                     <div className="flex justify-between text-sm">
                       <span>Budget indicatif</span>
-                      <span className="font-medium">{activity.budgetIndicatif.toLocaleString()} Ar</span>
+                      <span className="font-medium">{maskMoney(`${activity.budgetIndicatif.toLocaleString()} Ar`)}</span>
                     </div>
                   )}
                   {activity.budgetSpent !== undefined && (
                     <div className="flex justify-between text-sm">
                       <span>Dépensé</span>
-                      <span className="font-medium">{activity.budgetSpent.toLocaleString()} Ar</span>
+                      <span className="font-medium">{maskMoney(`${activity.budgetSpent.toLocaleString()} Ar`)}</span>
                     </div>
                   )}
                   {activity.budgetIndicatif && activity.budgetSpent !== undefined && (
                     <div className="flex justify-between text-sm">
                       <span>Restant</span>
                       <span className="font-medium text-green-600">
-                        {(activity.budgetIndicatif - activity.budgetSpent).toLocaleString()} Ar
+                        {maskMoney(`${(activity.budgetIndicatif - activity.budgetSpent).toLocaleString()} Ar`)}
                       </span>
                     </div>
                   )}

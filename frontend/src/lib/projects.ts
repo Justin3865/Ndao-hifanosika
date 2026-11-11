@@ -1,3 +1,4 @@
+import { maskMoney } from "@/lib/privacy";
 // src/lib/projects.ts
 
 export type ProjectStatus =
@@ -252,7 +253,7 @@ export function formatBudget(
   budget: number,
   devise: string
 ): string {
-  return new Intl.NumberFormat("fr-FR").format(budget) + ` ${devise}`;
+  return maskMoney(new Intl.NumberFormat("fr-FR").format(budget) + ` ${devise}`);
 }
 
 export function formatDate(date: string): string {

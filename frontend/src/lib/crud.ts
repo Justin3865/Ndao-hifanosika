@@ -1,6 +1,7 @@
 // src/lib/crud.ts
 // Couche générique CRUD branchée sur l'API réelle (aucune donnée mock).
 
+import { maskMoney } from "@/lib/privacy";
 import type { ReactNode } from "react";
 import api from "@/lib/axios";
 
@@ -215,7 +216,7 @@ export function fmtDate(value?: string | null): string {
 
 export function fmtMoney(value?: number | string | null): string {
   if (value === null || value === undefined || value === "") return "—";
-  return `${Number(value).toLocaleString("fr-FR")} Ar`;
+  return maskMoney(`${Number(value).toLocaleString("fr-FR")} Ar`);
 }
 
 export function fmtDateTime(value?: string | null): string {

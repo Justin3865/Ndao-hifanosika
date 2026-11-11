@@ -1,5 +1,6 @@
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { Building2, Download, FileText } from "lucide-react";
 import type { Report } from "./ReportTable";
 
@@ -79,7 +80,7 @@ export default function BailleurReport({
             </p>
             <p className="mt-1 font-semibold">
               {fundingAmount !== undefined
-                ? `${fundingAmount.toLocaleString()} Ar`
+                ? maskMoney(`${fundingAmount.toLocaleString()} Ar`)
                 : "Non renseigné"}
             </p>
           </div>

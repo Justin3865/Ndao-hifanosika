@@ -1,5 +1,6 @@
 "use client";
 
+import { maskMoney } from "@/lib/privacy";
 import { MENTIONS, MENTION_TONE, type Mention } from "@/lib/mention";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -190,7 +191,7 @@ function BeneficiarySheet({ b, phone, email }: { b: NonNullable<Candidate["benef
     ["Localité / fokontany", b.locality ?? "—"],
     ["Zone d'intervention", b.zoneName ?? "—"],
     ["Taille du ménage", b.householdSize !== null ? `${b.householdSize} personne(s)` : "—"],
-    ["Revenu mensuel du ménage", b.monthlyIncome !== null ? `${b.monthlyIncome.toLocaleString("fr-FR")} Ar` : "—"],
+    ["Revenu mensuel du ménage", b.monthlyIncome !== null ? maskMoney(`${b.monthlyIncome.toLocaleString("fr-FR")} Ar`) : "—"],
     ["Enfants de moins de 5 ans", b.childrenUnder5 !== null ? String(b.childrenUnder5) : "—"],
     ["Handicap dans le ménage", yesNo(b.hasDisability)],
   ];

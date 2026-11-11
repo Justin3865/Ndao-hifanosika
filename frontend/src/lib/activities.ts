@@ -1,3 +1,4 @@
+import { maskMoney } from "@/lib/privacy";
 // src/lib/activities.ts
 
 export type ActivityStatus =
@@ -298,7 +299,7 @@ export function formatBudget(
   budget: number,
   devise: string
 ): string {
-  return (
+  return maskMoney(
     new Intl.NumberFormat("fr-FR").format(budget) +
     ` ${devise}`
   );

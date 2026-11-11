@@ -1,3 +1,4 @@
+import { maskMoney } from "@/lib/privacy";
 // src/lib/constants.ts
 export const APP_NAME = "Ndao Hifanosika";
 export const APP_DESCRIPTION = "Plateforme de Suivi et Évaluation des Équipes et Bénéficiaires";
@@ -93,12 +94,12 @@ export const formatStatus = (
 
 // Formatage des montants
 export const formatCurrency = (amount: number, currency: string = "MGA"): string => {
-  return new Intl.NumberFormat("fr-MG", {
+  return maskMoney(new Intl.NumberFormat("fr-MG", {
     style: "currency",
     currency: currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(amount));
 };
 
 // Formatage des dates

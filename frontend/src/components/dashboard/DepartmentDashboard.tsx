@@ -1,5 +1,7 @@
 "use client";
 
+import { AmountEye } from "@/components/privacy/AmountsToggle";
+import { maskMoney } from "@/lib/privacy";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ClipboardCheck, GraduationCap, HeartHandshake, Target, Wallet } from "lucide-react";
@@ -69,7 +71,7 @@ const GENDER_LABEL: Record<string, string> = { FEMALE: "Femmes", MALE: "Hommes",
 const EVAL_LABEL: Record<string, string> = { DRAFT: "Brouillon", SUBMITTED: "Soumises", VALIDATED: "Validées" };
 
 const nf = new Intl.NumberFormat("fr-FR");
-const money = (n: number) => `${nf.format(Math.round(n))} Ar`;
+const money = (n: number) => maskMoney(`${nf.format(Math.round(n))} Ar`);
 const percent = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${n} %`);
 
 function titleFor(role: string): { title: string; hint: string } {
@@ -101,10 +103,10 @@ function Card({ icon: Icon, title, tone, children }: { icon: typeof Target; titl
   );
 }
 
-function Stat({ label, value, warn }: { label: string; value: React.ReactNode; warn?: boolean }) {
+function Stat({ label, value, warn, eye }: { label: string; value: React.ReactNode; warn?: boolean; eye?: boolean }) {
   return (
     <div className="rounded-xl bg-gray-50 p-3">
-      <p className={`text-2xl font-bold ${warn ? "text-red-600" : "text-gray-900"}`}>{value}</p>
+      <p className={`text-2xl font-bold ${warn ? "text-red-600" : "text-gray-900"}`}>{value}{eye && <AmountEye />}</p>
       <p className="text-xs text-gray-500">{label}</p>
     </div>
   );
@@ -178,8 +180,8 @@ function DafSection({ data }: { data: DafData }) {
   return (
     <Card icon={Wallet} title="Budget indicatif par projet" tone="bg-violet-600">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Stat label="Budget total" value={money(data.totalBudget)} />
-        <Stat label="Dépensé" value={money(data.totalSpent)} />
+        <Stat label="Budget total" value={money(data.totalBudget)} eye />
+        <Stat label="Dépensé" value={money(data.totalSpent)} eye />
         <Stat label="Consommation" value={percent(data.rate)} />
         <Stat label="Projets en dépassement" value={data.overBudget} warn={data.overBudget > 0} />
       </div>
