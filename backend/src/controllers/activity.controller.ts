@@ -5,6 +5,7 @@ import { logger } from "../config/logger";
 import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 
 import { sendError } from "../middlewares/error.middleware";
+import { isInternRole, scopedProjectIds } from "../utils/dataScope";
 import { parseParticipantIds, syncParticipants, withParticipants } from "../services/activityParticipants.service";
 function getAuthUser(req: Request) {
   return (req as AuthenticatedRequest).user;
@@ -104,7 +105,9 @@ export async function getActivities(
               createdById: user.id,
             },
           }
-        : undefined;
+        : isInternRole(user.role)
+          ? { projectId: { in: await scopedProjectIds(user) } }
+          : undefined;
 
     const activities = await prisma.activity.findMany({
       where,
@@ -209,6 +212,19 @@ export async function getActivityById(
     if (
       user.role === "COORDINATOR" &&
       activity.project.createdById !== user.id
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Accès refusé à cette activité.",
+      });
+    }
+
+    /*
+     * Stagiaire : seulement les activités des projets auxquels il est rattaché.
+     */
+    if (
+      isInternRole(user.role) &&
+      !(await scopedProjectIds(user)).includes(activity.projectId)
     ) {
       return res.status(403).json({
         success: false,

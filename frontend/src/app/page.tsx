@@ -1008,7 +1008,7 @@ export default function HomePage() {
                 <Image src="/logos/ndao-hifanosika.png" alt="Ndao Hifanosika" width={160} height={56} priority className="h-12 w-auto object-contain" />
               </div>
               <h2 className="mt-2 text-center text-xl font-bold text-[#0f172a] dark:text-white">
-                {authModal === "login" ? "Bon retour !" : "Créer un compte"}
+                {authModal === "login" ? "Bienvenue !" : "Créer un compte"}
               </h2>
 
               <div className="mt-3 flex rounded-2xl border border-[#e2e8f0] bg-[#f1f5f9] p-1 dark:border-slate-600/60 dark:bg-slate-800/60">

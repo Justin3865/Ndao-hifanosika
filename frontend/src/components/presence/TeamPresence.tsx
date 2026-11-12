@@ -1,8 +1,9 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, ShieldAlert } from "lucide-react";
+import { ChevronDown, ChevronUp, History, Loader2, Search, ShieldAlert } from "lucide-react";
 
+import PresenceJournal from "@/components/presence/PresenceJournal";
 import api from "@/lib/axios";
 import { errorMessage } from "@/lib/crud";
 import { TeamPresence as TeamData, flagLabel, fmtTime } from "@/lib/presence";
@@ -20,13 +21,34 @@ export default function TeamPresence() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState<number | null>(null);
+  const [journal, setJournal] = useState<number | null>(null);
+  const [projects, setProjects] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [projectId, setProjectId] = useState("");
+  const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
 
-  const load = useCallback(async (d: string) => {
+  /* Liste des projets pour le filtre : le serveur ne renvoie que ceux que le rôle peut voir (se masque si indisponible). */
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get("/projects")
+      .then((res) => !cancelled && setProjects(Array.isArray(res.data?.projects) ? res.data.projects : []))
+      .catch(() => !cancelled && setProjects([]));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const load = useCallback(async (d: string, project: string, st: string) => {
     setLoading(true);
     setError("");
 
     try {
-      const res = await api.get("/presence/overview", { params: { day: d } });
+      const res = await api.get("/presence/overview", {
+        params: { day: d, ...(project ? { projectId: project } : {}), ...(st ? { status: st } : {}) },
+      });
       setData(res.data?.data ?? null);
     } catch (err) {
       setError(errorMessage(err, "Impossible de charger les présences GPS."));
@@ -36,8 +58,10 @@ export default function TeamPresence() {
   }, []);
 
   useEffect(() => {
-    void load(day);
-  }, [day, load]);
+    void load(day, projectId, status);
+  }, [day, projectId, status, load]);
+
+  const rows = (data?.rows ?? []).filter((r) => !query.trim() || r.userName.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
     <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -46,10 +70,38 @@ export default function TeamPresence() {
           <h2 className="text-lg font-bold text-gray-900">Présences GPS de l&apos;équipe</h2>
           <p className="text-xs text-gray-500">Arrivée vérifiée (position, altitude), départ et tâches du jour. Les tâches alimentent le Suivi &amp; Évaluation.</p>
         </div>
-        <label className="text-sm">
-          <span className="sr-only">Jour</span>
-          <input type="date" value={day} max={localToday()} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm" />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative text-sm">
+            <span className="sr-only">Rechercher un stagiaire</span>
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un stagiaire" className="w-52 rounded-xl border border-gray-300 bg-white py-2 pl-8 pr-3 text-sm" />
+          </label>
+          {projects.length > 0 && (
+            <label className="text-sm">
+              <span className="sr-only">Projet</span>
+              <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm">
+                <option value="">Tous les projets</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} · {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="text-sm">
+            <span className="sr-only">Statut</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm">
+              <option value="">Tous les statuts</option>
+              <option value="OK">Vérifié</option>
+              <option value="SUSPECT">À vérifier</option>
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="sr-only">Jour</span>
+            <input type="date" value={day} max={localToday()} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm" />
+          </label>
+        </div>
       </div>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -86,10 +138,11 @@ export default function TeamPresence() {
                   <th className="px-3 py-2">Départ</th>
                   <th className="px-3 py-2">Tâches</th>
                   <th className="px-3 py-2">Statut</th>
+                  <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.rows.map((r) => (
+                {rows.map((r) => (
                   <Fragment key={r.id}>
                     <tr className="align-top">
                       <td className="px-3 py-2 font-medium text-gray-900">{r.userName}</td>
@@ -108,10 +161,22 @@ export default function TeamPresence() {
                       <td className="px-3 py-2">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.status === "OK" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>{r.status === "OK" ? "Vérifié" : "À vérifier"}</span>
                       </td>
+                      <td className="px-3 py-2">
+                        <button type="button" onClick={() => setJournal(journal === r.id ? null : r.id)} className="inline-flex items-center gap-1 text-xs text-blue-800 hover:underline" aria-label={`Journal de ${r.userName}`}>
+                          <History className="h-3.5 w-3.5" /> Journal
+                        </button>
+                      </td>
                     </tr>
+                    {journal === r.id && (
+                      <tr>
+                        <td colSpan={8} className="bg-white px-4 py-3">
+                          <PresenceJournal userId={String(r.userId)} />
+                        </td>
+                      </tr>
+                    )}
                     {open === r.id && (
                       <tr className="bg-gray-50">
-                        <td colSpan={7} className="px-4 py-3 text-xs text-gray-700">
+                        <td colSpan={8} className="px-4 py-3 text-xs text-gray-700">
                           {r.flags.length > 0 && (
                             <ul className="mb-2 space-y-1 text-amber-800">
                               {r.flags.map((f) => (
@@ -141,9 +206,9 @@ export default function TeamPresence() {
                     )}
                   </Fragment>
                 ))}
-                {data.rows.length === 0 && (
+                {rows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
+                    <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
                       Aucun pointage ce jour.
                     </td>
                   </tr>

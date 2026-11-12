@@ -43,16 +43,39 @@ export function canSeeInternship(
   return true;
 }
 
-/** Ids des projets auxquels l'utilisateur est rattaché via un stage. */
+/** Vrai pour un stagiaire (STAGIAIRE_L1 … STAGIAIRE_M2). */
+export const isInternRole = (role: string | undefined | null): boolean =>
+  String(role ?? "").trim().toUpperCase().startsWith("STAGIAIRE_");
+
+/**
+ * Ids de TOUS les projets auxquels l'utilisateur est rattaché :
+ *  - projet principal du stage            (Internship.projectId)
+ *  - projets cochés en plus               (InternshipProject)
+ *  - affectations directes « membre »     (ProjectMember, non terminées) — stagiaires uniquement
+ * Pour un tuteur : les projets des stages qu'il supervise.
+ */
 export async function scopedProjectIds(user: ScopeUser): Promise<number[]> {
   const rows = await prisma.internship.findMany({
     where: internshipScope(user) as never,
-    select: { projectId: true },
+    select: { projectId: true, projectLinks: { select: { projectId: true } } },
   });
 
-  return rows
-    .map((row) => row.projectId)
-    .filter((id): id is number => typeof id === "number");
+  const ids = new Set<number>();
+
+  for (const row of rows) {
+    if (typeof row.projectId === "number") ids.add(row.projectId);
+    for (const link of row.projectLinks ?? []) ids.add(link.projectId);
+  }
+
+  if (isStagiaire(user.role)) {
+    const memberships = await prisma.projectMember.findMany({
+      where: { userId: user.id, leftAt: null },
+      select: { projectId: true },
+    });
+    for (const m of memberships) ids.add(m.projectId);
+  }
+
+  return [...ids];
 }
 
 /** Clause Prisma `where` pour la table Evaluation. */

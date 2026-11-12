@@ -4,7 +4,8 @@ import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { logger } from "../config/logger";
 import { sendEmail } from "../utils/mailer";
-import { cinOwnerName, parseIdentity, toText } from "../utils/identity";
+import { cinOwnerName, emailOwnerName, parseIdentity, toText } from "../utils/identity";
+import { emailProblem } from "../utils/fieldRules";
 import {
   findOverlap,
   validateDates,
@@ -20,7 +21,10 @@ import {
 import { sendError } from "../middlewares/error.middleware";
 import { MatriculeError, changeMatricule, findSiblingMatricule, getOrAssignMatricule, renumberMatricules, suggestNextMatricule } from "../utils/matricule";
 /** Identité du stagiaire saisie dans le formulaire du stage (téléphone, naissance, CIN) */
-function readStudentIdentity(body: Record<string, unknown> | undefined): { data: Record<string, unknown>; error?: string } {
+function readStudentIdentity(
+  body: Record<string, unknown> | undefined,
+  viewerRole?: string,
+): { data: Record<string, unknown>; error?: string } {
   const raw = body?.identity;
 
   if (!raw || typeof raw !== "object") return { data: {} };
@@ -38,6 +42,21 @@ function readStudentIdentity(body: Record<string, unknown> | undefined): { data:
     if (phone && phone.length > 30) return { data, error: "Numéro de téléphone invalide." };
 
     if (phone) data.phone = phone;
+  }
+
+  /*
+   * E-mail du stagiaire : c'est aussi son identifiant de connexion. Seuls ADMIN et RH peuvent le renseigner
+   * ou le modifier (un tuteur / coordinateur qui l'enverrait est ignoré). Vide = on ne touche à rien.
+   */
+  if (source.email !== undefined && ["ADMIN", "RH"].includes(String(viewerRole ?? "").toUpperCase())) {
+    const email = toText(source.email)?.toLowerCase();
+
+    if (email) {
+      const problem = emailProblem(email);
+      if (problem) return { data, error: problem };
+
+      data.email = email;
+    }
   }
 
   return { data };
@@ -579,7 +598,7 @@ export async function createInternship(
       return;
     }
 
-    const identity = readStudentIdentity(req.body);
+    const identity = readStudentIdentity(req.body, getReqUser(req)?.role);
 
     if (identity.error) {
       res.status(400).json({ success: false, message: identity.error });
@@ -587,6 +606,13 @@ export async function createInternship(
     }
 
     {
+      const emailOwner = await emailOwnerName(identity.data.email as string | undefined, Number(studentId));
+
+      if (emailOwner) {
+        res.status(409).json({ success: false, message: `Cette adresse e-mail est déjà utilisée par ${emailOwner}.` });
+        return;
+      }
+
       const owner = await cinOwnerName(identity.data.cinNumber as string | null | undefined, Number(studentId));
 
       if (owner) {
@@ -744,7 +770,7 @@ export async function updateInternship(
       return;
     }
 
-    const identity = readStudentIdentity(req.body);
+    const identity = readStudentIdentity(req.body, getReqUser(req)?.role);
 
     if (identity.error) {
       res.status(400).json({ success: false, message: identity.error });
@@ -752,6 +778,16 @@ export async function updateInternship(
     }
 
     {
+      const emailOwner = await emailOwnerName(
+        identity.data.email as string | undefined,
+        studentId ? Number(studentId) : existing.studentId,
+      );
+
+      if (emailOwner) {
+        res.status(409).json({ success: false, message: `Cette adresse e-mail est déjà utilisée par ${emailOwner}.` });
+        return;
+      }
+
       const owner = await cinOwnerName(
         identity.data.cinNumber as string | null | undefined,
         studentId ? Number(studentId) : existing.studentId,

@@ -7,7 +7,7 @@ import {
   Award, BookOpen, Target, GraduationCap, Users,
   BarChart3, AlertTriangle, CheckCircle2, Clock,
   AlertCircle, Edit, Download, Share2, FileText,
-  Activity, MapPin, Star, TrendingUp, TrendingDown
+  Activity, MapPin, Star, TrendingUp, TrendingDown, Trash2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";

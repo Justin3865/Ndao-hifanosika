@@ -1,7 +1,7 @@
 {
   "model": "ml-logreg-tree-v1",
-  "version": "20261111022620",
-  "trained_at": "2026-11-11T02:26:20.299953+00:00",
+  "version": "20261111121018",
+  "trained_at": "2026-11-11T12:10:18.254724+00:00",
   "data_hash": "a922476bebb4dba6eb3a60cb6c3d7bc61a812d0f7c05d89593836736c69de404",
   "features": [
     "age",

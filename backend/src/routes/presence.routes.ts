@@ -16,7 +16,7 @@ export const presenceRouter = Router();
 
 presenceRouter.use(authenticate);
 
-const MANAGERS = ["ADMIN", "DIRECTION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"];
+const MANAGERS = ["ADMIN", "DIRECTION", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"];
 const JOURNAL = ["ADMIN", "DIRECTION", "COORDINATOR", "RH", "TUTEUR_L3", "TUTEUR_M2", "STAGIAIRE_L1", "STAGIAIRE_L2", "STAGIAIRE_L3", "STAGIAIRE_M1", "STAGIAIRE_M2"];
 
 function fail(res: Response, error: unknown, label: string): void {

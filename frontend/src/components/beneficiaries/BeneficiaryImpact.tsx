@@ -1,12 +1,11 @@
 // src/components/beneficiaries/BeneficiaryImpact.tsx
 "use client";
 
-import { maskMoney } from "@/lib/privacy";
 import { 
   Award, TrendingUp, TrendingDown, Users, 
   Calendar, Target, BarChart3, CheckCircle2,
   Activity, Heart, Briefcase, GraduationCap,
-  DollarSign, Building2, Star, Clock
+  DollarSign, Building2, Star, Clock, MessageSquare
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -113,7 +112,7 @@ export function BeneficiaryImpact({
     },
     {
       label: "Revenu moyen",
-      value: maskMoney(`${revenuMoyen.toLocaleString()} Ar`),
+      value: `${revenuMoyen.toLocaleString()} Ar`,
       change: trendPercentage + 3,
       icon: DollarSign,
       color: "bg-purple-500",

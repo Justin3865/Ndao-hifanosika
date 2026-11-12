@@ -706,10 +706,14 @@ export async function overview(viewer: Viewer, f: OverviewFilters) {
 
   if (!from && !to && day === c.today && c.workingDay && !f.userId) {
     const iwhere: any = { status: "IN_PROGRESS", startDate: { lte: new Date() }, OR: [{ endDate: null }, { endDate: { gte: new Date(`${c.today}T00:00:00+03:00`) } }] };
-    if (f.projectId) iwhere.projectId = f.projectId;
+    const and: any[] = [];
+    // projet principal OU projets cochés en plus (InternshipProject)
+    const inProject = (ids: number[]) => ({ OR: [{ projectId: { in: ids } }, { projectLinks: { some: { projectId: { in: ids } } } }] });
+    if (f.projectId) and.push(inProject([f.projectId]));
+    if (allowedProjects) and.push(inProject(allowedProjects));
+    if (and.length) iwhere.AND = and;
     if (f.internshipId) iwhere.id = f.internshipId;
     if (supervised) iwhere.id = { in: supervised };
-    if (allowedProjects) iwhere.projectId = { in: allowedProjects };
 
     const active = await prisma.internship.findMany({
       where: iwhere,

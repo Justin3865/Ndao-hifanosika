@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/axios";
 import { ageLabel, checkCin, codeForPlace } from "@/lib/madagascar";
 import { sanitizePhone, phoneInputProps } from "@/lib/phone";
-import { phoneProblem } from "@/lib/validation";
+import { emailProblem, emailTypoHint, phoneProblem } from "@/lib/validation";
 
 /**
  * Identité d'une personne liée à un formulaire (ex. le stagiaire d'un stage) :
@@ -13,6 +13,7 @@ import { phoneProblem } from "@/lib/validation";
  */
 
 export const IDENTITY_KEYS = [
+  "email",
   "phone",
   "birthDate",
   "birthPlace",
@@ -33,6 +34,7 @@ const inputClass =
 export const identityName = (key: IdentityKey) => `identity.${key}`;
 
 const LABELS: Record<Exclude<IdentityKey, "cinDuplicata" | "cinDuplicataAt">, string> = {
+  email: "E-mail",
   phone: "Téléphone",
   birthDate: "Date de naissance",
   birthPlace: "Lieu de naissance",
@@ -45,6 +47,9 @@ const LABELS: Record<Exclude<IdentityKey, "cinDuplicata" | "cinDuplicataAt">, st
 export function identityProblem(values: Values): string | null {
   const v = (k: IdentityKey) => String(values[identityName(k)] ?? "").trim();
   const today = new Date().toISOString().slice(0, 10);
+
+  const email = emailProblem(v("email"));
+  if (email) return email;
 
   const phone = phoneProblem(v("phone"));
   if (phone) return phone;
@@ -97,6 +102,9 @@ export function IdentityFields({
   const issuedPlace = String(values[identityName("cinIssuedPlace")] ?? "");
   const birthValue = String(values[identityName("birthDate")] ?? "");
   const cinLocal = checkCin(cinValue, issuedPlace);
+  const emailValue = String(values[identityName("email")] ?? "");
+  const emailError = emailProblem(emailValue);
+  const emailHint = emailError ? null : emailTypoHint(emailValue);
 
   // Un CIN complet : on demande au serveur s'il appartient déjà à une AUTRE personne (base de données)
   useEffect(() => {
@@ -138,6 +146,7 @@ export function IdentityFields({
 
         const d = res.data?.data ?? {};
         const next: Values = {
+          [identityName("email")]: toInput(d.email),
           [identityName("phone")]: toInput(d.phone),
           [identityName("birthDate")]: toInput(d.birthDate, true),
           [identityName("birthPlace")]: toInput(d.birthPlace),
@@ -150,6 +159,7 @@ export function IdentityFields({
 
         setMany(next);
         setInDb({
+          email: Boolean(next[identityName("email")]),
           phone: Boolean(next[identityName("phone")]),
           birthDate: Boolean(next[identityName("birthDate")]),
           birthPlace: Boolean(next[identityName("birthPlace")]),
@@ -203,7 +213,7 @@ export function IdentityFields({
         onChange={(e) =>
           key === "cinIssuedPlace"
             ? onPlaceChange(e.target.value)
-            : setValue(identityName(key), key === "cinNumber" ? e.target.value.replace(/\D/g, "").slice(0, 12) : key === "phone" ? sanitizePhone(e.target.value) : e.target.value)
+            : setValue(identityName(key), key === "cinNumber" ? e.target.value.replace(/\D/g, "").slice(0, 12) : key === "phone" ? sanitizePhone(e.target.value) : key === "email" ? e.target.value.replace(/\s/g, "").toLowerCase() : e.target.value)
         }
         {...extra}
       />
@@ -229,6 +239,22 @@ export function IdentityFields({
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
+        {/* Nouveau stagiaire : son e-mail est déjà demandé plus haut (obligatoire) ; ici on ne le propose que pour une fiche existante */}
+        {personId && (
+          <div className="space-y-1 md:col-span-2">
+            {text("email", "email", "prenom.nom@exemple.com", {
+              inputMode: "email",
+              autoComplete: "email",
+              maxLength: 254,
+              "aria-invalid": Boolean(emailError),
+            })}
+            {emailError && <p className="text-xs font-semibold text-red-600">{emailError}</p>}
+            {emailHint && <p className="text-xs text-amber-700">{emailHint}</p>}
+            {!emailError && !emailHint && (
+              <p className="text-xs text-gray-500">C&apos;est aussi l&apos;identifiant de connexion du stagiaire. Réservé à l&apos;administrateur et au RH.</p>
+            )}
+          </div>
+        )}
         {text("phone", "tel", "Ex. 034 00 000 00", { ...phoneInputProps })}
       </div>
 

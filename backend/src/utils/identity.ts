@@ -102,6 +102,7 @@ export function parseIdentity(
 
 /** Champs d'identité à sélectionner dans une requête Prisma sur User */
 export const identitySelect = {
+  email: true,
   phone: true,
   birthDate: true,
   birthPlace: true,
@@ -145,4 +146,15 @@ export async function cinOwnerName(cin: string | null | undefined, userId?: numb
   });
 
   return other ? `${other.firstName} ${other.lastName}`.trim() : null;
+}
+
+/** Un AUTRE compte utilise-t-il déjà cet e-mail ? (`userId` = la personne en cours de modification, ignorée) */
+export async function emailOwnerName(email: string | null | undefined, userId?: number | null): Promise<string | null> {
+  if (!email) return null;
+  const other = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" }, ...(userId ? { id: { not: userId } } : {}) },
+    select: { firstName: true, lastName: true, email: true },
+  });
+
+  return other ? `${other.firstName} ${other.lastName}`.trim() || other.email : null;
 }

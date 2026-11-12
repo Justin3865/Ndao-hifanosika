@@ -84,7 +84,8 @@ const ACCESS_RULES: AccessRule[] = [
 
   // Projets
   { pattern: /^\/projects\/(create|[^/]+\/edit)\/?$/, roles: ["ADMIN", "DIRECTION", "DAF", "COORDINATOR"] },
-  { pattern: /^\/projects(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COMMUNICATION", "COORDINATOR"] },
+  // Lecture seule pour les stagiaires : le serveur ne leur renvoie que les projets auxquels ils sont rattachés
+  { pattern: /^\/projects(\/|$)/, roles: ["ADMIN", "DIRECTION", "DAF", "COMMUNICATION", "COORDINATOR", ...STAGIAIRES] },
 
   // Activités
   {
@@ -110,7 +111,7 @@ const ACCESS_RULES: AccessRule[] = [
   // Affectation des coordinateurs aux projets (miroir de /api/project-coordinators)
   { pattern: /^\/coordinateurs(\/|$)/, roles: ["ADMIN", "DIRECTION"] },
   // Présences : séances (miroir de /api/attendance, ADMIN / DIRECTION / COORDINATOR) + pointage GPS journalier (/api/presence, tous les rôles ci-dessous)
-  { pattern: /^\/presences(\/|$)/, roles: ["ADMIN", "DIRECTION", "COORDINATOR", ...TUTEURS, ...STAGIAIRES] },
+  { pattern: /^\/presences(\/|$)/, roles: ["ADMIN", "DIRECTION", "RH", "COORDINATOR", ...TUTEURS, ...STAGIAIRES] },
   // Anomalies de présence -> vérification avant la note (miroir de /api/note-anomalies ; vérifier = ADMIN, DIRECTION, RH, tuteur)
   { pattern: /^\/note-anomalies(\/|$)/, roles: ["ADMIN", "DIRECTION", "RH", "DSI", ...TUTEURS, ...STAGIAIRES] },
   // Consentement des tuteurs légaux des mineurs (miroir de /api/consents)

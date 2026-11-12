@@ -8,7 +8,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, AlertCircle,
   Edit, Download, Share2, FileText, Activity,
   GraduationCap, Building2, TrendingUp, TrendingDown,
-  Star, MessageSquare
+  Star, MessageSquare, Trash2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";

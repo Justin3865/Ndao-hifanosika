@@ -37,6 +37,21 @@ export function emailProblem(value: unknown, domains: string[] = []): string | n
   return null;
 }
 
+/** Fautes de frappe courantes dans le domaine : renvoie une suggestion (non bloquante) ou null. */
+const DOMAIN_TYPOS: Record<string, string> = {
+  "gmial.com": "gmail.com", "gamil.com": "gmail.com", "gmai.com": "gmail.com", "gmail.con": "gmail.com", "gmail.co": "gmail.com", "gmaill.com": "gmail.com",
+  "yaho.fr": "yahoo.fr", "yahooo.fr": "yahoo.fr", "yahoo.fr.fr": "yahoo.fr", "yaho.com": "yahoo.com", "yahoo.con": "yahoo.com",
+  "hotmial.com": "hotmail.com", "hotmal.com": "hotmail.com", "hotmail.con": "hotmail.com", "outlok.com": "outlook.com", "outlook.con": "outlook.com",
+};
+
+export function emailTypoHint(value: unknown): string | null {
+  const email = String(value ?? "").trim().toLowerCase();
+  if (!email.includes("@")) return null;
+
+  const fixed = DOMAIN_TYPOS[email.slice(email.lastIndexOf("@") + 1)];
+  return fixed ? `Vouliez-vous écrire @${fixed} ?` : null;
+}
+
 /* ----------------------------- téléphone ----------------------------- */
 
 /** 10 chiffres : mobile 032 / 033 / 034 / 035 / 037 / 038 / 039, ou fixe 02x */

@@ -155,15 +155,11 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-3 rounded-xl py-1.5 pl-2 pr-3 transition hover:bg-gray-100"
+                className="flex items-center rounded-full p-1 transition hover:bg-gray-100"
+                aria-label="Menu du profil"
+                aria-expanded={menuOpen}
               >
                 <Avatar me={me} />
-                <div className="hidden text-left leading-tight sm:block">
-                  <p className="text-sm font-semibold text-gray-900">
-                    {me ? `${me.firstName} ${me.lastName}` : "..."}
-                  </p>
-                  <p className="text-xs text-gray-500">{roleLabel(me?.role)}</p>
-                </div>
               </button>
 
               {menuOpen && (

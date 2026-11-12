@@ -28,6 +28,11 @@ router.get(
     "DAF",
     "COMMUNICATION",
     "COORDINATOR",
+    "STAGIAIRE_L3",
+    "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   getProjects,
 );
@@ -66,6 +71,11 @@ router.get(
     "DAF",
     "COMMUNICATION",
     "COORDINATOR",
+    "STAGIAIRE_L3",
+    "STAGIAIRE_M2",
+    "STAGIAIRE_L1",
+    "STAGIAIRE_L2",
+    "STAGIAIRE_M1",
   ),
   getProjectById,
 );

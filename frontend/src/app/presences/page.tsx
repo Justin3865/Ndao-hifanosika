@@ -94,7 +94,7 @@ export default function PresencesPage() {
   })();
 
   const sessionsAllowed = ["ADMIN", "DIRECTION", "COORDINATOR"].includes(role);
-  const teamAllowed = ["ADMIN", "DIRECTION", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"].includes(role);
+  const teamAllowed = ["ADMIN", "DIRECTION", "RH", "COORDINATOR", "TUTEUR_L3", "TUTEUR_M2"].includes(role);
   const canRole = ATTENDANCE_EDIT_ROLES.includes(role);
   // Règles serveur (jour / heure) : actives seulement si l'API les fournit (/attendance/state) ; sinon comportement d'origine
   const serverRules = clock !== null;

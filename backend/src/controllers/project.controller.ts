@@ -5,8 +5,17 @@ import { AuthenticatedRequest } from "../middlewares/auth.middleware";
 
 import { sendError } from "../middlewares/error.middleware";
 import { projectCode, sortByMatricule } from "../utils/entityMatricule";
+import { isInternRole, scopedProjectIds } from "../utils/dataScope";
 function getAuthUser(req: Request) {
   return (req as AuthenticatedRequest).user;
+}
+
+/** Un stagiaire ne voit pas les chiffres financiers du projet. */
+function forIntern<T extends Record<string, unknown>>(project: T): T {
+  const { budget, budgetSpent, ...rest } = project as Record<string, unknown>;
+  void budget;
+  void budgetSpent;
+  return rest as T;
 }
 
 function parsePositiveInt(value: unknown): number | null {
@@ -109,12 +118,21 @@ export async function getProjects(
       });
     }
 
+    /*
+     * COORDINATOR : ses projets. STAGIAIRE : tous les projets auxquels il est
+     * rattaché (stage principal + projets liés + affectations). Les autres rôles
+     * autorisés par la route (ADMIN, DIRECTION…) voient tous les projets.
+     */
+    const intern = isInternRole(user.role);
+
     const where =
       user.role === "COORDINATOR"
         ? {
             createdById: user.id,
           }
-        : undefined;
+        : intern
+          ? { id: { in: await scopedProjectIds(user) } }
+          : undefined;
 
     const projects = await prisma.project.findMany({
       where,
@@ -154,7 +172,7 @@ export async function getProjects(
     return res.status(200).json({
       success: true,
       count: projects.length,
-      projects,
+      projects: intern ? projects.map(forIntern) : projects,
     });
   } catch (error) {
     logger.error(
@@ -235,6 +253,28 @@ export async function getProjectById(
       return res.status(403).json({
         success: false,
         message: "Accès refusé à ce projet.",
+      });
+    }
+
+    /*
+     * Stagiaire : uniquement un projet auquel il est rattaché, sans budget,
+     * sans bénéficiaires ni évaluations (données personnelles / de pilotage).
+     */
+    if (isInternRole(user.role)) {
+      if (!(await scopedProjectIds(user)).includes(project.id)) {
+        return res.status(403).json({
+          success: false,
+          message: "Accès refusé : ce projet ne vous est pas rattaché.",
+        });
+      }
+
+      const { beneficiaries, evaluations, ...visible } = project;
+      void beneficiaries;
+      void evaluations;
+
+      return res.status(200).json({
+        success: true,
+        project: forIntern(visible as Record<string, unknown>),
       });
     }
 
