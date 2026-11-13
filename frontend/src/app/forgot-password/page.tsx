@@ -157,7 +157,7 @@ export default function ForgotPasswordPage() {
               <MailCheck className="mx-auto h-14 w-14 text-green-600" />
               <h1 className="text-2xl font-bold text-gray-900">Vérifiez votre boîte mail</h1>
               <p className="text-sm text-gray-600">
-                Si un compte correspond à <strong>{email}</strong>, un lien de réinitialisation (valable 30 minutes) vient d&apos;être envoyé. Pensez à vérifier vos courriers indésirables.
+                Si un compte correspond à <strong>{email}</strong>, un lien de réinitialisation (valable 30 minutes) vient d&apos;être envoyé. Vérifiez vos courriers indésirables.
               </p>
               <button type="button" onClick={() => setStep("request")} className="text-sm font-medium text-blue-700 hover:underline">Renvoyer</button>
             </div>

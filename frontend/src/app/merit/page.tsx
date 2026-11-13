@@ -235,7 +235,7 @@ export default function MeritPage() {
               <Trophy className="h-6 w-6 text-amber-500" /> Ordre de mérite
             </h1>
             <p className="text-sm text-gray-500">
-              {isIntern ? "Votre position parmi les stagiaires de votre promotion." : "Classement automatique des stagiaires par promotion, selon l'avancement et l'achèvement de leur stage (moyenne sur 20)."}
+              {isIntern ? "Votre position parmi les stagiaires de votre promotion." : "Classement des stagiaires par promotion (moyenne sur 20)."}
             </p>
           </div>
 

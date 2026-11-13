@@ -32,6 +32,7 @@ export function SeProgress({
   size = "md",
   tone,
   className,
+  onClick,
 }: {
   value: number | null;
   planned?: number | null;
@@ -39,12 +40,27 @@ export function SeProgress({
   size?: "sm" | "md" | "lg";
   tone?: string;
   className?: string;
+  /** Optionnel : rend la barre cliquable (ouvre un détail) */
+  onClick?: () => void;
 }) {
   const h = size === "sm" ? "h-1.5" : size === "lg" ? "h-4" : "h-2.5";
   const v = value === null ? 0 : Math.min(Math.max(value, 0), 100);
 
+  const Wrapper = onClick ? "button" : "div";
+  const wrapperProps = onClick
+    ? {
+        type: "button" as const,
+        onClick,
+        title: "Voir le détail par projet",
+        className: cn(
+          "block w-full cursor-pointer rounded-lg p-1.5 -m-1.5 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+          className,
+        ),
+      }
+    : { className: cn("w-full", className) };
+
   return (
-    <div className={cn("w-full", className)}>
+    <Wrapper {...wrapperProps}>
       {label && (
         <div className="mb-1 flex items-center justify-between gap-2 text-xs">
           <span className="font-medium text-slate-600">{label}</span>
@@ -64,7 +80,7 @@ export function SeProgress({
           />
         )}
       </div>
-    </div>
+    </Wrapper>
   );
 }
 

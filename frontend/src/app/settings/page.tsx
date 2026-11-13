@@ -545,7 +545,7 @@ export default function SettingsPage() {
                     <Settings className="h-5 w-5" />
                   }
                   title="Mode compact"
-                  description="Réduire la taille de l'interface (textes et espacements) pour afficher plus de contenu."
+                  description="Réduire la taille de l’interface."
                   checked={
                     settings.compactMode
                   }

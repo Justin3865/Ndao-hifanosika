@@ -18,6 +18,7 @@ import api from "@/lib/axios";
 import { AppLayout } from "@/components/layout";
 import { StatusBadge } from "@/components/crud/StatusBadge";
 import { DepartmentDashboard } from "@/components/dashboard/DepartmentDashboard";
+import { MyInternshipSpace } from "@/components/monitoring/MyInternshipSpace";
 import { GoogleMap, MapMarker, MAPS_ENABLED } from "@/components/maps/GoogleMap";
 import { getStoredRole } from "@/lib/access";
 import { fmtDate } from "@/lib/crud";
@@ -159,6 +160,7 @@ export default function DashboardPage() {
     Promise.all(jobs).finally(() => setLoading(false));
   }, []);
 
+  const isIntern = ready && role.startsWith("STAGIAIRE_");
   const canTrack = ready && TRACKING_ROLES.includes(role);
   const { targets, connected } = useLiveTargets(canTrack);
   const staff = useLiveStaff(canTrack);
@@ -293,7 +295,7 @@ export default function DashboardPage() {
                 Bonjour{name ? `, ${name}` : ""} 👋
               </h1>
               <p className="mt-1 max-w-xl text-sm text-blue-100">
-                Voici l&apos;impact de Ndao Hifanosika en un coup d&apos;œil — projets, jeunes accompagnés et présence sur le terrain.
+                Bienvenue sur la plateforme de suivi et évaluation de Ndao Hifanosika.
               </p>
               <span className="mt-2 inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-white/20">
                 {roleLabel(role)}
@@ -318,6 +320,9 @@ export default function DashboardPage() {
             )}
           </div>
         </section>
+
+        {/* ---------- Espace du stagiaire : frise, agenda, présence, tâches, objectifs ---------- */}
+        {isIntern && <MyInternshipSpace />}
 
         {loading && <p className="text-gray-500">Chargement...</p>}
 

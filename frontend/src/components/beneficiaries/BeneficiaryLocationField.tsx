@@ -251,7 +251,7 @@ export function BeneficiaryLocationField({
         value={{ latitude: String(values[geo.lat] ?? ""), longitude: String(values[geo.lng] ?? ""), altitude: String(values[geo.alt] ?? "") }}
         onChange={(next) => setMany({ [geo.lat]: next.latitude, [geo.lng]: next.longitude, [geo.alt]: next.altitude })}
       />
-      <p className="text-xs text-gray-500">Cliquez sur la carte (ou déplacez le repère) pour placer le domicile exact ; la latitude, la longitude et l&apos;altitude se remplissent seules.</p>
+      <p className="text-xs text-gray-500">Cliquez sur la carte pour placer le domicile (coordonnées automatiques).</p>
     </div>
   );
 }

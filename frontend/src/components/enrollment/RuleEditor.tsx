@@ -83,7 +83,7 @@ export default function RuleEditor({ project, onClose, onSaved }: Props) {
             <input type="checkbox" checked={rule.autoEnroll} onChange={(e) => set("autoEnroll", e.target.checked)} className="mt-0.5 h-4 w-4" />
             <span>
               Inscription automatique : les candidats qui remplissent les critères et rentrent dans le quota deviennent bénéficiaires sans validation.
-              <span className="block text-xs text-gray-500">Décochée, ils restent « en liste d&apos;attente » jusqu&apos;à ce que vous lanciez la sélection.</span>
+              <span className="block text-xs text-gray-500">Décochée : « en liste d’attente » jusqu’au lancement de la sélection.</span>
             </span>
           </label>
 
@@ -91,13 +91,13 @@ export default function RuleEditor({ project, onClose, onSaved }: Props) {
             <label className="block text-sm">
               <span className="mb-1 block text-gray-600">Score IA de départ (0-100)</span>
               <input type="number" min={0} max={100} value={rule.topScore} onChange={(e) => set("topScore", Number(e.target.value))} className="w-full rounded-xl border border-gray-300 px-3 py-2" />
-              <span className="mt-1 block text-xs text-gray-500">On retient d&apos;abord les ménages ayant au moins ce score (70 par défaut).</span>
+              <span className="mt-1 block text-xs text-gray-500">Score minimum retenu en premier (70 par défaut).</span>
             </label>
 
             <label className="block text-sm">
               <span className="mb-1 block text-gray-600">Score IA plancher (0-100)</span>
               <input type="number" min={0} max={100} value={rule.minScore} onChange={(e) => set("minScore", Number(e.target.value))} className="w-full rounded-xl border border-gray-300 px-3 py-2" />
-              <span className="mt-1 block text-xs text-gray-500">Si le quota n&apos;est pas atteint, le seuil descend de 5 en 5 jusqu&apos;à ce plancher (50 par défaut).</span>
+              <span className="mt-1 block text-xs text-gray-500">Seuil abaissé de 5 en 5 jusqu’à ce plancher (50 par défaut).</span>
             </label>
 
             <label className="block text-sm">

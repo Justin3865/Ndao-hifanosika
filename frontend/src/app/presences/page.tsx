@@ -203,7 +203,7 @@ export default function PresencesPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Présences</h1>
-            <p className="text-sm text-gray-500">Pointage du jour avec preuve GPS, tâches faites, et présences aux séances.</p>
+            <p className="text-sm text-gray-500">Pointage GPS, tâches et présences du jour.</p>
           </div>
 
           {/* Date du jour (celle du serveur si disponible) : en lecture seule */}

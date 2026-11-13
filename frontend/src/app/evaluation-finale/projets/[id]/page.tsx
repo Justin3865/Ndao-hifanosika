@@ -46,7 +46,7 @@ function SatisfactionCard({
               <strong className="text-2xl text-gray-900">{summary.average}</strong>/5 · {summary.count} avis · {summary.satisfiedPct}% de satisfaits
             </p>
           ) : (
-            <p className="mt-1 text-sm text-amber-700">Aucun avis recueilli : cette composante n&apos;est pas encore comptée dans la note.</p>
+            <p className="mt-1 text-sm text-amber-700">Aucun avis : composante non comptée dans la note.</p>
           )}
         </div>
 
@@ -236,7 +236,7 @@ export default function ProjectFinalEvaluationPage() {
               />
             )}
             {canWrite && data.partners.length === 0 && (
-              <p className="text-sm text-gray-500">Aucun partenaire rattaché à ce projet : ajoutez-en depuis la fiche du projet pour recueillir leur avis.</p>
+              <p className="text-sm text-gray-500">Aucun partenaire rattaché : ajoutez-en depuis la fiche du projet.</p>
             )}
 
             <SatisfactionCard kind="BENEFICIARY" summary={data.satisfaction.beneficiaries} canWrite={canWrite} onAdd={() => setAdding("BENEFICIARY")} />

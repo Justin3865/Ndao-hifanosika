@@ -102,7 +102,7 @@ export function LearningReport({ report }: { report: LearningReportData }) {
           type="button"
           onClick={() => void downloadCsv()}
           disabled={busy}
-          title="Jeu de données au format CSV, lisible par l'application Python (ml/train_report.py)"
+          title="Jeu de données au format CSV"
           className="ml-auto inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Exporter en CSV (Python)
@@ -177,7 +177,7 @@ export function LearningReport({ report }: { report: LearningReportData }) {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-gray-500">Pouvoir séparateur = écart entre les moyennes des deux classes divisé par l&apos;écart-type commun (trié du plus au moins discriminant). C&apos;est une indication descriptive, pas une causalité.</p>
+          <p className="text-xs text-gray-500">Pouvoir séparateur : écart entre les deux classes (indication descriptive, pas une causalité).</p>
         </section>
       )}
 
@@ -207,12 +207,12 @@ export function LearningReport({ report }: { report: LearningReportData }) {
             </div>
             {ensembleCv && (
               <p className="text-xs text-gray-500">
-                {ensembleCv.aucStd <= 0.05 ? "Résultat stable d'un découpage à l'autre" : "Résultat variable selon le découpage : peu de données, à interpréter avec prudence"} (AUC de l&apos;ensemble {f2(ensembleCv.aucMean)} ± {f2(ensembleCv.aucStd)}).
+                {ensembleCv.aucStd <= 0.05 ? "Résultat stable d'un découpage à l'autre" : "Résultat variable : peu de données, à interpréter avec prudence"} (AUC de l&apos;ensemble {f2(ensembleCv.aucMean)} ± {f2(ensembleCv.aucStd)}).
               </p>
             )}
           </>
         ) : (
-          <p className="text-xs text-gray-500">Non calculée : il faut au moins 2 lignes de chaque classe par pli (ou le jeu est trop gros pour un calcul à la demande).</p>
+          <p className="text-xs text-gray-500">Non calculée : données insuffisantes ou trop volumineuses.</p>
         )}
       </section>
 
@@ -229,7 +229,7 @@ export function LearningReport({ report }: { report: LearningReportData }) {
             {gap !== null && (
               <p className="text-xs text-gray-500">
                 {gap > 0.15
-                  ? "Écart important entre entraînement et test : sur-apprentissage probable, plus de données aideraient."
+                  ? "Écart entraînement/test important : sur-apprentissage probable."
                   : last && last.testAuc < 0.65
                     ? "Les deux courbes restent basses : les variables actuelles expliquent peu le résultat."
                     : "Les deux courbes se rapprochent : pas de sur-apprentissage notable."}

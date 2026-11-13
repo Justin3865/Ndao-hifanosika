@@ -279,7 +279,7 @@ export default function ParcoursPage() {
         </section>
 
         {!canEdit && !loading && (
-          <p className="text-xs text-gray-500">Votre rôle permet de consulter les parcours ; seuls l&apos;administrateur et les coordinateurs peuvent les modifier.</p>
+          <p className="text-xs text-gray-500">Consultation seule : seuls l’administrateur et les coordinateurs modifient les parcours.</p>
         )}
       </div>
 

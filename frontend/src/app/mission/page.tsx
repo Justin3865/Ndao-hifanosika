@@ -170,7 +170,7 @@ export default function MissionPage() {
       <div className="mx-auto max-w-5xl space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ma mission terrain</h1>
-          <p className="text-sm text-gray-500">Partagez votre position GPS (avec altitude) pendant vos déplacements et réalisez vos enquêtes.</p>
+          <p className="text-sm text-gray-500">Partagez votre position GPS et réalisez vos enquêtes.</p>
         </div>
 
         <div className="flex gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">

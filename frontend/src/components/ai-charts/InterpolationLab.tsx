@@ -168,7 +168,7 @@ function ImpactBox({ internshipId }: { internshipId: number }) {
               </tbody>
             </table>
           )}
-          <p className="mt-2 text-[11px] text-gray-400">Simulation en lecture seule : rien n&apos;est modifié. Dès qu&apos;un stagiaire est réellement supprimé ou terminé, les analyses IA se recalculent seules.</p>
+          <p className="mt-2 text-[11px] text-gray-400">Simulation en lecture seule : rien n’est modifié.</p>
         </div>
       )}
     </div>

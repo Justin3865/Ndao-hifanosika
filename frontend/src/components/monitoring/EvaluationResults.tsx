@@ -212,7 +212,7 @@ export default function EvaluationResults({ data }: { data: EvaluationResultsDat
       {!projectsError && (
         <Block
           title={`Résultats par projet (${monitored.length})`}
-          subtitle="Avancement réel comparé à l'avancement prévu, calculé depuis le suivi & évaluation."
+          subtitle="Avancement réel comparé à l’avancement prévu."
         >
           <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full min-w-[760px] text-left text-sm">

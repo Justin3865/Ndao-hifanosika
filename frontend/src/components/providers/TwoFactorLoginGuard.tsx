@@ -141,8 +141,8 @@ export function TwoFactorLoginGuard() {
         </h2>
         <p className="mt-1 text-center text-sm text-slate-500">
           {backup
-            ? "Saisissez l'un de vos codes de secours (format XXXX-XXXX). Chaque code ne sert qu'une fois."
-            : "Ouvrez votre application d'authentification et saisissez le code à 6 chiffres affiché pour Ndao Hifanosika."}
+            ? "Saisissez un code de secours (XXXX-XXXX), utilisable une seule fois."
+            : "Saisissez le code à 6 chiffres de votre application d’authentification."}
         </p>
 
         <input

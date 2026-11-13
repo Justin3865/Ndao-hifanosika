@@ -369,7 +369,7 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
               <BadgeCheck className="h-7 w-7" />
             </span>
             <h2 className="mt-4 text-2xl font-bold text-gray-900">Vérifier un certificat</h2>
-            <p className="mt-2 text-sm text-gray-600">Entrez le code figurant sur le certificat, ou scannez son QR code, pour confirmer son authenticité.</p>
+            <p className="mt-2 text-sm text-gray-600">Entrez le code du certificat ou scannez son QR code.</p>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="NH-2026-XXXXXXXX" className="flex-1 rounded-xl border border-gray-300 px-4 py-3 font-mono uppercase outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
@@ -386,7 +386,7 @@ export function HomeContent({ openAuth, mobileMenuOpen, setMobileMenuOpen }: Pro
             <Activity className="h-8 w-8" />
           </span>
           <h2 className="text-3xl font-bold">Rejoignez la plateforme Ndao Hifanosika</h2>
-          <p className="max-w-2xl text-blue-100">Demandez votre accès : un administrateur valide votre compte et vous recevez une notification dès qu&apos;il est actif.</p>
+          <p className="max-w-2xl text-blue-100">Demandez votre accès : un administrateur validera votre compte.</p>
           <button type="button" onClick={() => openAuth("register")} className="rounded-xl bg-amber-400 px-8 py-3.5 font-semibold text-blue-950 hover:bg-amber-300">
             Demander un accès
           </button>

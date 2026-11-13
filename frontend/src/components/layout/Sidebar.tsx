@@ -34,6 +34,7 @@ import {
   Flag,
   FolderOpen,
   Target,
+  TrendingUp,
   UserCheck,
 } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -77,6 +78,7 @@ const groups = [
       // « Évaluations » regroupe aussi « Évaluation finale » et « Ordre de mérite » (onglets de la rubrique)
       { href: "/evaluations", label: "Évaluations", icon: ClipboardList, also: ["/evaluation-finale", "/merit"] },
       // ⚠️ NOVAINA: /internships no mitondra any amin'ny pejy "Offres de stage"
+      { href: "/mon-stage", label: "Mon avancement", icon: TrendingUp },
       { href: "/internships", label: "Stages", icon: GraduationCap },
       { href: "/internships/documents", label: "Documents de stage", icon: FolderOpen },
       // ⚠️ NOFAFANA: Ny "Offres de stage" sy "Nouvelle offre" tsy aseho eto intsony

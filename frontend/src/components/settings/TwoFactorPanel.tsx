@@ -178,7 +178,7 @@ export function TwoFactorPanel() {
             <p className="text-sm text-slate-500">
               {status.enabled
                 ? `Activée${status.enabledAt ? ` le ${new Date(status.enabledAt).toLocaleDateString("fr-FR")}` : ""} · ${status.backupCodesLeft} code(s) de secours restant(s)`
-                : "Un code temporaire de votre application d'authentification (Google Authenticator, Microsoft Authenticator, Authy…) sera demandé à chaque connexion."}
+                : "Un code temporaire de votre application d’authentification sera demandé à chaque connexion."}
             </p>
           </div>
         </div>
@@ -221,7 +221,7 @@ export function TwoFactorPanel() {
                 )}
 
                 <div className="min-w-0 space-y-2">
-                  <p className="text-xs text-slate-500">Impossible de scanner ? Saisissez cette clé (type : basé sur le temps) :</p>
+                  <p className="text-xs text-slate-500">Impossible de scanner ? Saisissez cette clé :</p>
                   <p className="break-all rounded-lg bg-white px-3 py-2 font-mono text-sm font-semibold tracking-wider text-slate-900">{grouped(setup.secret)}</p>
 
                   <div className="flex flex-wrap gap-2">

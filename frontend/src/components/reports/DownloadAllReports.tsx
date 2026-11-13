@@ -59,7 +59,7 @@ export function DownloadAllReports({ dashboard, evaluation }: { dashboard: Dashb
       setOpen(false);
     } catch (err) {
       console.error("Erreur PDF:", err);
-      setError("Impossible de générer le PDF. Vérifiez que « jspdf » et « html-to-image » sont installés (npm install).");
+      setError("Impossible de générer le PDF.");
     } finally {
       setBusy(false);
     }

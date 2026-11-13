@@ -374,7 +374,7 @@ export default function HomePage() {
       }, 1200);
     } catch (error) {
       console.error("Erreur login:", error);
-      openResult("error", "Impossible de contacter le serveur. Vérifiez que le backend est démarré.");
+      openResult("error", "Impossible de contacter le serveur.");
     } finally {
       setIsLoading(false);
     }
@@ -441,10 +441,10 @@ export default function HomePage() {
       setRegisterPassword("");
       setRegisterConfirmPassword("");
 
-      openResult("pending", data.message || "Votre compte a été créé. Il est maintenant en attente de validation par un administrateur.");
+      openResult("pending", data.message || "Compte créé : en attente de validation par un administrateur.");
     } catch (error) {
       console.error("Erreur register:", error);
-      openResult("error", "Impossible de contacter le serveur. Vérifiez que le backend est démarré.");
+      openResult("error", "Impossible de contacter le serveur.");
     } finally {
       setIsLoading(false);
     }
@@ -598,7 +598,7 @@ export default function HomePage() {
       setNewPassword("");
       setConfirmNewPassword("");
 
-      openResult("success", "Votre mot de passe a été modifié avec succès. Vous pouvez maintenant vous connecter.");
+      openResult("success", "Mot de passe modifié. Vous pouvez vous connecter.");
     } catch (error) {
       console.error("Erreur reset password:", error);
       openResult("error", "Impossible de contacter le serveur.");
@@ -1108,7 +1108,7 @@ export default function HomePage() {
                   </div>
                   <div className="flex gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs leading-5 text-[#1d4ed8] dark:text-blue-300">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                    <p>Après votre inscription, votre compte sera placé en attente. Un administrateur devra le vérifier et l'activer avant votre première connexion.</p>
+                    <p>Votre compte sera activé par un administrateur avant votre première connexion.</p>
                   </div>
                   <button type="submit" disabled={isLoading} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-700 disabled:opacity-60">
                     <ShieldCheck className="h-4 w-4" />
@@ -1213,7 +1213,7 @@ export default function HomePage() {
                     <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#1d4ed8]" />
                     <div>
                       <p className="font-semibold text-blue-800">Étape suivante</p>
-                      <p className="mt-1 text-sm leading-6 text-blue-700">Un administrateur doit vérifier et activer votre compte avant votre connexion.</p>
+                      <p className="mt-1 text-sm leading-6 text-blue-700">Compte à activer par un administrateur avant la connexion.</p>
                     </div>
                   </div>
                 </div>

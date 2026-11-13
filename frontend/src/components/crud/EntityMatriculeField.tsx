@@ -70,7 +70,7 @@ export function EntityMatriculeField({
         onChange={(e) => onChange(e.target.value.toUpperCase())}
       />
       <span className="block text-xs font-normal text-gray-500">
-        {help ?? "Proposé automatiquement ; modifiable. Il identifie l'enregistrement de façon unique."}
+        {help ?? "Proposé automatiquement ; modifiable."}
       </span>
     </label>
   );

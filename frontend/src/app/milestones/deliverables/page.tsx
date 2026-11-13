@@ -64,7 +64,7 @@ function Content() {
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-gray-900">Livrables des jalons</h1>
-        <p className="text-sm text-gray-500">Chaque jalon peut avoir des livrables attendus : prévu → livré → validé ou rejeté (avec motif). Les décisions sont journalisées.</p>
+        <p className="text-sm text-gray-500">Livrables attendus par jalon : prévu → livré → validé ou rejeté.</p>
       </div>
 
       <div className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1.5fr_10rem_auto]">

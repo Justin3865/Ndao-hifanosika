@@ -383,7 +383,7 @@ export default function CertificatePage() {
       await downloadCertificatePdf(node, fmt, `certificat-${item.code}-${fmt}.pdf`);
     } catch (err) {
       console.error("Erreur PDF:", err);
-      setPdfError("Impossible de générer le PDF. Vérifiez que « jspdf » et « html-to-image » sont installés (npm install).");
+      setPdfError("Impossible de générer le PDF.");
     } finally {
       setQuickDownload(null);
     }
@@ -421,7 +421,7 @@ export default function CertificatePage() {
       setShowFormat(false);
     } catch (err) {
       console.error("Erreur PDF:", err);
-      setPdfError("Impossible de générer le PDF. Vérifiez que « jspdf » et « html-to-image » sont installés (npm install).");
+      setPdfError("Impossible de générer le PDF.");
     } finally {
       setDownloading(false);
     }
@@ -500,7 +500,7 @@ export default function CertificatePage() {
                     {mailState === "no_email" && (
                       <>
                         <p className="font-semibold">Aucune adresse e-mail dans la base de données pour {item.holderName}.</p>
-                        <p>Le certificat n&apos;a pas pu être envoyé automatiquement. Téléchargez-le ici et remettez-le à la personne.</p>
+                        <p>Envoi automatique impossible. Téléchargez-le et remettez-le à la personne.</p>
                       </>
                     )}
                     {mailState === "not_configured" && (

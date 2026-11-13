@@ -78,7 +78,7 @@ export function CinHint({
     <p className="mt-1 text-xs text-gray-500">
       {expected.length > 0
         ? `Doit commencer par ${expected.map((d) => `${d.code} (${d.name})`).join(" ou ")}.`
-        : "Les 3 premiers chiffres = code du district (ex. 203 Ambositra, 313 Ambatondrazaka)."}
+        : "3 premiers chiffres = code du district."}
     </p>
   );
 }

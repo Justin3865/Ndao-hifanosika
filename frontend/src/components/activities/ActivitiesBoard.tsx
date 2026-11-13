@@ -29,6 +29,7 @@ import {
   joinActivity,
 } from "@/lib/activitySpace";
 import { confirmDialog, toast } from "@/lib/toast";
+import { InternCalendar } from "@/components/activities/InternCalendar";
 
 const PAGE_SIZE = 10;
 const DAY = 24 * 3600 * 1000;
@@ -357,6 +358,16 @@ export function ActivitiesBoard() {
           </Link>
         )}
 
+        {isIntern && (
+          <Link
+            href="/mon-stage"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 transition hover:bg-blue-100"
+          >
+            <span>Mon avancement de stage : frise du stage, ce que je dois faire chaque jour, mes tâches et mes objectifs individuels.</span>
+            <span className="font-medium underline">Ouvrir</span>
+          </Link>
+        )}
+
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -407,7 +418,7 @@ export function ActivitiesBoard() {
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        {!loading && !error && view === "calendar" && <Calendar items={filtered} />}
+        {!loading && !error && view === "calendar" && (isIntern ? <InternCalendar items={filtered} fallback={<Calendar items={filtered} />} /> : <Calendar items={filtered} />)}
 
         {!loading && !error && view === "table" && (
           <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">

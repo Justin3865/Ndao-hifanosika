@@ -56,7 +56,7 @@ export interface TeamPresence {
   day: string;
   totals: { present: number; checkedOut: number; suspect: number; tasks: number; missing: number };
   rows: TeamPresenceRow[];
-  missing: Array<{ userId: number; name: string; internshipId: number; title: string }>;
+  missing: Array<{ userId: number; name: string; internshipId: number; title: string; /** absence déclarée aujourd'hui (null = non déclarée) */ absence?: { reason: string | null } | null }>;
 }
 
 export interface InternshipJournal {
@@ -87,3 +87,13 @@ export const fmtTime = (iso: string | null | undefined): string =>
   iso ? new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
 
 export const fmtDay = (day: string): string => `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
+
+/** Absence déclarée (« 0 · Absent ») : une par membre et par jour (miroir de /api/presence/absence) */
+export interface PresenceAbsence {
+  id: number;
+  userId: number;
+  day: string;
+  reason: string | null;
+  internshipId: number | null;
+  createdAt: string;
+}

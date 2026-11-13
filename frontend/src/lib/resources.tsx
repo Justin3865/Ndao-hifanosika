@@ -246,7 +246,7 @@ export const milestonesConfig: ResourceConfig = {
       max: 100,
       readOnly: true,
       readOnlyPlaceholder: "Automatique (Suivi & Évaluation)",
-      hint: "Calculée automatiquement : avancement du projet et des stages des stagiaires (Suivi & Évaluation).",
+      hint: "Calculée automatiquement (Suivi &amp; Évaluation).",
     },
     { name: "completedAt", label: "Date d'achèvement", type: "date", hideOnCreate: true },
   ],
@@ -525,7 +525,7 @@ export const internshipsConfig: ResourceConfig = {
   ],
   fields: [
     { name: "title", label: "Intitulé du stage", type: "text", required: true },
-    { name: "theme", label: "Thème du stage", type: "text", required: true, full: true, hint: "Sujet du stagiaire : repris automatiquement sur son certificat (sinon l'intitulé du stage)." },
+    { name: "theme", label: "Thème du stage", type: "text", required: true, full: true, hint: "Repris sur le certificat (sinon l’intitulé du stage)." },
     { name: "studentId", label: "Stagiaire", type: "select", lookup: "students", required: true, requiredUnless: "newPerson" },
     { name: "newPerson", label: "Nouveau stagiaire", type: "newperson", identityOf: "studentId", hideOnEdit: true, full: true },
     { name: "matricule", label: "Matricule du stagiaire (N° d'inscription)", type: "matricule", identityOf: "studentId" },
@@ -766,7 +766,7 @@ export const campaignsConfig: ResourceConfig = {
 /* ------------------------------------------------------------------ */
 export const zonesConfig: ResourceConfig = {
   title: "Zones d'intervention",
-  subtitle: "Villes et régions où l'ONG intervient — affichées sur la carte et la page d'accueil.",
+  subtitle: "Villes et régions d’intervention de l’ONG.",
   singular: "une zone",
   basePath: "/zones",
   endpoint: "/zones",

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Bell, Save, X } from "lucide-react";
+import { toast } from "@/lib/toast";
 
 import type { Notification } from "./NotificationItem";
 import type { NotificationPriorityValue } from "./NotificationPriority";
@@ -72,12 +73,12 @@ export default function NotificationForm({
     event.preventDefault();
 
     if (!title.trim()) {
-      alert("Le titre est obligatoire.");
+      toast.warning("Le titre est obligatoire.");
       return;
     }
 
     if (!message.trim()) {
-      alert("Le message est obligatoire.");
+      toast.warning("Le message est obligatoire.");
       return;
     }
 

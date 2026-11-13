@@ -89,4 +89,4 @@ export function State({ loading, error, children }: { loading: boolean; error: s
 }
 
 export const METHOD_NOTE =
-  "Indicateurs calculés en direct par règles et statistiques sur vos données réelles (pas de modèle de machine learning entraîné). Ils aident à décider mais ne remplacent pas l'analyse humaine.";
+  "Indicateurs calculés en direct sur vos données (règles et statistiques, sans machine learning).";

@@ -236,7 +236,7 @@ export default function EnrollmentPage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-semibold text-gray-900">Quota et critères par projet</h2>
-              <p className="text-xs text-gray-500">Le quota est le nombre de « bénéficiaires visés » de la fiche du projet.</p>
+              <p className="text-xs text-gray-500">Quota = « bénéficiaires visés » du projet.</p>
             </div>
 
             <button
@@ -278,7 +278,7 @@ export default function EnrollmentPage() {
 
                   <p className="mt-2 text-xs text-gray-500">
                     {p.target === null
-                      ? "Quota non défini : renseignez « bénéficiaires visés » dans la fiche du projet."
+                      ? "Quota non défini (« bénéficiaires visés » du projet)."
                       : `${p.remaining} place(s) restante(s) · ${p.waitlist} en liste d'attente · ${p.enrolledFromSurveys} issu(s) des enquêtes`}
                   </p>
 
@@ -354,7 +354,7 @@ export default function EnrollmentPage() {
                     {r.shortfall > 0 && !r.skipped && (
                       <p className="text-xs text-amber-800">Quota non atteint : il manque {r.shortfall} bénéficiaire(s). Ajoutez des enquêtes ou abaissez le seuil de 5 points.</p>
                     )}
-                    {!r.autoEnroll && selection.dryRun && <p className="text-xs">Ce projet est en validation manuelle ; le bouton « Lancer la sélection » les inscrit.</p>}
+                    {!r.autoEnroll && selection.dryRun && <p className="text-xs">Validation manuelle : utilisez « Lancer la sélection ».</p>}
                     {r.selected.length > 0 && (
                       <p className="mt-1 text-xs">
                         {r.selected.map((s) => `${s.name} (${s.score})`).join(" · ")}
@@ -556,8 +556,8 @@ export default function EnrollmentPage() {
         title={detail === "enrolled" ? "Ménages devenus bénéficiaires" : "Enquêtes reçues"}
         description={
           detail === "enrolled"
-            ? "Ménages issus des enquêtes de mission qui ont été sélectionnés comme bénéficiaires."
-            : "Tous les ménages enquêtés en mission et leur statut dans la sélection."
+            ? "Ménages enquêtés sélectionnés comme bénéficiaires."
+            : "Ménages enquêtés et leur statut."
         }
       >
         {detailLoading && <p className="py-6 text-center text-sm text-gray-500">Chargement…</p>}

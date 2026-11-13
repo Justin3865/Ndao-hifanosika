@@ -115,7 +115,7 @@ export function InsightsPanel({ insight, title = "Analyse automatique" }: { insi
   return (
     <Section
       title={title}
-      subtitle="Calculée à partir des données S&E (règles). Analyses prédictives détaillées dans le module IA."
+      subtitle="Calculée à partir des données S&amp;E (règles)."
       action={
         <Link href="/ai" className="inline-flex items-center gap-1 rounded-lg border border-violet-200 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50">
           <Sparkles className="h-3.5 w-3.5" /> Module IA

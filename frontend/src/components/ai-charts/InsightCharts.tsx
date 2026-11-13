@@ -137,7 +137,7 @@ export function DropoutCharts() {
           </ChartCard>
         </div>
 
-        <ChartCard title="Courbe de couverture" subtitle="Combien de bénéficiaires ont un risque ≥ au seuil : aide à choisir le seuil d'accompagnement">
+        <ChartCard title="Courbe de couverture" subtitle="Bénéficiaires dont le risque ≥ seuil (aide à choisir le seuil)">
           <LineChart
             xDomain={[0, 100]}
             xLabel="Seuil de risque"

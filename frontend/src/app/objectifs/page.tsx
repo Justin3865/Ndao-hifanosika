@@ -137,7 +137,7 @@ export default function ObjectifsPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Objectifs individuels</h1>
-            <p className="text-sm text-gray-500">Objectifs et indicateurs de performance (KPI RH) de chaque membre, avec suivi de la progression.</p>
+            <p className="text-sm text-gray-500">Objectifs et indicateurs (KPI RH) de chaque membre.</p>
           </div>
           {canEdit && (
             <button type="button" onClick={() => setShowForm((v) => !v)} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800">

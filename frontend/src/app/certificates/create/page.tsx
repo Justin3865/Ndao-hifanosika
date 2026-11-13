@@ -884,10 +884,10 @@ export default function CreateCertificatePage() {
                   Absentes de la base : {missingInDb.map((f) => DB_LABELS[f]).join(", ")}.
                   {selected.source === "USER"
                     ? " Saisissez-les ci-dessous : elles seront enregistrées dans la fiche à la délivrance."
-                    : " Complétez-les dans la fiche du bénéficiaire (Bénéficiaires › Modifier) pour qu'elles se remplissent toutes seules."}
+                    : " Complétez-les dans la fiche du bénéficiaire."}
                 </p>
               ) : (
-                <p className="mt-1 text-xs">Toutes les informations nécessaires existent déjà dans la base de données.</p>
+                <p className="mt-1 text-xs">Informations déjà en base.</p>
               )}
             </div>
           )}
@@ -952,7 +952,7 @@ export default function CreateCertificatePage() {
               ) : (
                 <CandidateCombobox
                   type="INTERNSHIP"
-                  placeholder="Cliquer pour voir la liste, ou taper un nom, téléphone, CIN, e-mail, matricule…"
+                  placeholder="Rechercher : nom, téléphone, CIN, matricule…"
                   onPick={(c) => {
                     setInternshipId(String(c.id));
                     setPickedStage({ id: String(c.id), label: `${c.name} — ${c.subtitle ?? "Stage"}` });
@@ -1003,15 +1003,15 @@ export default function CreateCertificatePage() {
               <Lock className="h-3.5 w-3.5 shrink-0" />
               {isInternship
                 ? !internshipId
-                  ? "Choisissez d'abord un stage terminé : ses projets et les informations du stagiaire seront remplis automatiquement."
+                  ? "Choisissez d’abord un stage terminé."
                   : missingInDb.length === 0
-                    ? "Toutes les informations viennent de la base de données : elles sont verrouillées. Changez de stage pour les modifier."
-                    : "Les informations déjà présentes dans la base de données sont verrouillées : seuls les champs absents de la base restent modifiables."
+                    ? "Informations verrouillées (base de données). Changez de stage pour les modifier."
+                    : "Informations en base verrouillées ; seuls les champs absents sont modifiables."
                 : !selected
-                  ? "Choisissez d'abord une personne dans la liste : les informations de la base de données seront remplies automatiquement et verrouillées. Personne absente de la base ? Cochez « Cas particulier »."
+                  ? "Choisissez d’abord une personne (ou cochez « Cas particulier »)."
                   : missingInDb.length === 0
-                    ? "Toutes les informations viennent de la base de données : elles sont verrouillées. Changez de personne pour les modifier."
-                    : "Les informations déjà présentes dans la base de données sont verrouillées : seuls les champs absents de la base restent modifiables."}
+                    ? "Informations verrouillées (base de données). Changez de personne pour les modifier."
+                    : "Informations en base verrouillées ; seuls les champs absents sont modifiables."}
             </p>
           )}
 
@@ -1080,15 +1080,15 @@ export default function CreateCertificatePage() {
 
             {projectIds.length > 0 ? (
               <PartnersField
-                label="Partenaires des projets imprimés sur ce certificat (sélection multiple)"
+                label="Partenaires imprimés sur le certificat"
                 value={partnerIds}
                 onChange={setPartnerIds}
                 options={partnerOptions}
                 allowCreate={false}
-                emptyHint="Aucun partenaire lié à ces projets : ajoutez-les dans « Modifier le projet »."
+                emptyHint="Aucun partenaire lié (voir « Modifier le projet »)."
               />
             ) : (
-              <p className="text-xs text-gray-500">Choisissez un ou plusieurs projets : leurs partenaires (logo, nom, slogan) s&apos;afficheront ici.</p>
+              <p className="text-xs text-gray-500">Choisissez un ou plusieurs projets pour afficher leurs partenaires.</p>
             )}
           </fieldset>
 
@@ -1190,7 +1190,7 @@ export default function CreateCertificatePage() {
 
             <p className="text-xs text-gray-500 md:col-span-3">
               {isInternship
-                ? "Pour un stage, ces informations sont lues dans le profil du stagiaire. Les champs ci-dessus ne servent que si son profil n'est pas encore renseigné."
+                ? "Lues dans le profil du stagiaire ; ces champs servent si le profil est incomplet."
                 : "La date et le lieu de naissance, le CIN et le lieu de mission apparaissent sur le certificat."}
             </p>
           </div>
@@ -1200,7 +1200,7 @@ export default function CreateCertificatePage() {
               <input type="checkbox" disabled={(lockInternship || lockPerson) && !!selected && missingInDb.length === 0} checked={saveToProfile} onChange={(e) => setSaveToProfile(e.target.checked)} className="mt-0.5 h-4 w-4" />
               <span>
                 Compléter la fiche de <b>{selected.name}</b> dans la base de données avec les informations saisies
-                <span className="block text-xs text-gray-500">Seuls les champs encore vides sont remplis : rien d&apos;existant n&apos;est écrasé.</span>
+                <span className="block text-xs text-gray-500">Seuls les champs vides sont remplis.</span>
               </span>
             </label>
           )}
@@ -1245,7 +1245,7 @@ export default function CreateCertificatePage() {
               )}
 
               {internshipId && !suggestion?.mention && (
-                <p className="text-xs text-amber-700">Aucune donnée de suivi pour ce stage : choisissez la mention manuellement.</p>
+                <p className="text-xs text-amber-700">Pas de données de suivi : choisissez la mention.</p>
               )}
             </div>
           ) : (

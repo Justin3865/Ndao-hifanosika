@@ -119,7 +119,7 @@ export default function ReportsExportPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{t("export.title")}</h1>
-            <p className="text-sm text-gray-500">Fichiers Excel (.xlsx), CSV et JSON construits à partir de la base de données.</p>
+            <p className="text-sm text-gray-500">Exports Excel, CSV et JSON.</p>
           </div>
 
           <button
@@ -177,7 +177,7 @@ export default function ReportsExportPage() {
       <ExportFormatDialog
         open={chooseAll}
         title="Tout télécharger"
-        subtitle="Choisissez le format. En Excel, tout est regroupé dans un seul classeur ; en CSV ou JSON, un fichier par rubrique."
+        subtitle="Excel : un seul classeur. CSV/JSON : un fichier par rubrique."
         onClose={() => setChooseAll(false)}
         onPick={(format) => {
           setChooseAll(false);

@@ -204,7 +204,7 @@ export default function ProjectMonitoringPage() {
         </div>
 
         <p className="flex items-center gap-1 text-xs text-slate-400">
-          <ClipboardList className="h-3.5 w-3.5" /> Les chiffres sont recalculés à chaque chargement depuis les données du projet.
+          <ClipboardList className="h-3.5 w-3.5" /> Chiffres recalculés à chaque chargement.
         </p>
       </div>
     </AppLayout>

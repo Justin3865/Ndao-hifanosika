@@ -267,7 +267,20 @@ export default function SuiviEvaluationPage() {
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {(Object.keys(COMPONENT_LABEL) as ComponentKey[]).map((k) => (
-                  <SeProgress key={k} label={COMPONENT_LABEL[k]} value={summary.components[k]} size="sm" />
+                  <SeProgress
+                    key={k}
+                    label={COMPONENT_LABEL[k]}
+                    value={summary.components[k]}
+                    size="sm"
+                    onClick={() =>
+                      showProjects(
+                        `${COMPONENT_LABEL[k]} par projet`,
+                        monitored.filter((m) => m.components[k] !== null),
+                        (m) => `${COMPONENT_LABEL[k]} : ${fmtPct(m.components[k])}`,
+                        "Projets ayant des données pour cette composante.",
+                      )
+                    }
+                  />
                 ))}
               </div>
             </Section>

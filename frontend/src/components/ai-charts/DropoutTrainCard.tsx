@@ -76,7 +76,7 @@ function MetricsBars({ models }: { models?: NonNullable<DropoutReport["metrics"]
         <rect x={L + 150} y={H - 16} width="10" height="10" fill="#93c5fd" rx="2" />
         <text x={L + 164} y={H - 7} fontSize="10" fill="#374151">Rappel (abandons détectés)</text>
       </svg>
-      <p className="text-xs text-gray-500">Barres foncées : PR-AUC ; barres claires : rappel. Plus la barre est haute, mieux c&apos;est.</p>
+      <p className="text-xs text-gray-500">Foncé : PR-AUC · clair : rappel (plus haut = mieux).</p>
     </div>
   );
 }
@@ -179,7 +179,7 @@ function PrCurve({ report }: { report: DropoutReport }) {
                 {(mb.recall?.mean ?? 1) < 0.1 && <li>Rappel des règles très bas avec ces données : se fier surtout au PR-AUC.</li>}
                 <li>Verdict : <b>{report.decision?.verdict === "retenu" ? "modèle retenu" : "non concluant, règles conservées"}</b>.</li>
               </ul>
-              <p className="text-xs text-gray-500">Si les données sont de démonstration (synthétiques), cela illustre le fonctionnement, pas la performance réelle.</p>
+              <p className="text-xs text-gray-500">Données de démonstration : fonctionnement illustré, pas performance réelle.</p>
             </div>
           )}
         </section>
@@ -253,7 +253,7 @@ export function DropoutTrainCard() {
 
   const train = async () => {
     const ok = await confirmDialog(
-      "Entraîner le modèle d'abandon sur les parcours clos (terminé / abandon) ? Il ne sera utilisé que s'il bat le score à règles ; sinon les règles sont conservées.",
+      "Entraîner le modèle d’abandon ? Il ne sera utilisé que s’il bat le score à règles.",
       { title: "Modèle d'abandon", confirmLabel: "Lancer" },
     );
     if (!ok) return;

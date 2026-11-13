@@ -77,7 +77,7 @@ export default function ModelsPage() {
   };
 
   const train = async () => {
-    if (!(await confirmDialog("Entraîner les modèles sur les données actuelles ? Cela peut prendre quelques secondes.", { title: "Entraînement IA", confirmLabel: "Lancer", danger: false }))) return;
+    if (!(await confirmDialog("Entraîner les modèles ?", { title: "Entraînement IA", confirmLabel: "Lancer", danger: false }))) return;
 
     setBusy(true);
 
@@ -139,7 +139,7 @@ export default function ModelsPage() {
                   <button type="button" onClick={() => setShowCurve(true)} className="font-medium text-blue-800 underline-offset-2 hover:underline" title="Voir la courbe ROC, l'histogramme et le tableau des résultats">
                     (AUC {best.metrics.auc.toFixed(2)} contre {report.baseline.auc.toFixed(2)}, rappel {pct(best.metrics.recall)})
                   </button>
-                  {report.reliability === "INSUFFISANTE" ? " : échantillon trop petit pour conclure, à confirmer avec davantage d'enquêtes." : " : utilisable comme aide à la décision."}
+                  {report.reliability === "INSUFFISANTE" ? " : échantillon trop petit pour conclure." : " : utilisable comme aide à la décision."}
                   <button type="button" onClick={() => setShowCurve(true)} className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-800 underline">
                     <LineIcon className="h-3.5 w-3.5" /> Voir la courbe
                   </button>

@@ -18,6 +18,7 @@ import {
 import { errorMessage, fetchInternshipMonitoring } from "@/services/monitoring.service";
 import { AlertsPanel } from "@/components/monitoring/panels";
 import { EmptyState, GapBadge, Kpi, Pill, Section, SeProgress, trendTone } from "@/components/monitoring/parts";
+import { InternshipTimeline } from "@/components/monitoring/InternshipTimeline";
 
 const taskTone: Record<InternshipTaskItem["status"], string> = {
   TODO: "bg-slate-100 text-slate-700",
@@ -137,6 +138,8 @@ export default function InternshipMonitoringPage() {
             </p>
           </div>
         </header>
+
+        <InternshipTimeline data={data} />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Kpi label="Tâches" value={t.total} hint={`${t.completed} terminées · ${t.inProgress} en cours`} onClick={() => goTo("se-taches")} icon={ListChecks} tone="bg-sky-50 text-sky-700" progress={c.tasks} />

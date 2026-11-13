@@ -66,7 +66,7 @@ export function MatriculeField({
       <span className="block text-xs font-normal text-gray-500">
         {locked
           ? "Matricule déjà attribué à ce stagiaire : vous pouvez le modifier (format NH-2026-STG-0001) ; le N° de ses certificats suivra."
-          : "Proposé automatiquement ; il sera le N° d'inscription du stagiaire et de ses certificats de stage (modifiable)."}
+          : "Proposé automatiquement (modifiable) : N° d’inscription du stagiaire."}
       </span>
     </label>
   );

@@ -25,7 +25,7 @@ export default function AiDropoutRiskPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <InsightHeader title="Risque d'abandon" subtitle="Bénéficiaires à accompagner en priorité (statut du projet, jalons en retard, évaluations, vulnérabilité)." />
+        <InsightHeader title="Risque d'abandon" subtitle="Bénéficiaires à accompagner en priorité." />
 
         <State loading={loading} error={error}>
           <div className="flex flex-wrap items-center gap-2">

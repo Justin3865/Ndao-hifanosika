@@ -5,6 +5,7 @@ import { authenticate } from "../middlewares/auth.middleware";
 import { sendError } from "../middlewares/error.middleware";
 import { authorizeRoles } from "../middlewares/role.middleware";
 import { PresenceError, checkIn, checkOut, getState, internshipJournal, overview, userJournal } from "../services/presence.service";
+import { absencesOf, cancelAbsence, clearAbsenceForDay, declareAbsence, myAbsences } from "../services/presenceAbsence.service";
 import { getReqUser } from "../utils/dataScope";
 
 /* ===================================================================
@@ -46,7 +47,10 @@ presenceRouter.get("/state", async (req: Request, res: Response) => {
 /** POST /api/presence/check-in { mode: SIEGE|TERRAIN, latitude, longitude, altitude?, accuracy?, projectId? } */
 presenceRouter.post("/check-in", async (req: Request, res: Response) => {
   try {
-    res.status(201).json({ success: true, data: await checkIn(getReqUser(req)!, req.body ?? {}) });
+    const me = getReqUser(req)!;
+    const data = await checkIn(me, req.body ?? {});
+    await clearAbsenceForDay(me.id, data.day).catch(() => undefined); // une arrivée pointée annule l'absence déclarée du jour
+    res.status(201).json({ success: true, data });
   } catch (error) {
     fail(res, error, "Erreur pointage d'arrivée");
   }
@@ -58,6 +62,50 @@ presenceRouter.post("/check-out", async (req: Request, res: Response) => {
     res.json({ success: true, data: await checkOut(getReqUser(req)!, req.body ?? {}) });
   } catch (error) {
     fail(res, error, "Erreur pointage de départ");
+  }
+});
+
+/** GET /api/presence/absence?days=60 — mes absences déclarées */
+presenceRouter.get("/absence", async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await myAbsences(getReqUser(req)!, Number(req.query.days) || 60) });
+  } catch (error) {
+    fail(res, error, "Erreur lecture des absences");
+  }
+});
+
+/** POST /api/presence/absence { reason? } — déclare mon absence du jour (« 0 · Absent ») */
+presenceRouter.post("/absence", async (req: Request, res: Response) => {
+  try {
+    res.status(201).json({ success: true, message: "Absence enregistrée.", data: await declareAbsence(getReqUser(req)!, req.body ?? {}) });
+  } catch (error) {
+    fail(res, error, "Erreur déclaration d'absence");
+  }
+});
+
+/** DELETE /api/presence/absence — annule mon absence du jour */
+presenceRouter.delete("/absence", async (req: Request, res: Response) => {
+  try {
+    await cancelAbsence(getReqUser(req)!);
+    res.json({ success: true, message: "Absence annulée." });
+  } catch (error) {
+    fail(res, error, "Erreur annulation d'absence");
+  }
+});
+
+/** GET /api/presence/absence/user/:userId?days=60 — absences déclarées d'un membre (même périmètre que son journal) */
+presenceRouter.get("/absence/user/:userId", authorizeRoles(...JOURNAL), async (req: Request, res: Response) => {
+  try {
+    const id = positive(req.params.userId);
+
+    if (!id) {
+      res.status(400).json({ success: false, message: "Membre invalide" });
+      return;
+    }
+
+    res.json({ success: true, data: await absencesOf(getReqUser(req)!, id, Number(req.query.days) || 60) });
+  } catch (error) {
+    fail(res, error, "Erreur absences du membre");
   }
 });
 

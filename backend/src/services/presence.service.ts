@@ -702,7 +702,7 @@ export async function overview(viewer: Viewer, f: OverviewFilters) {
   });
 
   // Stagiaires en cours qui n'ont pas encore pointé aujourd'hui (jour ouvrable seulement)
-  let missing: Array<{ userId: number; name: string; internshipId: number; title: string }> = [];
+  let missing: Array<{ userId: number; name: string; internshipId: number; title: string; absence: { reason: string | null } | null }> = [];
 
   if (!from && !to && day === c.today && c.workingDay && !f.userId) {
     const iwhere: any = { status: "IN_PROGRESS", startDate: { lte: new Date() }, OR: [{ endDate: null }, { endDate: { gte: new Date(`${c.today}T00:00:00+03:00`) } }] };
@@ -722,9 +722,19 @@ export async function overview(viewer: Viewer, f: OverviewFilters) {
     });
     const present = new Set(rows.map((r) => r.userId as number));
 
+    const declared: Array<{ userId: number; reason: string | null }> = await db.presenceAbsence.findMany({ where: { day: c.today }, select: { userId: true, reason: true } });
+    const reasonOf = new Map(declared.map((a) => [a.userId, a.reason]));
+
     missing = active
       .filter((i) => !present.has(i.studentId))
-      .map((i) => ({ userId: i.studentId, name: `${i.student?.firstName ?? ""} ${i.student?.lastName ?? ""}`.trim(), internshipId: i.id, title: i.title }));
+      .map((i) => ({
+        userId: i.studentId,
+        name: `${i.student?.firstName ?? ""} ${i.student?.lastName ?? ""}`.trim(),
+        internshipId: i.id,
+        title: i.title,
+        // absence déclarée par le stagiaire aujourd'hui (null = non déclarée)
+        absence: reasonOf.has(i.studentId) ? { reason: reasonOf.get(i.studentId) ?? null } : null,
+      }));
   }
 
   return {
@@ -919,7 +929,9 @@ async function remindMissing(): Promise<void> {
       select: { id: true, studentId: true, supervisorId: true, projectId: true, student: { select: { firstName: true, lastName: true } } },
     });
     const present = new Set<number>((await db.dailyPresence.findMany({ where: { day: c.today }, select: { userId: true } })).map((r: { userId: number }) => r.userId));
-    const absent = interns.filter((i) => !present.has(i.studentId));
+    // Une absence déclarée (« 0 · Absent ») dispense du rappel d'arrivée
+    const declared = new Set<number>((await db.presenceAbsence.findMany({ where: { day: c.today }, select: { userId: true } })).map((r: { userId: number }) => r.userId));
+    const absent = interns.filter((i) => !present.has(i.studentId) && !declared.has(i.studentId));
 
     for (const i of absent) {
       await notifyOncePerDay([i.studentId], { title: "Pointage d'arrivée manquant", message: "Vous n'avez pas encore pointé votre arrivée aujourd'hui. Ouvrez « Présences » et cliquez sur « Pointer mon arrivée ».", type: "INFO", channels: "app" }, dayStart);

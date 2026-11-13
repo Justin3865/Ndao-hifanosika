@@ -397,7 +397,7 @@ export function ProgressModal({ mode, options, initialId, onClose, onSaved }: Pr
                     </div>
                   )}
                   {detail.partners.length === 0 && !adding && (
-                    <p className="mt-2 text-xs text-amber-600">Aucun partenaire rattaché à ce projet : ajoutez-en depuis la fiche du projet pour recueillir leur avis.</p>
+                    <p className="mt-2 text-xs text-amber-600">Aucun partenaire rattaché : ajoutez-en depuis la fiche du projet.</p>
                   )}
                 </>
               ) : (

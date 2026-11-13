@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { Save, X, Plus, Trash2 } from "lucide-react";
+import { toast } from "@/lib/toast";
 import type { Report, ReportStatus } from "./ReportTable";
 
 interface ReportFormProps {
@@ -106,17 +107,17 @@ export default function ReportForm({
     event.preventDefault();
 
     if (!title.trim()) {
-      alert("Le titre du rapport est obligatoire.");
+      toast.warning("Le titre du rapport est obligatoire.");
       return;
     }
 
     if (!project) {
-      alert("Veuillez sélectionner un projet.");
+      toast.warning("Veuillez sélectionner un projet.");
       return;
     }
 
     if (!period.trim()) {
-      alert("La période est obligatoire.");
+      toast.warning("La période est obligatoire.");
       return;
     }
 

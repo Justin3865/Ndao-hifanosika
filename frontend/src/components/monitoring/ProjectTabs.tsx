@@ -44,7 +44,7 @@ export function ObjectivesTab({ tree }: { tree: ObjectiveNode[] | null }) {
       </EmptyState>
     );
   if (tree.length === 0)
-    return <EmptyState>Aucun objectif défini pour ce projet. Ajoutez des objectifs, résultats attendus et indicateurs avec baseline et cible.</EmptyState>;
+    return <EmptyState>Aucun objectif défini pour ce projet.</EmptyState>;
 
   return (
     <div className="space-y-4">

@@ -1,28 +1,51 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  Info,
+  Pencil,
+  PlusCircle,
+  Send,
+  Trash2,
+  TriangleAlert,
+  X,
+  XCircle,
+} from "lucide-react";
 import type { ConfirmEventDetail, ToastEventDetail, ToastKind } from "@/lib/toast";
 
 interface ToastItem extends ToastEventDetail {
   id: number;
 }
 
-const STYLE: Record<ToastKind, { icon: typeof Info; ring: string; text: string }> = {
-  success: { icon: CheckCircle2, ring: "bg-green-100 text-green-600", text: "Succès" },
-  error: { icon: XCircle, ring: "bg-red-100 text-red-600", text: "Erreur" },
-  info: { icon: Info, ring: "bg-blue-100 text-blue-600", text: "Information" },
-  warning: { icon: AlertTriangle, ring: "bg-amber-100 text-amber-600", text: "Attention" },
+/**
+ * Une couleur par action. Classes écrites en toutes lettres (Tailwind v4 ne détecte
+ * pas les classes construites dynamiquement).
+ */
+const STYLE: Record<ToastKind, { icon: typeof Info; box: string; title: string; ms: number }> = {
+  success: { icon: CheckCircle2, box: "bg-green-600", title: "Succès", ms: 3200 },
+  create: { icon: PlusCircle, box: "bg-green-600", title: "Créé", ms: 3200 },
+  update: { icon: Pencil, box: "bg-blue-600", title: "Modifié", ms: 3200 },
+  delete: { icon: Trash2, box: "bg-red-600", title: "Supprimé", ms: 3600 },
+  archive: { icon: Archive, box: "bg-orange-600", title: "Annulé", ms: 3600 },
+  send: { icon: Send, box: "bg-violet-600", title: "Envoyé", ms: 3200 },
+  info: { icon: Info, box: "bg-slate-700", title: "Information", ms: 3600 },
+  warning: { icon: TriangleAlert, box: "bg-amber-600", title: "Attention", ms: 4500 },
+  error: { icon: XCircle, box: "bg-red-800", title: "Erreur", ms: 5000 },
 };
 
-/** À monter une seule fois (layout racine) : toasts au CENTRE de l'écran + confirmation. */
+const MAX_VISIBLE = 4;
+
+/** À monter une seule fois (app/layout.tsx) : toasts en HAUT À DROITE + confirmation centrée. */
 export function ToastHost() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirm, setConfirm] = useState<ConfirmEventDetail | null>(null);
   const [active, setActive] = useState(false);
 
   useEffect(() => {
-    // Une seule instance écoute les évènements (layout racine ET AppLayout peuvent la monter)
+    // Une seule instance écoute les évènements
     if (window.__nhHost) return;
 
     window.__nhHost = true;
@@ -32,13 +55,12 @@ export function ToastHost() {
 
     const onToast = (event: Event) => {
       const detail = (event as CustomEvent<ToastEventDetail>).detail;
-      const id = ++counter + Date.now();
 
-      setToasts((cur) => [...cur.slice(-2), { ...detail, id }]);
-      window.setTimeout(
-        () => setToasts((cur) => cur.filter((t) => t.id !== id)),
-        detail.kind === "error" ? 4200 : 2400
-      );
+      setToasts((cur) => {
+        // Même message déjà affiché : on n'empile pas de doublon
+        if (cur.some((t) => t.kind === detail.kind && t.message === detail.message)) return cur;
+        return [...cur.slice(-(MAX_VISIBLE - 1)), { ...detail, id: ++counter + Date.now() }];
+      });
     };
 
     const onConfirm = (event: Event) => {
@@ -55,6 +77,8 @@ export function ToastHost() {
     };
   }, []);
 
+  const dismiss = (id: number) => setToasts((cur) => cur.filter((t) => t.id !== id));
+
   const answer = (value: boolean) => {
     confirm?.resolve(value);
     setConfirm(null);
@@ -64,8 +88,11 @@ export function ToastHost() {
 
   return (
     <>
-      {/* Toasts centrés */}
-      <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 p-4">
+      {/* Toasts : toujours au même endroit (haut-droite ; pleine largeur sur mobile) */}
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-stretch gap-3 p-4 sm:left-auto sm:right-0 sm:w-[26rem]"
+      >
         {toasts.map((item) => {
           const style = STYLE[item.kind];
           const Icon = style.icon;
@@ -73,14 +100,39 @@ export function ToastHost() {
           return (
             <div
               key={item.id}
-              role="status"
-              className="pointer-events-auto flex w-full max-w-sm animate-[toastIn_0.25s_ease-out] flex-col items-center gap-3 rounded-3xl border border-gray-100 bg-white px-8 py-7 text-center shadow-2xl shadow-black/20"
+              role={item.kind === "error" || item.kind === "warning" ? "alert" : "status"}
+              className={`nh-toast pointer-events-auto relative overflow-hidden rounded-2xl text-white shadow-xl shadow-black/25 animate-[toastIn_0.25s_ease-out] ${style.box}`}
             >
-              <span className={`flex h-14 w-14 items-center justify-center rounded-full ${style.ring}`}>
-                <Icon className="h-8 w-8" />
-              </span>
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{style.text}</p>
-              <p className="text-base font-medium text-gray-900">{item.message}</p>
+              <div className="flex items-start gap-3 px-4 py-3.5">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
+                  <Icon className="h-5 w-5" />
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/80">
+                    {item.title ?? style.title}
+                  </p>
+                  <p className="mt-0.5 break-words text-sm font-medium leading-snug">{item.message}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => dismiss(item.id)}
+                  aria-label="Fermer"
+                  className="rounded-md p-1 text-white/70 transition hover:bg-white/15 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Barre de temps : la fin de l'animation ferme le toast, le survol la met en pause */}
+              <div className="h-1 w-full bg-black/15">
+                <div
+                  className="nh-toast-bar h-full origin-left bg-white/70"
+                  style={{ animation: `toastBar ${style.ms}ms linear forwards` }}
+                  onAnimationEnd={() => dismiss(item.id)}
+                />
+              </div>
             </div>
           );
         })}
@@ -127,7 +179,11 @@ export function ToastHost() {
         </div>
       )}
 
-      <style>{`@keyframes toastIn{from{opacity:0;transform:scale(.92) translateY(8px)}to{opacity:1;transform:none}}`}</style>
+      <style>{`
+        @keyframes toastIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+        @keyframes toastBar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+        .nh-toast:hover .nh-toast-bar{animation-play-state:paused!important}
+      `}</style>
     </>
   );
 }

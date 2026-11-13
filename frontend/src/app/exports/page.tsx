@@ -173,7 +173,7 @@ export default function ExportsPage() {
         title={target?.kind === "all" ? "Tout télécharger" : target ? `Exporter « ${label(target.dataset)} »` : ""}
         subtitle={
           target?.kind === "all"
-            ? "Choisissez le format. En Excel, tout est regroupé dans un seul classeur ; en CSV ou JSON, un fichier par jeu de données."
+            ? "Excel : un seul classeur. CSV/JSON : un fichier par jeu de données."
             : undefined
         }
         onClose={() => setTarget(null)}

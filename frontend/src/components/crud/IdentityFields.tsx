@@ -229,12 +229,12 @@ export function IdentityFields({
         <p className="text-sm font-semibold text-gray-800">Informations personnelles du stagiaire</p>
         <p className="text-xs text-gray-500">
           {!personId
-            ? "Choisissez le stagiaire : sa fiche sera lue dans la base de données. Vous pouvez déjà saisir les informations."
+            ? "Choisissez le stagiaire (fiche lue en base)."
             : state === "loading"
             ? "Lecture de la fiche dans la base de données…"
             : state === "error"
               ? "Fiche non lisible : vous pouvez tout de même saisir les informations."
-              : "Elles sont enregistrées dans la fiche du stagiaire et reprises automatiquement dans son certificat."}
+              : "Enregistrées dans la fiche et reprises dans le certificat."}
         </p>
       </div>
 

@@ -523,8 +523,8 @@ export function ZoneHierarchyField({
 
       <p className="text-xs text-gray-500">
         {isBen
-          ? "Cochez un élément par niveau : la colonne suivante affiche ce qu'il contient. Chaque niveau a sa couleur sur la carte. Cliquez ensuite sur la carte pour placer le domicile exact."
-          : "Cochez une ou plusieurs zones : la colonne suivante affiche ce qu'elles contiennent. Chaque niveau a sa couleur sur la carte. Le nom, l'adresse, le rayon d'intervention et les coordonnées se remplissent à partir du niveau le plus précis choisi."}
+          ? "Cochez un élément par niveau, puis cliquez sur la carte pour placer le domicile exact."
+          : "Cochez une ou plusieurs zones : nom, adresse, rayon et coordonnées se remplissent depuis le niveau le plus précis."}
       </p>
 
       {problemList.length > 0 && (
@@ -627,7 +627,7 @@ export function ZoneHierarchyField({
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
           {selectedUnits.length} élément(s) affiché(s) · niveau le plus précis : {LABEL[deepest.level]} ({deepest.units.map((u) => u.name).join(", ")})
           {!isBen && values.radiusKm ? ` · rayon ≈ ${values.radiusKm} km` : ""}
-          {hasPartial ? " · contour détaillé en cours de chargement (emprise affichée en attendant)" : ""}
+          {hasPartial ? " · contour en cours de chargement" : ""}
         </p>
       )}
 

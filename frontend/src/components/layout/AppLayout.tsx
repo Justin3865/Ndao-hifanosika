@@ -6,7 +6,6 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
 import Footer from "./Footer";
-import { ToastHost } from "@/components/ui/ToastHost";
 import { MissionBanner } from "@/components/mission/MissionBanner";
 import { EvaluationSubNav } from "@/components/evaluations/EvaluationSubNav";
 
@@ -40,8 +39,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
           <Footer />
         </div>
-
-        <ToastHost />
       </div>
     </ProtectedRoute>
   );

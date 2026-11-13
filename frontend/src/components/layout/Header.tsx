@@ -155,9 +155,7 @@ export default function Header({ setMobileMenuOpen }: HeaderProps) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center rounded-full p-1 transition hover:bg-gray-100"
-                aria-label="Menu du profil"
-                aria-expanded={menuOpen}
+                className="flex items-center rounded-xl p-1.5 transition hover:bg-gray-100"
               >
                 <Avatar me={me} />
               </button>

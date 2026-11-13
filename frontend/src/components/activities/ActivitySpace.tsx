@@ -175,7 +175,7 @@ function MyParticipationCard({ activity, space, busy, run }: { activity: any; sp
       )}
 
       {mine?.status === "REJECTED" && (
-        <p className="text-sm text-red-600">Votre demande a été refusée. Contactez votre tuteur pour plus d&apos;informations.</p>
+        <p className="text-sm text-red-600">Demande refusée. Contactez votre tuteur.</p>
       )}
 
       {mine?.status === "ACCEPTED" && (

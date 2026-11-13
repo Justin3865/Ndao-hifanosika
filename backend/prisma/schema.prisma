@@ -1590,6 +1590,23 @@ model DailyPresence {
   @@map("daily_presences")
 }
 
+/// Absence déclarée par le membre (« 0 · Absent ») : une ligne par membre et par jour, motif facultatif
+model PresenceAbsence {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  /// Jour local YYYY-MM-DD (heure de Madagascar)
+  day          String
+  internshipId Int?
+  reason       String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, day])
+  @@index([day])
+  @@index([internshipId])
+  @@map("presence_absences")
+}
+
 /// Tâches déclarées à la fin de la journée (alimentent InternshipTask : avancement, rapport)
 model DailyPresenceTask {
   id               Int      @id @default(autoincrement())

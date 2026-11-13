@@ -136,6 +136,9 @@ const ACCESS_RULES: AccessRule[] = [
   // les entrées « Offres de stage » / « Nouvelle offre » du menu et à ouvrir la page dans l'application.
   { pattern: /^\/stages(\/|$)/, roles: ["ADMIN", "RH", "COORDINATOR"] },
 
+  // Mon avancement : espace personnel du stagiaire (frise, agenda quotidien, tâches, objectifs) — son propre stage uniquement
+  { pattern: /^\/mon-stage(\/|$)/, roles: [...STAGIAIRES] },
+
   // Documents de stage (convention, rapport, mémoire) : droits fins par stage côté API
   { pattern: /^\/internships\/documents\/?$/, roles: ["ADMIN", "RH", ...TUTEURS, ...STAGIAIRES] },
 

@@ -510,7 +510,7 @@ export default function AiAnomalyPage() {
                     ? `Détection en temps réel active : chaque modification de données déclenche une analyse et les alertes partent aussitôt${config.auto ? ` (contrôle de sécurité toutes les ${config.everyMinutes} min)` : ""}. Seuil par défaut : ${SEVERITY_CHOICES.find(([v]) => v === config.minSeverity)?.[1].toLowerCase()}.`
                     : config.auto
                       ? `Analyse automatique active : toutes les ${config.everyMinutes} min (seuil par défaut : ${SEVERITY_CHOICES.find(([v]) => v === config.minSeverity)?.[1].toLowerCase()}).`
-                      : "Analyse automatique désactivée : retirez ANOMALY_REALTIME=false ou définissez ANOMALY_MONITOR_MINUTES dans le .env du backend."
+                      : "Analyse automatique désactivée (voir .env du backend)."
                   : "Suivi indisponible pour le moment."}
               </p>
 
@@ -719,7 +719,7 @@ export default function AiAnomalyPage() {
 
         <p className="text-xs text-gray-400">
           {engine?.used
-            ? "Les anomalies « IA » viennent d'un modèle Isolation Forest (non supervisé) qui compare chaque projet, jalon et activité aux autres ; les autres viennent de règles métier. Un score élevé signale un élément atypique, pas forcément une erreur."
+            ? "Anomalies « IA » : modèle statistique ; autres : règles métier. Score élevé = élément atypique, pas forcément une erreur."
             : METHOD_NOTE}
         </p>
       </div>

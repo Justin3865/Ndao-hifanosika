@@ -73,7 +73,11 @@ export async function chat(req: Request, res: Response) {
       return res.status(400).json({ success: false, message: "Message vide ou trop long" });
     }
 
-    res.json({ success: true, data: await answerQuestion(message, getReqUser(req)?.role, getReqUser(req)?.id) });
+    // `lang` (fr | en | mg) = langue de l'interface : simple indice, la langue détectée dans la question prime.
+    const hint = String(req.body?.lang ?? "").toLowerCase();
+    const uiLang = hint === "fr" || hint === "en" || hint === "mg" ? hint : undefined;
+
+    res.json({ success: true, data: await answerQuestion(message, getReqUser(req)?.role, getReqUser(req)?.id, uiLang) });
   } catch (error) {
     logger.error("Erreur chatbot", error);
     res.status(500).json({ success: false, message: "Erreur du chatbot" });

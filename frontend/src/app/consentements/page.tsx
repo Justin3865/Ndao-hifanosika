@@ -101,7 +101,7 @@ export default function ConsentementsPage() {
       <div className="space-y-6">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900"><ShieldCheck className="h-6 w-6 text-blue-700" /> Consentement des tuteurs légaux</h1>
-          <p className="text-sm text-gray-500">Pour chaque bénéficiaire mineur, enregistrez le consentement de son tuteur légal. Un retrait est conservé et daté.</p>
+          <p className="text-sm text-gray-500">Enregistrez le consentement du tuteur légal de chaque mineur. Tout retrait est daté.</p>
         </div>
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}

@@ -299,7 +299,7 @@ export default function MyPresence() {
         </div>
 
         {geoError && <p className="text-sm text-red-600">{geoError}</p>}
-        <p className="text-xs text-gray-500">La position vient uniquement du GPS de l&apos;appareil (non modifiable) : elle est relue au moment du pointage et comparée au siège et à l&apos;altitude du terrain.</p>
+        <p className="text-xs text-gray-500">Position issue du GPS de l’appareil (non modifiable), comparée au siège et à l’altitude du terrain.</p>
 
         {MAPS_ENABLED && showMap && markers.length > 0 && <GoogleMap markers={markers} height={240} refit />}
       </div>
@@ -371,7 +371,7 @@ export default function MyPresence() {
         <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
           <h3 className="font-semibold text-gray-900">Tâches faites aujourd&apos;hui (obligatoire avant de partir)</h3>
           <p className="text-xs text-gray-600">
-            {state.internship ? "Ces tâches mettent à jour l'avancement et les rapports visibles dans « Suivi & Évaluation »." : taskOptions.length > 0 ? "Choisissez l'activité du projet : son avancement est mis à jour dans « Suivi & Évaluation »." : "Ces tâches sont enregistrées dans votre journal de présence."}
+            {state.internship ? "Ces tâches mettent à jour « Suivi &amp; Évaluation »." : taskOptions.length > 0 ? "Choisissez l’activité du projet (mise à jour dans « Suivi &amp; Évaluation »)." : "Ces tâches sont enregistrées dans votre journal de présence."}
           </p>
 
           {lines.map((l, i) => (

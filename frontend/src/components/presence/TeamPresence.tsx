@@ -68,7 +68,7 @@ export default function TeamPresence() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Présences GPS de l&apos;équipe</h2>
-          <p className="text-xs text-gray-500">Arrivée vérifiée (position, altitude), départ et tâches du jour. Les tâches alimentent le Suivi &amp; Évaluation.</p>
+          <p className="text-xs text-gray-500">Arrivée vérifiée, départ et tâches du jour.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative text-sm">
@@ -220,7 +220,7 @@ export default function TeamPresence() {
           {data.missing.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="font-semibold">{data.missing.length} stagiaire(s) pas encore pointé(s) aujourd&apos;hui :</p>
-              <p className="text-xs">{data.missing.map((m) => m.name).join(", ")}</p>
+              <p className="text-xs">{data.missing.map((m) => (m.absence ? `${m.name} (absence déclarée${m.absence.reason ? ` : ${m.absence.reason}` : ""})` : m.name)).join(", ")}</p>
             </div>
           )}
         </>

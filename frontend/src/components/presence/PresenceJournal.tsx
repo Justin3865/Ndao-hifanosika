@@ -38,7 +38,7 @@ export default function PresenceJournal({ internshipId, userId }: { internshipId
     <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div>
         <h2 className="text-base font-semibold text-slate-900">Présence GPS et tâches du jour</h2>
-        <p className="text-xs text-slate-500">Arrivée vérifiée au siège / sur le terrain, et ce qui a été fait chaque jour (alimente l&apos;avancement du stage).</p>
+        <p className="text-xs text-slate-500">Arrivée vérifiée et tâches faites chaque jour.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">

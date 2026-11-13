@@ -118,7 +118,7 @@ export function RegistrationRequestActions({ item, detailed = false, onDone }: P
       )}
 
       {user === null && (
-        <p className="text-sm text-gray-500">Cette demande n&apos;a pas été retrouvée (compte supprimé ou adresse e-mail modifiée).</p>
+        <p className="text-sm text-gray-500">Demande introuvable (compte supprimé ou e-mail modifié).</p>
       )}
 
       {user && detailed && (

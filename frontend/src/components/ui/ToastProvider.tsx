@@ -1,55 +1,46 @@
 "use client";
 
-import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from "react";
-import { Toast, ToastType } from "./Toast";
+import { ReactNode, useMemo } from "react";
+import { toast as bus } from "@/lib/toast";
 
-interface ToastItem { id: number; message: string; type: ToastType; title?: string }
+type ToastType = "success" | "error" | "warning" | "info";
+
 interface ToastApi {
   show: (message: string, type?: ToastType, title?: string) => void;
   success: (message: string, title?: string) => void;
   error: (message: string, title?: string) => void;
   warning: (message: string, title?: string) => void;
   info: (message: string, title?: string) => void;
+  create: (message: string, title?: string) => void;
+  update: (message: string, title?: string) => void;
+  delete: (message: string, title?: string) => void;
+  archive: (message: string, title?: string) => void;
+  send: (message: string, title?: string) => void;
 }
 
-const ToastContext = createContext<ToastApi | null>(null);
-
-/** Toasts affichés au CENTRE de l'écran, disparaissent seuls après 3,5 s. */
+/**
+ * Conservé pour compatibilité : l'affichage est désormais assuré par l'unique <ToastHost />
+ * (app/layout.tsx), au même endroit pour tout le projet. useToast() ne dépend plus d'aucun
+ * contexte et ne peut donc plus lever d'erreur « hors ToastProvider ».
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<ToastItem[]>([]);
-  const nextId = useRef(1);
-
-  const dismiss = useCallback((id: number) => setItems((l) => l.filter((t) => t.id !== id)), []);
-  const show = useCallback((message: string, type: ToastType = "success", title?: string) => {
-    const id = nextId.current++;
-    setItems((l) => [...l.slice(-2), { id, message, type, title }]);
-    setTimeout(() => dismiss(id), 3500);
-  }, [dismiss]);
-
-  const api = useMemo<ToastApi>(() => ({
-    show,
-    success: (m, t) => show(m, "success", t),
-    error: (m, t) => show(m, "error", t),
-    warning: (m, t) => show(m, "warning", t),
-    info: (m, t) => show(m, "info", t),
-  }), [show]);
-
-  return (
-    <ToastContext.Provider value={api}>
-      {children}
-      <div className="pointer-events-none fixed inset-0 z-[2000] flex flex-col items-center justify-center gap-3 px-4" aria-live="polite">
-        {items.map((t) => (
-          <div key={t.id} className="pointer-events-auto w-full max-w-md animate-[fadeIn_.2s_ease-out]">
-            <Toast message={t.message} type={t.type} title={t.title} onClose={() => dismiss(t.id)} className="max-w-none shadow-2xl" />
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  );
+  return <>{children}</>;
 }
 
 export function useToast(): ToastApi {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error("useToast doit être utilisé dans <ToastProvider>.");
-  return ctx;
+  return useMemo<ToastApi>(
+    () => ({
+      show: (message, type = "success", title) => bus[type](message, title),
+      success: (m, t) => bus.success(m, t),
+      error: (m, t) => bus.error(m, t),
+      warning: (m, t) => bus.warning(m, t),
+      info: (m, t) => bus.info(m, t),
+      create: (m, t) => bus.create(m, t),
+      update: (m, t) => bus.update(m, t),
+      delete: (m, t) => bus.delete(m, t),
+      archive: (m, t) => bus.archive(m, t),
+      send: (m, t) => bus.send(m, t),
+    }),
+    []
+  );
 }

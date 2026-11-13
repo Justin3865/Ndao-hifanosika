@@ -3,18 +3,19 @@
 import { useEffect } from "react";
 
 import { useI18n } from "@/components/i18n/I18nProvider";
-import { translatePhrase } from "@/lib/i18n/phrases.mg";
+import { translateFor } from "@/lib/i18n/phrases";
 
 const ATTRS = ["placeholder", "title", "aria-label", "alt"] as const;
 const SKIP = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE", "NOSCRIPT"]);
 
 /**
- * Traduit TOUT le texte français de l'interface en malgache quand la langue est « mg », sans modifier un seul composant :
+ * Traduit TOUT le texte français de l'interface en malgache (« mg ») ou en anglais (« en »), sans modifier un seul composant :
  * il remplace les textes exacts connus (phrases.mg.ts) puis restaure le français si on rebascule. Un texte inconnu reste en français.
  * Monté une seule fois dans le layout (voir appliquer-malagasy.py). `data-no-translate` exclut une zone.
  */
 export function AutoTranslate() {
   const { lang } = useI18n();
+  const translatePhrase = (text: string) => translateFor(lang, text);
 
   useEffect(() => {
     const originals = new WeakMap<Node, string>();
@@ -26,7 +27,7 @@ export function AutoTranslate() {
       if (!parent || SKIP.has(parent.tagName) || parent.closest("[data-no-translate]")) return;
       const current = node.nodeValue ?? "";
       const base = originals.get(node);
-      if (lang === "mg") {
+      if (lang !== "fr") {
         const src = base !== undefined && translatePhrase(base) === current ? base : current;
         const next = translatePhrase(src);
         if (next !== current) {
@@ -45,7 +46,7 @@ export function AutoTranslate() {
       for (const a of ATTRS) {
         const cur = el.getAttribute(a);
         if (cur === null) continue;
-        if (lang === "mg") {
+        if (lang !== "fr") {
           const src = saved[a] !== undefined && translatePhrase(saved[a]!) === cur ? saved[a]! : cur;
           const next = translatePhrase(src);
           if (next !== cur) {
@@ -78,7 +79,7 @@ export function AutoTranslate() {
     };
 
     run(document.body);
-    if (lang !== "mg") return; // français : on a seulement restauré
+    if (lang === "fr") return; // français : on a seulement restauré
     const obs = new MutationObserver((records) => {
       for (const r of records) {
         if (r.type === "characterData") run(r.target);

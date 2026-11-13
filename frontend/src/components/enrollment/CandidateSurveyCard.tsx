@@ -309,7 +309,7 @@ export default function CandidateSurveyCard({ position }: { position: MissionPos
       {open && (
         <div className="mt-4 space-y-5">
           <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-900">
-            Enquêteur : <b className="font-mono">{agentMatricule ?? "—"}</b> — cette enquête est rattachée à votre matricule d&apos;agent et envoyée à « Enquêtes &amp; sélection » pour la sélection automatique.
+            Enquêteur : <b className="font-mono">{agentMatricule ?? "—"}</b> — enquête rattachée à votre matricule et envoyée à « Enquêtes &amp; sélection ».
           </p>
           {title("Informations personnelles")}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -317,7 +317,7 @@ export default function CandidateSurveyCard({ position }: { position: MissionPos
               endpoint="/enrollment"
               label="Matricule de l'enquête"
               placeholder="NH-2026-ENQ-0001"
-              help="Proposé automatiquement ; modifiable. Le matricule bénéficiaire (BEN) n'est attribué que si le ménage est sélectionné."
+              help="Proposé automatiquement ; matricule BEN attribué si le ménage est sélectionné."
               isEdit={false}
               value={str("matricule")}
               onChange={(v) => set({ matricule: v })}

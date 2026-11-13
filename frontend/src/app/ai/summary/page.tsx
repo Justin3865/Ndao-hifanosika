@@ -144,7 +144,7 @@ export default function AiSummaryPage() {
       setShowFormat(false);
     } catch (err) {
       console.error("Erreur PDF:", err);
-      setPdfError("Impossible de générer le PDF. Vérifiez que « jspdf » et « html-to-image » sont installés (npm install).");
+      setPdfError("Impossible de générer le PDF.");
     } finally {
       setDownloading(false);
     }

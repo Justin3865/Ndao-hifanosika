@@ -4,7 +4,7 @@ import { DEFAULT_LANG, dictionaries, type Lang, type TranslationKey } from "./di
 export const LANG_STORAGE_KEY = "ndao.lang";
 
 export function isLang(value: unknown): value is Lang {
-  return value === "fr" || value === "mg";
+  return value === "fr" || value === "mg" || value === "en";
 }
 
 /**

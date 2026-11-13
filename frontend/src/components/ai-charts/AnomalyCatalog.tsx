@@ -45,7 +45,7 @@ export function AnomalyCatalog() {
     <section className="space-y-5">
       <div>
         <h2 className="text-lg font-bold text-gray-900">Tous les cas d&apos;anomalies et leurs règles</h2>
-        <p className="text-sm text-gray-500">Cliquez sur un cas pour voir ce qui le rend anormal et les éléments concernés dans la base.</p>
+        <p className="text-sm text-gray-500">Cliquez sur un cas pour voir les détails.</p>
       </div>
 
       <State loading={loading} error={error}>

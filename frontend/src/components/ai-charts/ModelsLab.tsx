@@ -316,7 +316,7 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
           {more && (
           <>
           <div className="grid gap-5 lg:grid-cols-2">
-            <ChartCard title="Courbes ROC superposées" subtitle="Plus la courbe épouse le coin haut-gauche, meilleur est le modèle (diagonale = hasard)">
+            <ChartCard title="Courbes ROC superposées" subtitle="Courbe vers le haut-gauche = meilleur modèle (diagonale = hasard)">
               <LineChart
                 xDomain={[0, 1]}
                 yDomain={[0, 1]}
@@ -328,7 +328,7 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
               <Legend items={methods.map((m) => ({ label: `${m.key === best ? "🏆 " : ""}${shortName(m)} (AUC ${fmt(m.metrics.auc)})`, color: colorOf(m.key) }))} />
             </ChartCard>
 
-            <ChartCard title="Métriques côte à côte" subtitle="Exactitude, précision, rappel, F1 et AUC de chaque méthode (le contour jaune = meilleur)">
+            <ChartCard title="Métriques côte à côte" subtitle="Métriques par méthode (contour jaune = meilleur)">
               <GroupedBars
                 categories={["Exactitude", "Précision", "Rappel", "F1", "AUC"]}
                 highlight={report.best.name}
@@ -369,7 +369,7 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
           {current && (
             <ChartCard
               title={`Histogramme des scores — ${shortName(current)}`}
-              subtitle="Bleu : ménages non vulnérables · Rouge : vulnérables. Deux bosses bien séparées = modèle qui discrimine bien."
+              subtitle="Bleu : non vulnérables · Rouge : vulnérables (deux bosses séparées = bon modèle)."
               right={
                 <select value={current.key} onChange={(e) => setSelected(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800">
                   {methods.map((m) => <option key={m.key} value={m.key}>{m.key === best ? "🏆 " : ""}{shortName(m)}</option>)}
@@ -389,14 +389,14 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
 
           <ChartCard
             title="Ce qui est commun à toutes les méthodes"
-            subtitle="Importance des variables (baisse d'AUC quand on la mélange), normalisée par méthode"
+            subtitle="Importance des variables, normalisée par méthode"
           >
             {report.common.inAllMethods.length > 0 ? (
               <p className="mb-3 rounded-xl bg-green-50 p-3 text-sm text-green-800">
                 Variables classées dans le top 5 par <strong>toutes</strong> les méthodes : <strong>{report.common.inAllMethods.join(", ")}</strong>. Ce sont les facteurs de vulnérabilité les plus robustes.
               </p>
             ) : (
-              <p className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">Aucune variable n&apos;est dans le top 5 de toutes les méthodes : les méthodes ne s&apos;accordent pas encore (échantillon petit).</p>
+              <p className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">Aucune variable commune au top 5 des méthodes (échantillon petit).</p>
             )}
             <GroupedBars
               max={Math.max(0.3, ...report.common.top.flatMap((t) => Object.values(t.perMethod)))}
@@ -450,7 +450,7 @@ export function ModelsLab({ onChanged }: { onChanged?: () => void } = {}) {
       )}
 
       {more && history.length > 0 && (
-        <ChartCard title="Évolution des résultats dans la base de données" subtitle="AUC de chaque entraînement enregistré (table AiModel) : les modèles s'améliorent-ils avec plus de données ?">
+        <ChartCard title="Évolution des résultats dans la base de données" subtitle="AUC de chaque entraînement : amélioration avec plus de données ?">
           <LineChart
             yDomain={[0, 1]}
             xLabel="Entraînement n°"

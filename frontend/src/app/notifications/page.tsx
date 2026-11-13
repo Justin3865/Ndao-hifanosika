@@ -884,7 +884,7 @@ function NotificationsContent() {
           <MessageComposer
             onSubmit={sendNew}
             submitLabel="Envoyer la notification"
-            placeholder="Message (emoji, photo, vidéo, audio, message vocal, fichier, ZIP ou position)"
+            placeholder="Message (texte, média, fichier ou position)"
             allowLocation={SENDERS.includes(role)}
             allowVoice
             allowSchedule

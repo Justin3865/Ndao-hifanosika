@@ -392,7 +392,7 @@ export function MessageComposer({
     setMenu("");
 
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setError("L'enregistrement vocal n'est pas disponible sur ce navigateur (une connexion HTTPS est nécessaire).");
+      setError("Enregistrement vocal indisponible (HTTPS requis).");
       return;
     }
 
@@ -437,7 +437,7 @@ export function MessageComposer({
       const denied = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
       setError(
         denied
-          ? "Accès au micro refusé : autorisez le micro pour ce site dans le navigateur."
+          ? "Accès au micro refusé : autorisez-le dans le navigateur."
           : "Micro introuvable ou indisponible sur cet appareil.",
       );
     }
@@ -699,7 +699,7 @@ export function MessageComposer({
 
       {restored && (
         <p className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
-          <span>📝 Brouillon retrouvé : vous pouvez continuer là où vous vous étiez arrêté.</span>
+          <span>📝 Brouillon retrouvé.</span>
           <button
             type="button"
             className="font-semibold underline"

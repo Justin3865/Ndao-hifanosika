@@ -7,6 +7,7 @@ import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { AutoTranslate } from "@/components/i18n/AutoTranslate";
 import { AmountsBoundary } from "@/components/privacy/AmountsBoundary";
 import { OfflineSupport } from "@/components/offline/OfflineSupport";
+import { ToastHost } from "@/components/ui/ToastHost";
 
 export const metadata: Metadata = {
   title: {
@@ -75,6 +76,8 @@ export default function RootLayout({
           </I18nProvider>
         </SettingsProvider>
         <OfflineSupport />
+        {/* Unique point d'affichage des toasts : même place sur toutes les pages (login compris) */}
+        <ToastHost />
       </body>
     </html>
   );

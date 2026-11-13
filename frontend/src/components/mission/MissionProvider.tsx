@@ -144,7 +144,7 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       (err) => {
         // La mission n'est PAS arrêtée : seul le bouton « Terminer » la termine.
         if (err.code === err.PERMISSION_DENIED) {
-          setError("Localisation refusée : activez le GPS / la localisation du navigateur pour que la direction voie votre position.");
+          setError("Localisation refusée : activez le GPS du navigateur.");
         } else if (err.code === err.POSITION_UNAVAILABLE) {
           setError("Position indisponible : vérifiez que le GPS de l'appareil est activé.");
         }
@@ -197,8 +197,8 @@ export function MissionProvider({ children }: { children: ReactNode }) {
 
       toast.info(
         r.reason === "signal_lost"
-          ? "Signal GPS perdu : vérifiez que la localisation de votre appareil est activée."
-          : "Votre GPS n'est pas activé : ouvrez « Ma mission (GPS) » et démarrez votre mission."
+          ? "Signal GPS perdu : vérifiez la localisation."
+          : "GPS inactif : démarrez votre mission dans « Ma mission (GPS) »."
       );
     };
 
@@ -272,15 +272,15 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       setPosition(pos);
       send(pos, true);
       startWatch();
-      toast.success("Mission démarrée : votre position est partagée avec la direction jusqu'à « Terminer la mission ».");
+      toast.success("Mission démarrée : position partagée jusqu’à « Terminer la mission ».");
     } catch (err) {
       const geo = err as GeolocationPositionError;
 
       if (geo && typeof geo.code === "number") {
         setError(
           geo.code === geo.PERMISSION_DENIED
-            ? "Autorisation refusée : activez la localisation de l'appareil et du navigateur, puis réessayez."
-            : "Position GPS introuvable : sortez à l'air libre ou activez le GPS, puis réessayez."
+            ? "Autorisation refusée : activez la localisation, puis réessayez."
+            : "Position GPS introuvable : activez le GPS, puis réessayez."
         );
       } else {
         setError("Impossible de démarrer la mission (serveur injoignable). Réessayez.");

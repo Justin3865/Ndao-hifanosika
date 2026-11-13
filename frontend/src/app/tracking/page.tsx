@@ -339,7 +339,7 @@ export default function TrackingPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Suivi terrain en direct</h1>
-            <p className="text-sm text-gray-500">Position actuelle de tous les agents, ménages prioritaires enquêtés et bénéficiaires suivis.</p>
+            <p className="text-sm text-gray-500">Agents, ménages prioritaires et bénéficiaires suivis.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -388,7 +388,7 @@ export default function TrackingPage() {
               <span><i className="mr-1 inline-block h-3 w-3 rounded-sm bg-green-600" /> En mission</span>
               <span><i className="mr-1 inline-block h-3 w-3 rounded-sm bg-amber-500" /> Signal perdu</span>
               <span><i className="mr-1 inline-block h-3 w-3 rounded-full bg-red-600" /> Ménage ≥ 70</span>
-              <span>Cliquez un agent : itinéraire (flèche bleue) du siège vers lui. Cliquez un ménage : fiche + flèche depuis l&apos;agent le plus proche.</span>
+              <span>Cliquez un agent (itinéraire depuis le siège) ou un ménage (fiche et agent le plus proche).</span>
             </div>
           </div>
 
@@ -439,7 +439,7 @@ export default function TrackingPage() {
                   )))}
 
                 {tab === "households" && (priority.length === 0
-                  ? <p className="py-8 text-center text-sm text-gray-500">Aucun ménage prioritaire pour le moment (il faut des enquêtes réalisées par les agents en mission).</p>
+                  ? <p className="py-8 text-center text-sm text-gray-500">Aucun ménage prioritaire pour le moment.</p>
                   : priority.map((h) => (
                     <button key={h.id} type="button" onClick={() => h.latitude !== null && select(`h-${h.id}`)}
                       className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition hover:bg-gray-50 ${selected === `h-${h.id}` ? "border-blue-400 bg-blue-50" : "border-gray-100"}`}>

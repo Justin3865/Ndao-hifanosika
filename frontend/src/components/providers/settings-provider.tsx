@@ -147,7 +147,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSyncError("");
       return true;
     } catch {
-      setSyncError("Enregistrement sur le serveur impossible : vos réglages restent sur cet appareil. Réessayez.");
+      setSyncError("Enregistrement impossible : réglages conservés sur cet appareil.");
       return false;
     } finally {
       setSyncing(false);

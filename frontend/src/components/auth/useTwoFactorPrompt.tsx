@@ -45,7 +45,7 @@ export function useTwoFactorPrompt(): { ask: (error?: string) => Promise<string>
           <h2 className="flex items-center gap-2 text-lg font-bold"><ShieldCheck className="h-5 w-5 text-blue-400" /> Vérification en 2 étapes</h2>
           <button type="button" onClick={cancel} aria-label="Fermer" className="rounded-lg p-1.5 hover:bg-white/10"><X className="h-5 w-5" /></button>
         </div>
-        <p className="mt-3 text-sm text-slate-300">Saisissez le code à 6 chiffres de votre application d&apos;authentification, ou un code de secours.</p>
+        <p className="mt-3 text-sm text-slate-300">Saisissez le code à 6 chiffres (ou un code de secours).</p>
         <input
           autoFocus
           value={code}

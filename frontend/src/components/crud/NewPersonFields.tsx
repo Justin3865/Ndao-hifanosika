@@ -53,7 +53,7 @@ export function NewPersonFields({
         <p className="text-xs text-gray-500">
           {disabled
             ? "Un stagiaire existant est choisi ci-dessus : ce bloc est ignoré."
-            : "Un compte stagiaire sera créé avec ce stage ; il définira son mot de passe via « Mot de passe oublié »."}
+            : "Un compte stagiaire sera créé (mot de passe via « Mot de passe oublié »)."}
         </p>
       </div>
 

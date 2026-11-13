@@ -104,7 +104,7 @@ export function AiDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Tableau de bord statistique</h2>
-          <p className="text-xs text-gray-500">Résultats de toutes les estimations : anomalies, performance, risque d&apos;abandon, évaluations, vulnérabilité.</p>
+          <p className="text-xs text-gray-500">Anomalies, performance, risque d’abandon, évaluations, vulnérabilité.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -141,7 +141,7 @@ export function AiDashboard() {
               subtitle={
                 data.anomalyTrend.hasHistory
                   ? "Courbes : anomalies ouvertes, détectées et résolues chaque jour."
-                  : "Historique en cours de constitution : lancez « Analyser et notifier maintenant » ou attendez l'analyse automatique."
+                  : "Historique en cours : lancez « Analyser et notifier maintenant »."
               }
             >
               <LineChart
